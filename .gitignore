@@ -1,0 +1,87 @@
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# IDE
+# =========================
+.idea/
+.vscode/
+*.iml
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.*
+!.env.example
+application.env
+*.env
+backend/application.env
+
+# =========================
+# Backend - Spring Boot
+# =========================
+backend/target/
+backend/.mvn/
+backend/*.jar
+backend/*.war
+
+# Maven wrapper binaries
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# Spring Boot local configs
+backend/application-local.yml
+backend/application-local.properties
+
+# H2 DB files
+backend/*.mv.db
+backend/*.trace.db
+
+# =========================
+# Frontend - React/Vite
+# =========================
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# Vite cache
+frontend/.vite/
+
+# npm/yarn logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# =========================
+# Mac/Linux temp
+# =========================
+*.swp
+*.swo
+
+# =========================
+# Coverage
+# =========================
+coverage/
+
+# =========================
+# IntelliJ / Eclipse
+# =========================
+.classpath
+.project
+.settings/
+
+# =========================
+# Optional uploads/cache
+# =========================
+uploads/
+tmp/
+temp/
