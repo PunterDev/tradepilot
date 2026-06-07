@@ -8,9 +8,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
-@Builder
 public class TradeResponse {
     private Long id;
+    private Long accountId;
+    private String accountName;
+    private String accountType;
     private String symbol;
     private Market market;
     private LocalDate tradeDate;
@@ -28,7 +30,9 @@ public class TradeResponse {
     private BigDecimal pnlAmount;
     private BigDecimal pnlR;
     private OutcomeType outcome;
+    private Integer confidence;
     private Integer confidenceRating;
+    private String emotion;
     private Integer executionRating;
     private Boolean followedPlan;
     private MistakeTag mistakeTag;

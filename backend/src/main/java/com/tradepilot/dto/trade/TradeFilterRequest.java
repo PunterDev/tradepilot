@@ -1,12 +1,11 @@
 package com.tradepilot.dto.trade;
 
 import com.tradepilot.enums.*;
-import lombok.*;
+import lombok.Data;
 
 import java.time.LocalDate;
 
 @Data
-@Builder
 public class TradeFilterRequest {
     private String symbol;
     private SetupType setup;

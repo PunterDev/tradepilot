@@ -1,83 +1,133 @@
 package com.tradepilot.service;
 
 import com.tradepilot.dto.stats.*;
-import com.tradepilot.entity.Trade;
 import com.tradepilot.entity.User;
-import com.tradepilot.enums.OutcomeType;
+import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.repository.TradeRepository;
-import com.tradepilot.repository.spec.TradeSpecification;
-import com.tradepilot.dto.trade.TradeFilterRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class StatsService {
     private final TradeRepository tradeRepository;
+    private final TradingAccountService tradingAccountService;
+    private final ObservabilityService observabilityService;
 
-    public DashboardSummaryResponse getDashboardSummary(User user, LocalDate startDate, LocalDate endDate) {
-        return buildSummary(getTrades(user, startDate, endDate));
+    @Transactional(readOnly = true)
+    public DashboardSummaryResponse getDashboardSummary(User user, Long accountId, LocalDate startDate, LocalDate endDate) {
+        validateFilters(user, accountId, startDate, endDate);
+        return mapSummary((Object[]) observabilityService.timeQuery(
+                "dashboard_summary",
+                () -> tradeRepository.aggregateSummary(user.getId(), accountId, startDate, endDate)
+        ));
     }
 
-    public List<MetricItemResponse> getStatsBySetup(User user, LocalDate s, LocalDate e) {
-        return group(getTrades(user, s, e), t -> t.getSetup().name());
+    @Transactional(readOnly = true)
+    public List<MetricItemResponse> getStatsBySetup(User user, Long accountId, LocalDate s, LocalDate e) {
+        return getStatsByDimension(user, accountId, s, e, "setup");
     }
 
-    public List<MetricItemResponse> getStatsBySession(User user, LocalDate s, LocalDate e) {
-        return group(getTrades(user, s, e), t -> t.getSession().name());
+    @Transactional(readOnly = true)
+    public List<MetricItemResponse> getStatsBySession(User user, Long accountId, LocalDate s, LocalDate e) {
+        return getStatsByDimension(user, accountId, s, e, "session");
     }
 
-    public List<MetricItemResponse> getStatsBySymbol(User user, LocalDate s, LocalDate e) {
-        return group(getTrades(user, s, e), Trade::getSymbol);
+    @Transactional(readOnly = true)
+    public List<MetricItemResponse> getStatsBySymbol(User user, Long accountId, LocalDate s, LocalDate e) {
+        return getStatsByDimension(user, accountId, s, e, "symbol");
     }
 
-    public List<MetricItemResponse> getStatsByWeekday(User user, LocalDate s, LocalDate e) {
-        List<Trade> trades = getTrades(user, s, e);
-        Map<String, List<Trade>> grouped = trades.stream().collect(Collectors.groupingBy(t -> formatWeekday(t.getTradeDate().getDayOfWeek())));
-        return List.of("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday").stream().filter(grouped::containsKey).map(d -> buildMetricItem(d, grouped.get(d))).toList();
+    @Transactional(readOnly = true)
+    public List<MetricItemResponse> getStatsByWeekday(User user, Long accountId, LocalDate s, LocalDate e) {
+        return getStatsByDimension(user, accountId, s, e, "weekday").stream()
+                .map(item -> {
+                    item.setLabel(formatWeekdayLabel(item.getLabel()));
+                    return item;
+                })
+                .toList();
     }
 
-    private List<Trade> getTrades(User user, LocalDate s, LocalDate e) {
+    private List<MetricItemResponse> getStatsByDimension(User user, Long accountId, LocalDate s, LocalDate e, String dimension) {
+        validateFilters(user, accountId, s, e);
+        List<Object[]> rows = switch (dimension) {
+            case "setup" -> observabilityService.timeQuery("stats_by_setup", () -> tradeRepository.aggregateBySetup(user.getId(), accountId, s, e));
+            case "session" -> observabilityService.timeQuery("stats_by_session", () -> tradeRepository.aggregateBySession(user.getId(), accountId, s, e));
+            case "symbol" -> observabilityService.timeQuery("stats_by_symbol", () -> tradeRepository.aggregateBySymbol(user.getId(), accountId, s, e));
+            case "weekday" -> observabilityService.timeQuery("stats_by_weekday", () -> tradeRepository.aggregateByWeekday(user.getId(), accountId, s, e));
+            default -> List.<Object[]>of();
+        };
+        return rows.stream().map(this::mapMetric).toList();
+    }
+
+    private void validateFilters(User user, Long accountId, LocalDate s, LocalDate e) {
+        if (user == null) {
+            throw new IllegalArgumentException("Authenticated user is required");
+        }
+        if (accountId != null) {
+            tradingAccountService.getAccountForImport(user, accountId);
+        }
         if (s != null && e != null && s.isAfter(e))
             throw new IllegalArgumentException("startDate cannot be after endDate");
-        TradeFilterRequest filter = TradeFilterRequest.builder().startDate(s).endDate(e).build();
-        return tradeRepository.findAll(TradeSpecification.withFilters(user, filter));
     }
 
-    private DashboardSummaryResponse buildSummary(List<Trade> trades) {
-        MetricItemResponse m = buildMetricItem("summary", trades);
-        return DashboardSummaryResponse.builder().totalTrades(m.getTotalTrades()).wins(m.getWins()).losses(m.getLosses()).breakevens(m.getBreakevens()).totalPnl(m.getTotalPnl()).averageR(m.getAverageR()).winRate(m.getWinRate()).build();
+    private DashboardSummaryResponse mapSummary(Object[] row) {
+        DashboardSummaryResponse response = new DashboardSummaryResponse();
+        response.setTotalTrades(longValue(row, 0));
+        response.setWins(longValue(row, 1));
+        response.setLosses(longValue(row, 2));
+        response.setBreakevens(longValue(row, 3));
+        response.setTotalPnl(decimalValue(row, 4));
+        response.setAverageR(decimalValue(row, 5));
+        response.setWinRate(decimalValue(row, 6));
+        return response;
     }
 
-    private List<MetricItemResponse> group(List<Trade> trades, Function<Trade, String> classifier) {
-        return trades.stream().collect(Collectors.groupingBy(classifier)).entrySet().stream().map(e -> buildMetricItem(e.getKey(), e.getValue())).sorted(Comparator.comparing(MetricItemResponse::getTotalPnl).reversed()).toList();
+    private MetricItemResponse mapMetric(Object[] row) {
+        MetricItemResponse response = new MetricItemResponse();
+        response.setLabel(String.valueOf(row[0]));
+        response.setTotalTrades(longValue(row, 1));
+        response.setWins(longValue(row, 2));
+        response.setLosses(longValue(row, 3));
+        response.setBreakevens(longValue(row, 4));
+        response.setTotalPnl(decimalValue(row, 5));
+        response.setAverageR(decimalValue(row, 6));
+        response.setWinRate(decimalValue(row, 7));
+        return response;
     }
 
-    private MetricItemResponse buildMetricItem(String label, List<Trade> trades) {
-        long total = trades.size();
-        long wins = trades.stream().filter(t -> t.getOutcome() == OutcomeType.WIN).count();
-        long losses = trades.stream().filter(t -> t.getOutcome() == OutcomeType.LOSS).count();
-        long be = trades.stream().filter(t -> t.getOutcome() == OutcomeType.BE).count();
-        BigDecimal totalPnl = trades.stream().map(t -> z(t.getPnlAmount())).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal totalR = trades.stream().map(t -> z(t.getPnlR())).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal avgR = total == 0 ? BigDecimal.ZERO : totalR.divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
-        BigDecimal winRate = total == 0 ? BigDecimal.ZERO : BigDecimal.valueOf((wins * 100.0) / total).setScale(2, RoundingMode.HALF_UP);
-        return MetricItemResponse.builder().label(label).totalTrades(total).wins(wins).losses(losses).breakevens(be).totalPnl(totalPnl).averageR(avgR).winRate(winRate).build();
+    private long longValue(Object[] row, int index) {
+        Object value = row[index];
+        return value instanceof Number number ? number.longValue() : 0;
     }
 
-    private BigDecimal z(BigDecimal v) {
-        return v == null ? BigDecimal.ZERO : v;
+    private BigDecimal decimalValue(Object[] row, int index) {
+        Object value = row[index];
+        if (value instanceof BigDecimal decimal) {
+            return decimal.setScale(2, RoundingMode.HALF_UP);
+        }
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue()).setScale(2, RoundingMode.HALF_UP);
+        }
+        return BigDecimal.ZERO;
     }
 
-    private String formatWeekday(DayOfWeek d) {
-        return d.toString().charAt(0) + d.toString().substring(1).toLowerCase();
+    private String formatWeekdayLabel(String value) {
+        return switch (value) {
+            case "1", "1.0" -> "Monday";
+            case "2", "2.0" -> "Tuesday";
+            case "3", "3.0" -> "Wednesday";
+            case "4", "4.0" -> "Thursday";
+            case "5", "5.0" -> "Friday";
+            case "6", "6.0" -> "Saturday";
+            case "7", "7.0" -> "Sunday";
+            default -> "Unspecified";
+        };
     }
 }

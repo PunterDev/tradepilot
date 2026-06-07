@@ -319,3 +319,77 @@ export const textarea: React.CSSProperties = {
   fontFamily: "inherit",
   lineHeight: 1.5,
 };
+
+export const aiReviewCardStyle: React.CSSProperties = {
+  marginTop: 30,
+  padding: 24,
+  borderRadius: 24,
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,0.96), rgba(2,6,23,0.96))",
+  border: "1px solid rgba(148,163,184,0.22)",
+  boxShadow: "0 22px 55px rgba(0,0,0,0.35)",
+};
+
+export const aiReviewHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 16,
+  alignItems: "center",
+};
+
+export const aiReviewTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 22,
+  fontWeight: 900,
+  color: "#f8fafc",
+};
+
+export const aiReviewSubtitleStyle: React.CSSProperties = {
+  margin: "6px 0 0",
+  color: "#94a3b8",
+  fontSize: 15,
+};
+
+export const aiReviewButtonStyle: React.CSSProperties = {
+  border: "none",
+  borderRadius: 14,
+  padding: "12px 18px",
+  background: "linear-gradient(135deg, #22c55e, #16a34a)",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 900,
+  boxShadow: "0 14px 30px rgba(34,197,94,0.28)",
+};
+
+export const aiReviewErrorStyle: React.CSSProperties = {
+  marginTop: 14,
+  color: "#fecaca",
+  background: "rgba(127,29,29,0.35)",
+  border: "1px solid rgba(248,113,113,0.35)",
+  padding: 12,
+  borderRadius: 14,
+};
+
+export const aiReviewResultStyle: React.CSSProperties = {
+  marginTop: 20,
+  color: "#e5e7eb",
+};
+
+export const aiReviewSectionStyle: React.CSSProperties = {
+  marginTop: 16,
+  padding: 16,
+  borderRadius: 18,
+  background: "rgba(15,23,42,0.72)",
+  border: "1px solid rgba(148,163,184,0.14)",
+};
+
+export const aiReviewGradeStyle: React.CSSProperties = {
+  display: "inline-block",
+  padding: "8px 14px",
+  borderRadius: 999,
+  background: "rgba(34,197,94,0.14)",
+  color: "#86efac",
+  border: "1px solid rgba(34,197,94,0.28)",
+  marginBottom: 10,
+  fontWeight: 900,
+};

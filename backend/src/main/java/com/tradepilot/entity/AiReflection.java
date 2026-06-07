@@ -6,7 +6,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "ai_reflections")
+@Table(
+        name = "ai_reflections",
+        indexes = {
+                @Index(name = "idx_ai_reflections_user_id", columnList = "user_id"),
+                @Index(name = "idx_ai_reflections_user_period", columnList = "user_id, start_date, end_date")
+        }
+)
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class AiReflection {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)

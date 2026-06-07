@@ -13,7 +13,7 @@ type DbTrade = {
   tradeDate?: string;
   exitTime?: string;
   entryTime?: string;
-  pnlAmount?: number;
+  pnlAmount?: number | string;
 };
 
 export function formatCurrency(value: number) {
@@ -84,6 +84,51 @@ export function getTradeDate(timestamp: unknown): string {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+export function normalizeCalendarDate(value: unknown): string | null {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  }
+
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (slashMatch) {
+    const [, month, day, year] = slashMatch;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  return null;
+}
+
+export function getTradeCalendarDate(trade: {
+  tradeDate?: unknown;
+  date?: unknown;
+  soldTimestamp?: unknown;
+  exitTime?: unknown;
+  boughtTimestamp?: unknown;
+  entryTime?: unknown;
+}): string | null {
+  return (
+    normalizeCalendarDate(trade.tradeDate) ||
+    normalizeCalendarDate(trade.date) ||
+    normalizeCalendarDate(trade.soldTimestamp) ||
+    normalizeCalendarDate(trade.exitTime) ||
+    normalizeCalendarDate(trade.boughtTimestamp) ||
+    normalizeCalendarDate(trade.entryTime)
+  );
+}
+
 export function calculateCurrentStreak(
   dailyPnl: DailyPnl[],
   type: "WIN" | "LOSS"
@@ -130,8 +175,10 @@ export function buildDailyPnlFromDbTrades(dbTrades: DbTrade[]): DailyPnl[] {
   const dailyMap = new Map<string, DailyPnl>();
 
   dbTrades.forEach((trade) => {
-    const date = trade.tradeDate || getTradeDate(trade.exitTime || trade.entryTime);
-    const pnl = Number(trade.pnlAmount ?? 0);
+    const date = getTradeCalendarDate(trade);
+    const pnl = safeNumber(trade.pnlAmount);
+
+    if (!date) return;
 
     if (!dailyMap.has(date)) {
       dailyMap.set(date, {
@@ -171,4 +218,31 @@ export function buildDailyPnlFromDbTrades(dbTrades: DbTrade[]): DailyPnl[] {
             : 0,
       };
     });
+}
+
+export function buildDailyPnlFromCalendarTrades(
+  trades: Array<{
+    tradeDate?: unknown;
+    date?: unknown;
+    soldTimestamp?: unknown;
+    exitTime?: unknown;
+    boughtTimestamp?: unknown;
+    entryTime?: unknown;
+    pnl?: number | string;
+    pnlAmount?: number | string;
+  }>
+): DailyPnl[] {
+  return buildDailyPnlFromDbTrades(
+    trades.map((trade) => ({
+      tradeDate: getTradeCalendarDate(trade) ?? undefined,
+      pnlAmount: trade.pnlAmount ?? trade.pnl ?? 0,
+    }))
+  );
+}
+
+function safeNumber(value: number | string | undefined): number {
+  if (value === undefined || value === null || value === "") return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const parsed = Number(value.replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
 }

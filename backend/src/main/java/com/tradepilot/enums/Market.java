@@ -1,3 +1,10 @@
 package com.tradepilot.enums;
 
-public enum Market {FUTURES, FOREX, STOCKS, OPTIONS, CRYPTO}
+public enum Market {
+    FUTURES,
+    FOREX,
+    STOCKS,
+    OPTIONS,
+    CRYPTO,
+    OTHER
+}

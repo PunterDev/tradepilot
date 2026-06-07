@@ -5,12 +5,14 @@ import com.tradepilot.entity.User;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.security.JwtService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/dev")
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "app.dev-auth.enabled", havingValue = "true")
 public class DevAuthController {
 
     private final UserRepository userRepository;
@@ -23,7 +25,8 @@ public class DevAuthController {
             User newUser = User.builder()
                     .name("Dev User")
                     .email("dev@tradepilot.com")
-                    .passwordHash(passwordEncoder.encode("password")) // ✅ FIXED
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .emailVerified(true)
                     .build();
 
             return userRepository.save(newUser);
@@ -31,8 +34,13 @@ public class DevAuthController {
 
         String token = jwtService.generateToken(user);
 
-        return AuthResponse.builder()
-                .token(token)
-                .build();
+        return AuthResponse.of(
+                token,
+                user.getId(),
+                user.getName(),
+                user.getEmail(),
+                user.getPlan().name(),
+                user.getRole().name()
+        );
     }
 }

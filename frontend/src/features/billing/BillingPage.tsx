@@ -1,0 +1,19 @@
+import type { AuthUser } from "../../api/authApi";
+import type { BillingUsage } from "../../types/billing";
+import AdminBillingDashboard from "./AdminBillingDashboard";
+import UserBillingPage from "./UserBillingPage";
+
+type Props = {
+  user: AuthUser;
+  usage: BillingUsage | null;
+  loading: boolean;
+  error: string;
+};
+
+export default function BillingPage({ user, usage, loading, error }: Props) {
+  if (user.role === "ADMIN") {
+    return <AdminBillingDashboard />;
+  }
+
+  return <UserBillingPage usage={usage} loading={loading} error={error} />;
+}

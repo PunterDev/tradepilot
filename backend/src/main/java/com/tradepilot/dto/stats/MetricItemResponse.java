@@ -5,7 +5,6 @@ import lombok.*;
 import java.math.BigDecimal;
 
 @Data
-@Builder
 public class MetricItemResponse {
     private String label;
     private long totalTrades;

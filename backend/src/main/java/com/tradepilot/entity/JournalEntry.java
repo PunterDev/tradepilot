@@ -8,6 +8,10 @@ import java.time.LocalDateTime;
 @Entity
 @Table(
         name = "journal_entries",
+        indexes = {
+                @Index(name = "idx_journal_entries_user_id", columnList = "user_id"),
+                @Index(name = "idx_journal_entries_user_account_date", columnList = "user_id, account_id, journal_date")
+        },
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "uk_journal_user_account_date",

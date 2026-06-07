@@ -2,6 +2,7 @@ package com.tradepilot.entity;
 
 import com.tradepilot.enums.PropFirmType;
 import com.tradepilot.enums.TradingAccountStatus;
+import com.tradepilot.enums.TradingAccountType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -9,7 +10,12 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "trading_accounts")
+@Table(
+        name = "trading_accounts",
+        indexes = {
+                @Index(name = "idx_trading_accounts_user_id", columnList = "user_id")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -34,6 +40,9 @@ public class TradingAccount {
     private PropFirmType propFirm;
 
     private String accountNumber;
+
+    @Enumerated(EnumType.STRING)
+    private TradingAccountType accountType;
 
     private BigDecimal startingBalance;
 

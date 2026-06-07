@@ -3,15 +3,38 @@ package com.tradepilot.entity;
 import com.tradepilot.enums.*;
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "trades")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Table(
+        name = "trades",
+        indexes = {
+                @Index(name = "idx_trades_user_id", columnList = "user_id"),
+                @Index(name = "idx_trades_account_id", columnList = "account_id"),
+                @Index(name = "idx_trades_user_account_date", columnList = "user_id, account_id, trade_date"),
+                @Index(name = "idx_trades_user_account_date_entry", columnList = "user_id, account_id, trade_date, entry_time"),
+                @Index(name = "idx_trades_user_entry_time", columnList = "user_id, entry_time"),
+                @Index(name = "idx_trades_account_entry_time", columnList = "account_id, entry_time"),
+                @Index(name = "idx_trades_user_account_entry_time", columnList = "user_id, account_id, entry_time")
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_trades_user_account_external_key",
+                        columnNames = {"user_id", "account_id", "external_trade_key"}
+                )
+        }
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Trade {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
@@ -28,9 +51,11 @@ public class Trade {
     private LocalDateTime exitTime;
     @Column(nullable = false, length = 20)
     private String side;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 50)
+    @Enumerated(EnumType.STRING)
+    @Column(length = 50)
     private SetupType setup;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
     private SessionType session;
     @Column(name = "entry_price", precision = 18, scale = 6)
     private BigDecimal entryPrice;
@@ -47,15 +72,21 @@ public class Trade {
     private BigDecimal pnlAmount;
     @Column(name = "pnl_r", precision = 10, scale = 2)
     private BigDecimal pnlR;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
     private OutcomeType outcome;
     @Column(name = "confidence_rating")
     private Integer confidenceRating;
+    @Column(name = "confidence")
+    private Integer confidence;
+    @Column(name = "emotion", length = 50)
+    private String emotion;
     @Column(name = "execution_rating")
     private Integer executionRating;
     @Column(name = "followed_plan")
     private Boolean followedPlan;
-    @Enumerated(EnumType.STRING) @Column(name = "mistake_tag", length = 50)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mistake_tag", length = 50)
     private MistakeTag mistakeTag;
     @Column(columnDefinition = "text")
     private String notes;
@@ -69,8 +100,18 @@ public class Trade {
     private LocalDateTime createdAt;
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
-    @PrePersist public void onCreate(){ createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now(); }
-    @PreUpdate public void onUpdate(){ updatedAt = LocalDateTime.now(); }
+
+    @PrePersist
+    public void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    public void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id")
     private TradingAccount account;
@@ -79,6 +120,6 @@ public class Trade {
     @JoinColumn(name = "import_batch_id")
     private ImportBatch importBatch;
 
-    @Column(name = "external_trade_key", unique = true)
+    @Column(name = "external_trade_key")
     private String externalTradeKey;
 }

@@ -1,0 +1,36 @@
+export type TradingDnaTimelinePoint = {
+  date: string;
+  tradeCount: number;
+  winRate: number;
+  consistencyScore: number;
+  emotionalStabilityScore: number;
+  disciplineScore: number;
+};
+
+export type TradingDnaResponse = {
+  id?: number;
+  accountId?: number | null;
+  days: number;
+  includeAllAccounts: boolean;
+  status: "COMPLETED" | "INSUFFICIENT_DATA" | string;
+  cached: boolean;
+  limitReached?: boolean;
+  message?: string;
+  totalTrades: number;
+  lastGeneratedAt?: string;
+  strengths: string[];
+  weaknesses: string[];
+  emotionalPatterns: string[];
+  riskPatterns: string[];
+  bestConditions: string[];
+  worstConditions: string[];
+  recurringMistakes: string[];
+  improvementTrend: string;
+  consistencyScore: number;
+  disciplineScore: number;
+  executionScore: number;
+  patienceScore: number;
+  confidenceSummary: string;
+  coachingSummary: string;
+  timeline: TradingDnaTimelinePoint[];
+};

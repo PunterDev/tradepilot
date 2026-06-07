@@ -17,13 +17,13 @@ import java.util.function.Function;
 @Service
 public class JwtService {
     @Value("${app.jwt.secret}") private String jwtSecret;
-    @Value("${app.jwt.expiration-ms}") private long jwtExpirationMs;
+    @Value("${app.jwt.expiration-minutes:30}") private long jwtExpirationMinutes;
 
     public String extractUsername(String token){ return extractClaim(token, Claims::getSubject); }
     public <T> T extractClaim(String token, Function<Claims,T> resolver){ return resolver.apply(extractAllClaims(token)); }
     public String generateToken(UserDetails userDetails){ return generateToken(new HashMap<>(), userDetails); }
     public String generateToken(Map<String,Object> extraClaims, UserDetails userDetails){
-        Date now = new Date(); Date expiry = new Date(now.getTime()+jwtExpirationMs);
+        Date now = new Date(); Date expiry = new Date(now.getTime() + jwtExpirationMinutes * 60_000L);
         return Jwts.builder().setClaims(extraClaims).setSubject(userDetails.getUsername()).setIssuedAt(now).setExpiration(expiry).signWith(getSigningKey(), SignatureAlgorithm.HS256).compact();
     }
     public boolean isTokenValid(String token, UserDetails userDetails){ return extractUsername(token).equals(userDetails.getUsername()) && !isTokenExpired(token); }

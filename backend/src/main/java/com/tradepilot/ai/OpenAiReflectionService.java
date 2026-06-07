@@ -2,6 +2,7 @@ package com.tradepilot.ai;
 
 import com.tradepilot.dto.ai.WeeklyReflectionStructuredResult;
 import org.springframework.stereotype.Service;
+
 import java.util.List;
 
 @Service

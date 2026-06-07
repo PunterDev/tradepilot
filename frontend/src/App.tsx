@@ -1,38 +1,37 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
-  parseTradovateCsv,
-  type TradovateTrade,
-} from "./utils/tradovateCsv";
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import {
   createAccount,
   getAccounts,
   type TradingAccount,
 } from "./api/accountApi";
-import { getAllTrades, getTradesByAccount, importTradesFromCsv } from "./api/tradeApi";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-
-import { autoLogin, logout } from "./api/authApi";
+  getCurrentUser,
+  getStoredSession,
+  logout,
+  persistSession,
+  type AuthSession,
+  type AuthUser,
+} from "./api/authApi";
 import { deleteAccount } from "./api/accountApi";
 import { saveJournal } from "./api/journalApi";
-import PnlCalendar from "./components/PnlCalendar";
-import {
-  type DailyPnl,
-  formatCurrency,
-  calculateCurrentStreak,
-  calculateBestStreak,
-  buildDailyPnlFromDbTrades,
-  getDefaultCalendarMonth,
-} from "./utils/dashboardUtils";
+import AccountsSection from "./components/AccountsSection";
+import AuthPage from "./components/AuthPage";
+import ForgotPasswordPage from "./components/ForgotPasswordPage";
+import ResetPasswordPage from "./components/ResetPasswordPage";
+import TradeDetailModal from "./components/TradeDetailModal";
+import VerifyEmailPage from "./components/VerifyEmailPage";
+import { useDashboardData } from "./hooks/useDashboardData";
+import { useBillingUsage } from "./hooks/useBillingUsage";
+import type { SelectedAccountId } from "./types/dashboard";
+import AppShell from "./layout/AppShell";
 import {
   page,
   hero,
@@ -40,65 +39,161 @@ import {
   heroTitle,
   heroText,
   heroPill,
-  card,
-  tableCard,
-  sectionHeader,
-  sectionTitle,
-  mutedText,
-  formGrid,
-  statsGrid,
-  statsGridSmall,
-  chartGrid,
-  table,
-  th,
-  td,
-  label,
-  input,
   button,
-  accountChip,
-  tooltipStyle,
-  monthLabel,
-  calendarGrid,
-  calendarHeaderCell,
-  calendarCellBase,
-  calendarDayNumber,
-  calendarPnlWrap,
-  calendarPnlAmount,
-  calendarTradeCount,
-  calendarBadge,
-  calendarMonthlyFooter,
-  hoverPopup,
-  modalOverlay,
-  modalCard,
-  journalGrid,
-  textarea
 } from "./styles/dashboardStyles";
+import {
+  SELECTED_ACCOUNT_STORAGE_KEY,
+  clearSelectedAccount,
+  parseStoredSelectedAccount,
+  persistSelectedAccount,
+} from "./utils/accountSelection";
 
+const AdminContactMessagesPage = lazy(() => import("./features/admin/AdminContactMessagesPage"));
+const AdminDashboardPage = lazy(() => import("./features/admin/AdminDashboardPage"));
+const FeatureUsagePage = lazy(() => import("./features/admin/feature-usage/FeatureUsagePage"));
+const ObservabilityPage = lazy(() => import("./features/admin/observability/ObservabilityPage"));
+const RetentionAnalyticsPage = lazy(() => import("./features/admin/retention/RetentionAnalyticsPage"));
+const AdminUsersPage = lazy(() => import("./features/admin/users/AdminUsersPage"));
+const AnalyticsPage = lazy(() => import("./features/analytics/AnalyticsPage"));
+const BillingPage = lazy(() => import("./features/billing/BillingPage"));
+const CalendarPage = lazy(() => import("./features/calendar/CalendarPage"));
+const CoachPage = lazy(() => import("./features/coach/CoachPage"));
+const DashboardHome = lazy(() => import("./features/dashboard/DashboardHome"));
+const DevToolsPage = lazy(() => import("./features/dev-tools/DevToolsPage"));
+const HomePage = lazy(() => import("./features/marketing/HomePage"));
+const ContactPage = lazy(() => import("./features/marketing/ContactPage"));
+const PrivacyPage = lazy(() => import("./features/marketing/PrivacyPage"));
+const TermsPage = lazy(() => import("./features/marketing/TermsPage"));
+const SessionReviewPage = lazy(() => import("./features/session-review/SessionReviewPage"));
+const TradingDnaPage = lazy(() => import("./features/trading-dna/TradingDnaPage"));
 
-function App() {
+const DEFAULT_IDLE_TIMEOUT_MINUTES = 30;
+const DEFAULT_IDLE_WARNING_MINUTES = 2;
+const SESSION_EXPIRED_MESSAGE = "Your session expired. Please log in again.";
+const INACTIVITY_EXPIRED_MESSAGE = "Your session expired due to inactivity. Please log in again.";
+const LOGGED_OUT_MESSAGE = "You have been logged out.";
+
+function envMinutes(name: string, fallback: number) {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const value = Number(env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+type DashboardAppProps = {
+  user: AuthUser;
+  onLogout: () => void;
+};
+
+function DashboardApp({ user, onLogout }: DashboardAppProps) {
+  const location = useLocation();
+  const isAdmin = user.role === "ADMIN";
   const [accounts, setAccounts] = useState<TradingAccount[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<number | "ALL" | "">("ALL");
-  const [fileName, setFileName] = useState("");
-  const [trades, setTrades] = useState<TradovateTrade[]>([]);
-  const [dailyPnl, setDailyPnl] = useState<DailyPnl[]>([]);
-  const [loadingAccounts, setLoadingAccounts] = useState(false);
-  const [parsing, setParsing] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [selectedAccountId, setSelectedAccountIdState] = useState<SelectedAccountId>(() =>
+    parseStoredSelectedAccount(localStorage.getItem(SELECTED_ACCOUNT_STORAGE_KEY))
+  );
+  const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState("");
   const [newPropFirm, setNewPropFirm] = useState("TOPSTEP");
   const [newAccountNumber, setNewAccountNumber] = useState("");
+  const [newAccountType, setNewAccountType] = useState("FUNDED");
   const [newStartingBalance, setNewStartingBalance] = useState("50000");
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
-  const [authReady, setAuthReady] = useState(false);
   const [journalDate, setJournalDate] = useState("");
   const [journalMood, setJournalMood] = useState("Focused");
   const [journalSetupQuality, setJournalSetupQuality] = useState("Good");
   const [journalMistakes, setJournalMistakes] = useState("");
   const [journalLesson, setJournalLesson] = useState("");
   const [journalNotes, setJournalNotes] = useState("");
+  const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
+  const billing = useBillingUsage(true);
+  const billingResult = new URLSearchParams(location.search).get("billing");
+
+  function setSelectedAccountId(next: SelectedAccountId | ((current: SelectedAccountId) => SelectedAccountId)) {
+    setSelectedAccountIdState((current) => {
+      const resolved = typeof next === "function" ? next(current) : next;
+      persistSelectedAccount(resolved);
+      return resolved;
+    });
+  }
+
+  function resolveValidSelectedAccount(
+    current: SelectedAccountId,
+    loadedAccounts: TradingAccount[]
+  ): SelectedAccountId {
+    if (loadedAccounts.length === 0) {
+      clearSelectedAccount();
+      return "";
+    }
+
+    if (current === "ALL") {
+      persistSelectedAccount("ALL");
+      return "ALL";
+    }
+
+    const currentAccountId = typeof current === "number" ? current : Number(current);
+    if (Number.isFinite(currentAccountId) && loadedAccounts.some((account) => account.id === currentAccountId)) {
+      persistSelectedAccount(currentAccountId);
+      return currentAccountId;
+    }
+
+    const fallback = loadedAccounts[0].id;
+    persistSelectedAccount(fallback);
+    return fallback;
+  }
+
+  function getValidatedSelectedAccountId(
+    current: SelectedAccountId,
+    loadedAccounts: TradingAccount[],
+    loading: boolean
+  ): SelectedAccountId {
+    if (loading || loadedAccounts.length === 0) return "";
+    if (current === "ALL") return "ALL";
+
+    const currentAccountId = typeof current === "number" ? current : Number(current);
+    return Number.isFinite(currentAccountId) && loadedAccounts.some((account) => account.id === currentAccountId)
+      ? currentAccountId
+      : "";
+  }
+
+  const validatedSelectedAccountId = getValidatedSelectedAccountId(
+    selectedAccountId,
+    accounts,
+    loadingAccounts
+  );
+
+  useEffect(() => {
+    if (loadingAccounts) return;
+
+    const next = resolveValidSelectedAccount(selectedAccountId, accounts);
+    if (next !== selectedAccountId) {
+      setSelectedAccountId(next);
+    }
+  }, [loadingAccounts, accounts, selectedAccountId]);
+
+  const {
+    fileName,
+    parsedImportCount,
+    trades,
+    dailyPnl,
+    parsing,
+    saving,
+    dashboardStats,
+    loadingStats,
+    handleCsvUpload,
+    handleSaveToDatabase,
+    metrics,
+  } = useDashboardData({
+    authReady: !loadingAccounts && accounts.length > 0,
+    selectedAccountId,
+    onDefaultCalendarMonthChange: ({ year, month }) => {
+      setCalendarYear(year);
+      setCalendarMonth(month);
+    },
+    onTradesSaved: billing.reload,
+  });
 
   async function handleSaveJournal() {
     if (!journalDate) {
@@ -126,30 +221,15 @@ function App() {
     }
   }
 
-
   useEffect(() => {
-    async function initAuth() {
-      try {
-        await autoLogin();
-        setAuthReady(true);
-      } catch (error) {
-        console.error("Auto login failed", error);
-        alert("Auto login failed. Check /api/dev/token.");
-      }
-    }
-
-    initAuth();
-  }, []);
-
-  useEffect(() => {
-    if (!authReady) return;
-
     async function loadAccounts() {
       setLoadingAccounts(true);
       try {
         const data = await getAccounts();
+        const after = resolveValidSelectedAccount(selectedAccountId, data);
+
         setAccounts(data);
-        setSelectedAccountId("ALL");
+        setSelectedAccountId(after);
       } catch (error) {
         console.error("Failed to load accounts", error);
       } finally {
@@ -158,126 +238,7 @@ function App() {
     }
 
     loadAccounts();
-  }, [authReady]);
-
-  useEffect(() => {
-    if (!selectedAccountId) return;
-
-    async function loadSavedTrades() {
-      try {
-        const dbTrades =
-          selectedAccountId === "ALL"
-            ? await getAllTrades()
-            : await getTradesByAccount(Number(selectedAccountId));
-
-        const mappedTrades: TradovateTrade[] = dbTrades.map((trade: any) => ({
-          symbol: trade.symbol,
-          qty: trade.quantity,
-          buyPrice: Number(trade.entryPrice ?? 0),
-          sellPrice: Number(trade.exitPrice ?? 0),
-          pnl: Number(trade.pnlAmount ?? 0),
-          boughtTimestamp: trade.entryTime ?? "",
-          soldTimestamp: trade.exitTime ?? trade.tradeDate,
-          duration: "",
-        }));
-
-        const rebuiltDailyPnl = buildDailyPnlFromDbTrades(dbTrades);
-
-        setTrades(mappedTrades);
-        setDailyPnl(rebuiltDailyPnl);
-
-        const defaultMonth = getDefaultCalendarMonth(rebuiltDailyPnl);
-        setCalendarYear(defaultMonth.year);
-        setCalendarMonth(defaultMonth.month);
-      } catch (error) {
-        console.error("Failed to load saved trades", error);
-      }
-    }
-
-    loadSavedTrades();
-  }, [selectedAccountId]);
-
-  async function handleCsvUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setFileName(file.name);
-    setParsing(true);
-
-    try {
-      const parsed = await parseTradovateCsv(file);
-      setTrades(parsed.trades);
-      setDailyPnl(parsed.dailyPnl);
-      const defaultMonth = getDefaultCalendarMonth(parsed.dailyPnl);
-      setCalendarYear(defaultMonth.year);
-      setCalendarMonth(defaultMonth.month);
-    } catch (error) {
-      console.error(error);
-      alert("Failed to parse CSV");
-    } finally {
-      setParsing(false);
-    }
-  }
-  async function handleSaveToDatabase() {
-    if (!selectedAccountId) {
-      alert("Select an account first.");
-      return;
-    }
-
-    if (selectedAccountId === "ALL") {
-      alert("Select a specific account before importing CSV trades.");
-      return;
-    }
-
-    if (trades.length === 0) {
-      alert("Upload and parse a CSV first.");
-      return;
-    }
-
-    setSaving(true);
-
-    try {
-      // 1. Save to DB
-      const saved = await importTradesFromCsv(
-        selectedAccountId,
-        fileName,
-        trades
-      );
-
-      // 2. Reload from DB (source of truth)
-      const dbTrades = await getTradesByAccount(Number(selectedAccountId));
-
-      // 3. Rebuild dashboard
-      const rebuiltDailyPnl = buildDailyPnlFromDbTrades(dbTrades);
-      setDailyPnl(rebuiltDailyPnl);
-
-      // 4. Sync calendar view
-      const defaultMonth = getDefaultCalendarMonth(rebuiltDailyPnl);
-      setCalendarYear(defaultMonth.year);
-      setCalendarMonth(defaultMonth.month);
-
-      // (optional) update trades state too
-      setTrades(
-        dbTrades.map((t: any) => ({
-          symbol: t.symbol,
-          qty: t.quantity,
-          buyPrice: Number(t.entryPrice ?? 0),
-          sellPrice: Number(t.exitPrice ?? 0),
-          pnl: Number(t.pnlAmount ?? 0),
-          boughtTimestamp: t.entryTime ?? "",
-          soldTimestamp: t.exitTime ?? t.tradeDate,
-          duration: "",
-        }))
-      );
-
-      alert(`Saved ${saved.length} new trades and synced from database ✅`);
-    } catch (error) {
-      console.error(error);
-      alert("Failed to save trades to database.");
-    } finally {
-      setSaving(false);
-    }
-  }
+  }, []);
 
   async function handleCreateAccount() {
     if (!newAccountName.trim()) {
@@ -292,6 +253,7 @@ function App() {
         name: newAccountName.trim(),
         propFirm: newPropFirm,
         accountNumber: newAccountNumber.trim() || undefined,
+        accountType: newAccountType || undefined,
         startingBalance: newStartingBalance ? Number(newStartingBalance) : undefined,
         status: "ACTIVE",
       });
@@ -301,8 +263,10 @@ function App() {
       setNewAccountName("");
       setNewPropFirm("TOPSTEP");
       setNewAccountNumber("");
+      setNewAccountType("FUNDED");
       setNewStartingBalance("50000");
       setShowAccountForm(false);
+      void billing.reload();
     } catch (error) {
       console.error(error);
       alert("Failed to create account.");
@@ -323,8 +287,16 @@ function App() {
 
       setAccounts((prev) => prev.filter((a) => a.id !== accountId));
 
-      // Reset selection
-      setSelectedAccountId("ALL");
+      setSelectedAccountId((current) => {
+        const remainingAccounts = accounts.filter((account) => account.id !== accountId);
+
+        if (remainingAccounts.length === 0) {
+          clearSelectedAccount();
+          return "";
+        }
+
+        return resolveValidSelectedAccount(current === accountId ? remainingAccounts[0].id : current, remainingAccounts);
+      });
 
       alert("Account deleted successfully");
     } catch (error) {
@@ -333,512 +305,1143 @@ function App() {
     }
   }
 
-  const totalPnl = dailyPnl.reduce((sum, day) => sum + day.totalPnl, 0);
-  const totalTrades = trades.length;
-  const winningTrades = trades.filter((trade) => trade.pnl > 0).length;
-  const losingTrades = trades.filter((trade) => trade.pnl < 0).length;
-  const breakevenTrades = trades.filter((trade) => trade.pnl === 0).length;
+  async function reloadWorkspace() {
+    const data = await getAccounts();
+    setAccounts(data);
+    setSelectedAccountId((current) => resolveValidSelectedAccount(current, data));
+    await billing.reload();
+  }
 
-  const overallWinRate =
-    totalTrades > 0 ? Number(((winningTrades / totalTrades) * 100).toFixed(2)) : 0;
+  function recoverInvalidSelectedAccount() {
+    setSelectedAccountId((current) => resolveValidSelectedAccount(current, accounts));
+  }
 
-  const winningDays = dailyPnl.filter((day) => day.totalPnl > 0).length;
-  const losingDays = dailyPnl.filter((day) => day.totalPnl < 0).length;
-
-  const worstDay = dailyPnl.reduce(
-    (worst, day) => (day.totalPnl < worst ? day.totalPnl : worst),
-    0
+  const userHeader = (
+    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+      <a href="/session-review" style={{ ...heroPill, textDecoration: "none" }}>Session Review</a>
+      <div style={heroPill}>{accounts.length} Accounts</div>
+      <div
+        style={{
+          ...heroPill,
+          background: "rgba(15,23,42,0.72)",
+          border: "1px solid rgba(148,163,184,0.24)",
+          color: "#cbd5e1",
+        }}
+      >
+        {user.name}
+      </div>
+      <button
+        type="button"
+        onClick={onLogout}
+        style={{ ...button, width: 120 }}
+      >
+        Logout
+      </button>
+    </div>
   );
 
-  const currentWinStreak = calculateCurrentStreak(dailyPnl, "WIN");
-  const currentLossStreak = calculateCurrentStreak(dailyPnl, "LOSS");
-  const bestWinStreak = calculateBestStreak(dailyPnl, "WIN");
-  const worstLossStreak = calculateBestStreak(dailyPnl, "LOSS");
-
-  return (
-    <div style={page}>
-      <section style={hero}>
-        <div>
-          <div style={eyebrow}>TradePilot AI</div>
-          <h1 style={heroTitle}>Prop Firm Performance Dashboard</h1>
-          <p style={heroText}>
-            Import Tradovate CSVs by account, review daily PnL, equity curve,
-            streaks, and calendar performance.
-          </p>
-        </div>
-        <div style={heroPill}>{accounts.length} Accounts</div>
-        <button
-          type="button"
-          onClick={() => {
-            logout();
-            window.location.reload();
-          }}
-          style={{ ...button, width: 120 }}
-        >
-          Reset Auth
-        </button>
-      </section>
-
-      <div style={{ ...card, marginBottom: 24 }}>
-        <div style={sectionHeader}>
+  if (loadingAccounts) {
+    return (
+      <div style={page}>
+        <section style={hero}>
           <div>
-            <h2 style={sectionTitle}>Trading Accounts</h2>
-            <p style={mutedText}>
-              Create accounts for Topstep, Apex, TPT, Tradovate, or any prop firm before importing CSV files.
+            <div style={eyebrow}>TradePilot AI</div>
+            <h1 style={heroTitle}>Prop Firm Performance Dashboard</h1>
+            <p style={heroText}>
+              Preparing your private workspace.
             </p>
           </div>
+          {userHeader}
+        </section>
 
+        <AccountsLoadingState />
+      </div>
+    );
+  }
+
+  if (accounts.length === 0 && isAdmin) {
+    return (
+      <AppShell
+        user={user}
+        accountCount={0}
+        usage={billing.usage}
+        onLogout={onLogout}
+      >
+        <Routes>
+          <Route path="/dashboard" element={<AdminDetectedCard />} />
+          <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/admin/contact-messages" element={<AdminContactMessagesPage />} />
+          <Route path="/admin/feature-usage" element={<FeatureUsagePage />} />
+          <Route path="/admin/retention" element={<RetentionAnalyticsPage />} />
+          <Route path="/admin/observability" element={<ObservabilityPage />} />
+          <Route
+            path="/billing"
+            element={<BillingPage user={user} usage={billing.usage} loading={billing.loading} error={billing.error} />}
+          />
+          <Route
+            path="/dev-tools"
+            element={
+              import.meta.env.DEV ? (
+                <DevToolsPage onChanged={reloadWorkspace} />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
+            }
+          />
+          <Route path="*" element={<Navigate to="/admin" replace />} />
+        </Routes>
+      </AppShell>
+    );
+  }
+
+  if (accounts.length === 0 && location.pathname === "/admin") {
+    return (
+      <div style={page}>
+        <NotAuthorized />
+      </div>
+    );
+  }
+
+  if (accounts.length === 0) {
+    return (
+      <div style={page}>
+        <section style={hero}>
+          <div>
+            <div style={eyebrow}>TradePilot AI</div>
+            <h1 style={heroTitle}>Prop Firm Performance Dashboard</h1>
+            <p style={heroText}>
+              Set up one trading account, then import your Tradovate CSV.
+            </p>
+          </div>
+          {userHeader}
+        </section>
+
+        <FirstUserOnboarding onCreateClick={() => setShowAccountForm(true)} />
+
+        {showAccountForm && (
+          <AccountCreationModal
+            creatingAccount={creatingAccount}
+            newAccountName={newAccountName}
+            newPropFirm={newPropFirm}
+            newAccountNumber={newAccountNumber}
+            newAccountType={newAccountType}
+            newStartingBalance={newStartingBalance}
+            onCreateAccount={handleCreateAccount}
+            onClose={() => setShowAccountForm(false)}
+            onAccountNameChange={setNewAccountName}
+            onPropFirmChange={setNewPropFirm}
+            onAccountNumberChange={setNewAccountNumber}
+            onAccountTypeChange={setNewAccountType}
+            onStartingBalanceChange={setNewStartingBalance}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <AppShell
+      user={user}
+      accountCount={accounts.length}
+      usage={billing.usage}
+      onLogout={onLogout}
+    >
+      <Routes>
+        <Route
+          path="/dashboard"
+          element={
+            isAdmin ? (
+              <Navigate to="/admin" replace />
+            ) : (
+              <DashboardHome
+                accounts={accounts}
+                selectedAccountId={selectedAccountId}
+                billingUsage={billing.usage}
+                billingLoading={billing.loading}
+                billingError={billing.error}
+                dailyPnl={dailyPnl}
+                trades={trades}
+                metrics={metrics}
+                parsing={parsing}
+                saving={saving}
+                fileName={fileName}
+                parsedImportCount={parsedImportCount}
+                billingResult={billingResult}
+                onSelectAccount={setSelectedAccountId}
+                onCsvUpload={handleCsvUpload}
+                onSaveToDatabase={handleSaveToDatabase}
+              />
+            )
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <AnalyticsPage
+              dailyPnl={dailyPnl}
+              trades={trades}
+              dashboardStats={dashboardStats}
+              onTradeSelect={setSelectedTradeId}
+            />
+          }
+        />
+        <Route
+          path="/calendar"
+          element={
+            <CalendarPage
+              dailyPnl={dailyPnl}
+              trades={trades}
+              selectedAccountId={selectedAccountId}
+              calendarYear={calendarYear}
+              calendarMonth={calendarMonth}
+              setCalendarYear={setCalendarYear}
+              setCalendarMonth={setCalendarMonth}
+              journalDate={journalDate}
+              setJournalDate={setJournalDate}
+              journalMood={journalMood}
+              setJournalMood={setJournalMood}
+              journalSetupQuality={journalSetupQuality}
+              setJournalSetupQuality={setJournalSetupQuality}
+              journalMistakes={journalMistakes}
+              setJournalMistakes={setJournalMistakes}
+              journalLesson={journalLesson}
+              setJournalLesson={setJournalLesson}
+              journalNotes={journalNotes}
+              setJournalNotes={setJournalNotes}
+              handleSaveJournal={handleSaveJournal}
+              onTradeSelect={setSelectedTradeId}
+            />
+          }
+        />
+        <Route
+          path="/session-review"
+          element={
+            <SessionReviewPage
+              accounts={accounts}
+              selectedAccountId={selectedAccountId}
+              trades={trades}
+              onTradeSelect={setSelectedTradeId}
+            />
+          }
+        />
+        <Route
+          path="/sessions/review"
+          element={<Navigate to="/session-review" replace />}
+        />
+        <Route
+          path="/trading-dna"
+          element={
+            <TradingDnaPage
+              selectedAccountId={validatedSelectedAccountId}
+              accounts={accounts}
+              accountsLoading={loadingAccounts}
+              onInvalidAccount={recoverInvalidSelectedAccount}
+              usage={billing.usage}
+              onUsageChanged={billing.reload}
+            />
+          }
+        />
+        <Route
+          path="/coach"
+          element={
+            <CoachPage
+              selectedAccountId={selectedAccountId}
+              usage={billing.usage}
+              onUsageChanged={billing.reload}
+            />
+          }
+        />
+        <Route
+          path="/billing"
+          element={
+            <>
+              <BillingPage user={user} usage={billing.usage} loading={billing.loading} error={billing.error} />
+              {!isAdmin && (
+                <div style={{ marginTop: 24 }}>
+                  <AccountsSection
+                    accounts={accounts}
+                    selectedAccountId={selectedAccountId}
+                    showAccountForm={showAccountForm}
+                    creatingAccount={creatingAccount}
+                    newAccountName={newAccountName}
+                    newPropFirm={newPropFirm}
+                    newAccountNumber={newAccountNumber}
+                    newAccountType={newAccountType}
+                    newStartingBalance={newStartingBalance}
+                    onToggleAccountForm={() => setShowAccountForm((prev) => !prev)}
+                    onCreateAccount={handleCreateAccount}
+                    onDeleteAccount={handleDeleteAccount}
+                    onSelectAccount={setSelectedAccountId}
+                    onAccountNameChange={setNewAccountName}
+                    onPropFirmChange={setNewPropFirm}
+                    onAccountNumberChange={setNewAccountNumber}
+                    onAccountTypeChange={setNewAccountType}
+                    onStartingBalanceChange={setNewStartingBalance}
+                  />
+                </div>
+              )}
+            </>
+          }
+        />
+        <Route
+          path="/dev-tools"
+          element={
+            import.meta.env.DEV ? (
+              <DevToolsPage onChanged={reloadWorkspace} />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            user.role === "ADMIN" ? (
+              <AdminDashboardPage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route
+          path="/admin/contact-messages"
+          element={
+            user.role === "ADMIN" ? (
+              <AdminContactMessagesPage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            user.role === "ADMIN" ? (
+              <AdminUsersPage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route
+          path="/admin/feature-usage"
+          element={
+            user.role === "ADMIN" ? (
+              <FeatureUsagePage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route
+          path="/admin/retention"
+          element={
+            user.role === "ADMIN" ? (
+              <RetentionAnalyticsPage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route
+          path="/admin/observability"
+          element={
+            user.role === "ADMIN" ? (
+              <ObservabilityPage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+
+      {selectedTradeId && (
+        <TradeDetailModal
+          tradeId={selectedTradeId}
+          onClose={() => setSelectedTradeId(null)}
+          onSelectTrade={setSelectedTradeId}
+          onUsageChanged={billing.reload}
+        />
+      )}
+    </AppShell>
+  );
+}
+
+function NotAuthorized() {
+  return (
+    <section style={notAuthorizedCard}>
+      <div style={eyebrow}>Not Authorized</div>
+      <h1 style={{ ...heroTitle, fontSize: 34, marginBottom: 10 }}>Admin access required</h1>
+      <p style={heroText}>This area is only available to TradePilot admins.</p>
+      <a href="/dashboard" style={{ ...button, display: "inline-flex", width: "auto", textDecoration: "none", marginTop: 16 }}>
+        Back to Dashboard
+      </a>
+    </section>
+  );
+}
+
+function AdminDetectedCard() {
+  return (
+    <section style={adminDetectedCard}>
+      <div style={eyebrow}>Admin account detected</div>
+      <h1 style={{ ...heroTitle, fontSize: 34, marginBottom: 10 }}>Open the admin dashboard</h1>
+      <p style={heroText}>
+        This admin workspace does not need a trading account. User management and manual plan controls are available now.
+      </p>
+      <a href="/admin" style={{ ...button, display: "inline-flex", width: "auto", textDecoration: "none", marginTop: 18 }}>
+        Go to Admin Dashboard
+      </a>
+    </section>
+  );
+}
+
+type AccountCreationModalProps = {
+  creatingAccount: boolean;
+  newAccountName: string;
+  newPropFirm: string;
+  newAccountNumber: string;
+  newAccountType: string;
+  newStartingBalance: string;
+  onCreateAccount: () => void;
+  onClose: () => void;
+  onAccountNameChange: (value: string) => void;
+  onPropFirmChange: (value: string) => void;
+  onAccountNumberChange: (value: string) => void;
+  onAccountTypeChange: (value: string) => void;
+  onStartingBalanceChange: (value: string) => void;
+};
+
+function FirstUserOnboarding({ onCreateClick }: { onCreateClick: () => void }) {
+  return (
+    <main style={onboardingShell}>
+      <section style={onboardingCard}>
+        <div style={onboardingBadge}>Private trading workspace</div>
+        <h2 style={onboardingTitle}>Welcome to TradePilot</h2>
+        <p style={onboardingMessage}>
+          Create your first trading account to start importing trades and unlocking analytics.
+        </p>
+        <button
+          type="button"
+          onClick={onCreateClick}
+          style={{ ...button, width: "auto", minWidth: 220 }}
+        >
+          Create Trading Account
+        </button>
+        <p style={onboardingSecondary}>
+          After creating an account, you can import your Tradovate CSV and review performance,
+          mistakes, and AI coaching.
+        </p>
+      </section>
+    </main>
+  );
+}
+
+function AccountCreationModal({
+  creatingAccount,
+  newAccountName,
+  newPropFirm,
+  newAccountNumber,
+  newAccountType,
+  newStartingBalance,
+  onCreateAccount,
+  onClose,
+  onAccountNameChange,
+  onPropFirmChange,
+  onAccountNumberChange,
+  onAccountTypeChange,
+  onStartingBalanceChange,
+}: AccountCreationModalProps) {
+  return (
+    <div style={modalOverlay}>
+      <section style={modalCard}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <div style={eyebrow}>Account setup</div>
+            <h2 style={{ ...heroTitle, fontSize: 28, marginBottom: 10 }}>
+              Create Trading Account
+            </h2>
+          </div>
           <button
             type="button"
-            onClick={() => setShowAccountForm((prev) => !prev)}
-            style={{ ...button, width: 180 }}
+            onClick={onClose}
+            style={modalCloseButton}
+            aria-label="Close account setup"
           >
-            {showAccountForm ? "Cancel" : "Add Account"}
+            ×
           </button>
         </div>
 
-        {showAccountForm && (
-          <div style={{ ...formGrid, marginTop: 22 }}>
-            <div>
-              <label style={label}>Account Name</label>
-              <input
-                style={input}
-                placeholder="Topstep 50K"
-                value={newAccountName}
-                onChange={(e) => setNewAccountName(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={label}>Prop Firm</label>
-              <select
-                style={input}
-                value={newPropFirm}
-                onChange={(e) => setNewPropFirm(e.target.value)}
-              >
-                <option value="TOPSTEP">Topstep</option>
-                <option value="APEX">Apex</option>
-                <option value="TAKE_PROFIT_TRADER">Take Profit Trader</option>
-                <option value="TRADEOVATE">Tradovate</option>
-                <option value="OTHER">Other</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={label}>Account Number</label>
-              <input
-                style={input}
-                placeholder="TS-001"
-                value={newAccountNumber}
-                onChange={(e) => setNewAccountNumber(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={label}>Starting Balance</label>
-              <input
-                style={input}
-                type="number"
-                placeholder="50000"
-                value={newStartingBalance}
-                onChange={(e) => setNewStartingBalance(e.target.value)}
-              />
-            </div>
-
-            <div style={{ display: "flex", alignItems: "end" }}>
-              <button
-                type="button"
-                onClick={handleCreateAccount}
-                disabled={creatingAccount}
-                style={button}
-              >
-                {creatingAccount ? "Creating..." : "Create Account"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {accounts.length > 0 && (
-          <div style={{ marginTop: 22 }}>
-            <h3 style={{ marginBottom: 12 }}>Existing Accounts</h3>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-              <button
-                type="button"
-                onClick={() => setSelectedAccountId("ALL")}
-                style={{
-                  ...accountChip,
-                  border:
-                    selectedAccountId === "ALL"
-                      ? "1px solid rgba(52,211,153,0.75)"
-                      : "1px solid rgba(148,163,184,0.22)",
-                  background:
-                    selectedAccountId === "ALL"
-                      ? "linear-gradient(135deg, rgba(16,185,129,0.22), rgba(34,197,94,0.12))"
-                      : "rgba(15,23,42,0.6)",
-                  color: selectedAccountId === "ALL" ? "#6ee7b7" : "#cbd5e1",
-                }}
-              >
-                All Accounts
-              </button>
-              {accounts.map((account) => {
-                const selected = selectedAccountId === account.id;
-
-                return (
-                  <div key={account.id} style={{ position: "relative" }}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedAccountId(account.id)}
-                      style={{
-                        ...accountChip,
-                        border: selected
-                          ? "1px solid rgba(52,211,153,0.75)"
-                          : "1px solid rgba(148,163,184,0.22)",
-                        background: selected
-                          ? "linear-gradient(135deg, rgba(16,185,129,0.22), rgba(34,197,94,0.12))"
-                          : "rgba(15,23,42,0.6)",
-                        color: selected ? "#6ee7b7" : "#cbd5e1",
-                        paddingRight: 36, // space for delete button
-                      }}
-                    >
-                      {account.name} · {account.propFirm}
-                    </button>
-
-                    {/* DELETE BUTTON */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteAccount(account.id);
-                      }}
-                      style={{
-                        position: "absolute",
-                        top: 6,
-                        right: 6,
-                        background: "transparent",
-                        border: "none",
-                        color: "#fb7185",
-                        cursor: "pointer",
-                        fontSize: 14,
-                        fontWeight: 900,
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div style={card}>
-        <h2 style={sectionTitle}>Import Trades</h2>
-
-        <div style={formGrid}>
+        <div style={modalFormGrid}>
           <div>
-            <label style={label}>Trading Account</label>
-            <select
-              value={selectedAccountId}
-              onChange={(e) => {
-                const value = e.target.value;
-                setSelectedAccountId(value === "ALL" ? "ALL" : value ? Number(value) : "");
-              }}
-              style={input}
-              disabled={loadingAccounts}
-            >
-              <option value="ALL">All Accounts</option>
-              <option value="">Select account</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name} — {account.propFirm}
-                  {account.accountNumber ? ` — ${account.accountNumber}` : ""}
-                </option>
-              ))}
-            </select>
-
-            {accounts.length === 0 && !loadingAccounts && (
-              <p style={{ color: "#fb7185", fontSize: 13 }}>
-                No accounts found. Create one above first.
-              </p>
-            )}
-
-            {selectedAccountId === "ALL" && (
-              <p style={mutedText}>
-                Select a specific account to import CSV trades. All Accounts is read-only combined analytics.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label style={label}>Tradovate CSV</label>
+            <label style={modalLabel}>Account name</label>
             <input
-              type="file"
-              accept=".csv"
-              onChange={handleCsvUpload}
-              style={input}
-              disabled={!selectedAccountId || selectedAccountId === "ALL"}
+              style={modalInput}
+              placeholder="Topstep 50K"
+              value={newAccountName}
+              onChange={(event) => onAccountNameChange(event.target.value)}
             />
           </div>
 
-          <div style={{ display: "flex", alignItems: "end" }}>
-            <button
-              onClick={handleSaveToDatabase}
-              disabled={!selectedAccountId || selectedAccountId === "ALL" || trades.length === 0 || saving}
-              style={button}
+          <div>
+            <label style={modalLabel}>Broker / platform optional</label>
+            <select
+              style={modalInput}
+              value={newPropFirm}
+              onChange={(event) => onPropFirmChange(event.target.value)}
             >
-              {saving ? "Saving..." : "Save Imported Trades"}
-            </button>
+              <option value="TOPSTEP">Topstep</option>
+              <option value="APEX">Apex</option>
+              <option value="TAKE_PROFIT_TRADER">Take Profit Trader</option>
+              <option value="TRADEIFY">Tradeify</option>
+              <option value="OTHER">Tradovate / Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={modalLabel}>Account type optional</label>
+            <select
+              style={modalInput}
+              value={newAccountType}
+              onChange={(event) => onAccountTypeChange(event.target.value)}
+            >
+              <option value="">Optional</option>
+              <option value="FUNDED">Funded</option>
+              <option value="EVALUATION">Evaluation</option>
+              <option value="PERSONAL">Personal</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={modalLabel}>Account number optional</label>
+            <input
+              style={modalInput}
+              placeholder="TS-001"
+              value={newAccountNumber}
+              onChange={(event) => onAccountNumberChange(event.target.value)}
+            />
+          </div>
+
+          <div>
+            <label style={modalLabel}>Starting balance optional</label>
+            <input
+              style={modalInput}
+              type="number"
+              placeholder="50000"
+              value={newStartingBalance}
+              onChange={(event) => onStartingBalanceChange(event.target.value)}
+            />
           </div>
         </div>
 
-        {parsing && <p style={mutedText}>Parsing CSV...</p>}
-        {fileName && <p style={mutedText}>Loaded file: {fileName}</p>}
-      </div>
-
-      <div style={statsGrid}>
-        <StatCard
-          title="Total PnL"
-          value={formatCurrency(totalPnl)}
-          positive={totalPnl >= 0}
-          negative={totalPnl < 0}
-        />
-        <StatCard title="Win Rate" value={`${overallWinRate}%`} positive={overallWinRate >= 50} />
-        <StatCard title="Total Trades" value={String(totalTrades)} />
-        <StatCard title="Trading Days" value={String(dailyPnl.length)} />
-        <StatCard title="Winning Days" value={String(winningDays)} positive />
-        <StatCard title="Losing Days" value={String(losingDays)} negative />
-      </div>
-
-      <div style={statsGridSmall}>
-        <StatCard title="Winning Trades" value={String(winningTrades)} positive />
-        <StatCard title="Losing Trades" value={String(losingTrades)} negative />
-        <StatCard title="Breakeven Trades" value={String(breakevenTrades)} />
-        <StatCard title="Worst Day" value={formatCurrency(worstDay)} negative={worstDay < 0} />
-      </div>
-
-      <div style={statsGridSmall}>
-        <StatCard title="Current Win Streak" value={`${currentWinStreak} days`} positive />
-        <StatCard title="Current Loss Streak" value={`${currentLossStreak} days`} negative />
-        <StatCard title="Best Win Streak" value={`${bestWinStreak} days`} positive />
-        <StatCard title="Worst Loss Streak" value={`${worstLossStreak} days`} negative />
-      </div>
-
-      <div style={chartGrid}>
-        <div style={card}>
-          <h2 style={sectionTitle}>Daily PnL</h2>
-          <div style={{ width: "100%", height: 320 }}>
-            <ResponsiveContainer>
-              <BarChart data={dailyPnl}>
-                <CartesianGrid stroke="rgba(148,163,184,0.16)" strokeDasharray="4 4" />
-                <XAxis dataKey="date" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <YAxis stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={tooltipStyle} />
-                <Bar dataKey="totalPnl" fill="#38bdf8" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 24 }}>
+          <button type="button" onClick={onClose} style={secondaryButton}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onCreateAccount}
+            disabled={creatingAccount || !newAccountName.trim()}
+            style={{
+              ...button,
+              width: 180,
+              opacity: creatingAccount || !newAccountName.trim() ? 0.55 : 1,
+              cursor: creatingAccount || !newAccountName.trim() ? "not-allowed" : "pointer",
+            }}
+          >
+            {creatingAccount ? "Creating..." : "Create Account"}
+          </button>
         </div>
-
-        <div style={card}>
-          <h2 style={sectionTitle}>Equity Curve</h2>
-          <div style={{ width: "100%", height: 320 }}>
-            <ResponsiveContainer>
-              <LineChart data={dailyPnl}>
-                <CartesianGrid stroke="rgba(148,163,184,0.16)" strokeDasharray="4 4" />
-                <XAxis dataKey="date" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <YAxis stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={tooltipStyle} />
-                <Line
-                  type="monotone"
-                  dataKey="cumulativePnl"
-                  stroke="#34d399"
-                  strokeWidth={3}
-                  dot={{ r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      <PnlCalendar
-        dailyPnl={dailyPnl}
-        trades={trades}
-        selectedAccountId={selectedAccountId}
-        calendarYear={calendarYear}
-        calendarMonth={calendarMonth}
-        setCalendarYear={setCalendarYear}
-        setCalendarMonth={setCalendarMonth}
-        journalDate={journalDate}
-        setJournalDate={setJournalDate}
-        journalMood={journalMood}
-        setJournalMood={setJournalMood}
-        journalSetupQuality={journalSetupQuality}
-        setJournalSetupQuality={setJournalSetupQuality}
-        journalMistakes={journalMistakes}
-        setJournalMistakes={setJournalMistakes}
-        journalLesson={journalLesson}
-        setJournalLesson={setJournalLesson}
-        journalNotes={journalNotes}
-        setJournalNotes={setJournalNotes}
-        handleSaveJournal={handleSaveJournal}
-      />
-
-      <div style={{ ...card, marginTop: 32 }}>
-        <h2 style={sectionTitle}>Daily Win Rate</h2>
-        <div style={{ width: "100%", height: 300 }}>
-          <ResponsiveContainer>
-            <LineChart data={dailyPnl}>
-              <CartesianGrid stroke="rgba(148,163,184,0.16)" strokeDasharray="4 4" />
-              <XAxis dataKey="date" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-              <YAxis domain={[0, 100]} stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-              <Tooltip formatter={(value) => `${Number(value).toFixed(2)}%`} contentStyle={tooltipStyle} />
-              <Line type="monotone" dataKey="winRate" stroke="#38bdf8" strokeWidth={3} dot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <h2 style={{ marginTop: 40 }}>Daily PnL Table</h2>
-      <div style={tableCard}>
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>Date</th>
-              <th style={th}>Trades</th>
-              <th style={th}>Wins</th>
-              <th style={th}>Losses</th>
-              <th style={th}>BE</th>
-              <th style={th}>Win Rate</th>
-              <th style={th}>Daily PnL</th>
-              <th style={th}>Equity</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dailyPnl.length === 0 ? (
-              <tr>
-                <td colSpan={8} style={td}>
-                  Select an account and upload your Tradovate CSV.
-                </td>
-              </tr>
-            ) : (
-              dailyPnl.map((day) => (
-                <tr key={day.date}>
-                  <td style={td}>{day.date}</td>
-                  <td style={td}>{day.tradeCount}</td>
-                  <td style={td}>{day.winningTrades}</td>
-                  <td style={td}>{day.losingTrades}</td>
-                  <td style={td}>{day.breakevenTrades}</td>
-                  <td style={td}>{day.winRate}%</td>
-                  <td
-                    style={{
-                      ...td,
-                      color: day.totalPnl >= 0 ? "#34d399" : "#fb7185",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {formatCurrency(day.totalPnl)}
-                  </td>
-                  <td
-                    style={{
-                      ...td,
-                      color: day.cumulativePnl >= 0 ? "#34d399" : "#fb7185",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {formatCurrency(day.cumulativePnl)}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <h2 style={{ marginTop: 40 }}>Loaded Trades Preview</h2>
-      <div style={tableCard}>
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>Sold Time</th>
-              <th style={th}>Symbol</th>
-              <th style={th}>Qty</th>
-              <th style={th}>Buy</th>
-              <th style={th}>Sell</th>
-              <th style={th}>PnL</th>
-              <th style={th}>Duration</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trades.length === 0 ? (
-              <tr>
-                <td colSpan={7} style={td}>
-                  No trades loaded. Select an account or import a CSV.
-                </td>
-              </tr>
-            ) : (
-              trades.slice(0, 250).map((trade, index) => (
-                <tr key={`${trade.soldTimestamp}-${index}`}>
-                  <td style={td}>{trade.soldTimestamp}</td>
-                  <td style={td}>{trade.symbol}</td>
-                  <td style={td}>{trade.qty}</td>
-                  <td style={td}>{trade.buyPrice}</td>
-                  <td style={td}>{trade.sellPrice}</td>
-                  <td
-                    style={{
-                      ...td,
-                      color: trade.pnl >= 0 ? "#34d399" : "#fb7185",
-                      fontWeight: 900,
-                    }}
-                  >
-                    {formatCurrency(trade.pnl)}
-                  </td>
-                  <td style={td}>{trade.duration || "-"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
+      </section>
     </div>
   );
 }
 
-function StatCard({
-  title,
-  value,
-  positive,
-  negative,
-}: {
-  title: string;
-  value: string;
-  positive?: boolean;
-  negative?: boolean;
-}) {
+function AccountsLoadingState() {
   return (
-    <div style={{ ...card, padding: 20, minHeight: 105 }}>
-      <div
-        style={{
-          color: "#94a3b8",
-          fontSize: 12,
-          fontWeight: 800,
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-        }}
-      >
-        {title}
+    <section style={loadingCard}>
+      <div style={spinner} />
+      <div>
+        <h2 style={{ ...sectionTitleInline, marginBottom: 6 }}>Loading your workspace</h2>
+        <p style={{ color: "#94a3b8", margin: 0 }}>
+          Checking your accounts before opening the dashboard.
+        </p>
       </div>
-      <div
-        style={{
-          fontSize: 28,
-          fontWeight: 900,
-          marginTop: 10,
-          color: positive ? "#34d399" : negative ? "#fb7185" : "#f8fafc",
-        }}
-      >
-        {value}
+    </section>
+  );
+}
+
+const onboardingShell: CSSProperties = {
+  minHeight: "calc(100vh - 220px)",
+  display: "grid",
+  placeItems: "center",
+};
+
+const onboardingCard: CSSProperties = {
+  width: "min(680px, 100%)",
+  textAlign: "center",
+  padding: "44px 36px",
+  borderRadius: 24,
+  border: "1px solid rgba(148,163,184,0.22)",
+  background: "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.92))",
+  boxShadow: "0 28px 90px rgba(0,0,0,0.42)",
+};
+
+const onboardingBadge: CSSProperties = {
+  display: "inline-flex",
+  padding: "8px 12px",
+  borderRadius: 999,
+  border: "1px solid rgba(52,211,153,0.35)",
+  background: "rgba(34,197,94,0.12)",
+  color: "#6ee7b7",
+  fontSize: 12,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+};
+
+const onboardingTitle: CSSProperties = {
+  margin: "18px 0 10px",
+  color: "#f8fafc",
+  fontSize: 42,
+  lineHeight: 1.05,
+  letterSpacing: "-0.03em",
+};
+
+const onboardingMessage: CSSProperties = {
+  margin: "0 auto 24px",
+  maxWidth: 560,
+  color: "#cbd5e1",
+  fontSize: 17,
+  lineHeight: 1.65,
+};
+
+const onboardingSecondary: CSSProperties = {
+  margin: "22px auto 0",
+  maxWidth: 560,
+  color: "#94a3b8",
+  fontSize: 14,
+  lineHeight: 1.7,
+};
+
+const modalOverlay: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 30,
+  display: "grid",
+  placeItems: "center",
+  padding: 24,
+  background: "rgba(2,6,23,0.78)",
+  backdropFilter: "blur(12px)",
+};
+
+const sessionTimeoutOverlay: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 80,
+  display: "grid",
+  placeItems: "center",
+  padding: 24,
+  background: "rgba(2,6,23,0.74)",
+  backdropFilter: "blur(14px)",
+};
+
+const sessionTimeoutCard: CSSProperties = {
+  width: "min(520px, 100%)",
+  padding: 28,
+  borderRadius: 24,
+  border: "1px solid rgba(56,189,248,0.26)",
+  background: "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.94))",
+  boxShadow: "0 28px 100px rgba(0,0,0,0.52)",
+};
+
+const sessionCountdown: CSSProperties = {
+  display: "inline-grid",
+  placeItems: "center",
+  minWidth: 92,
+  padding: "10px 14px",
+  borderRadius: 14,
+  border: "1px solid rgba(251,191,36,0.32)",
+  background: "rgba(113,63,18,0.24)",
+  color: "#fde68a",
+  fontSize: 24,
+  fontWeight: 950,
+};
+
+const sessionLogoutButton: CSSProperties = {
+  width: "auto",
+  minWidth: 132,
+  padding: "13px 18px",
+  borderRadius: 14,
+  color: "#fecaca",
+  fontWeight: 800,
+  cursor: "pointer",
+  border: "1px solid rgba(248,113,113,0.32)",
+  background: "rgba(127,29,29,0.24)",
+};
+
+const modalCard: CSSProperties = {
+  width: "min(760px, 100%)",
+  padding: 28,
+  borderRadius: 24,
+  border: "1px solid rgba(148,163,184,0.24)",
+  background: "linear-gradient(180deg, rgba(15,23,42,0.99), rgba(15,23,42,0.94))",
+  boxShadow: "0 28px 100px rgba(0,0,0,0.5)",
+};
+
+const modalFormGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 16,
+};
+
+const modalLabel: CSSProperties = {
+  display: "block",
+  marginBottom: 8,
+  color: "#94a3b8",
+  fontSize: 12,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+};
+
+const modalInput: CSSProperties = {
+  width: "100%",
+  padding: "13px 14px",
+  borderRadius: 14,
+  border: "1px solid rgba(148,163,184,0.28)",
+  background: "rgba(2,6,23,0.72)",
+  color: "#f8fafc",
+  outline: "none",
+  colorScheme: "dark",
+};
+
+const modalCloseButton: CSSProperties = {
+  width: 38,
+  height: 38,
+  borderRadius: 10,
+  border: "1px solid rgba(148,163,184,0.24)",
+  background: "rgba(15,23,42,0.8)",
+  color: "#cbd5e1",
+  cursor: "pointer",
+  fontSize: 24,
+  lineHeight: 1,
+};
+
+const secondaryButton: CSSProperties = {
+  width: 120,
+  padding: "13px 18px",
+  borderRadius: 14,
+  border: "1px solid rgba(148,163,184,0.28)",
+  background: "rgba(15,23,42,0.9)",
+  color: "#e5e7eb",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const loadingCard: CSSProperties = {
+  minHeight: 260,
+  borderRadius: 24,
+  border: "1px solid rgba(148,163,184,0.18)",
+  background: "linear-gradient(180deg, rgba(15,23,42,0.94), rgba(15,23,42,0.72))",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 16,
+};
+
+const spinner: CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: "50%",
+  border: "3px solid rgba(148,163,184,0.25)",
+  borderTopColor: "#34d399",
+};
+
+const sectionTitleInline: CSSProperties = {
+  color: "#f8fafc",
+  fontSize: 22,
+  letterSpacing: "-0.02em",
+};
+
+const notAuthorizedCard: CSSProperties = {
+  minHeight: 360,
+  borderRadius: 24,
+  border: "1px solid rgba(239,68,68,0.22)",
+  background: "linear-gradient(180deg, rgba(15,23,42,0.96), rgba(2,6,23,0.88))",
+  padding: 32,
+  display: "grid",
+  alignContent: "center",
+  justifyItems: "start",
+};
+
+const adminDetectedCard: CSSProperties = {
+  minHeight: 360,
+  borderRadius: 24,
+  border: "1px solid rgba(56,189,248,0.24)",
+  background: "linear-gradient(180deg, rgba(15,23,42,0.96), rgba(2,6,23,0.88))",
+  padding: 32,
+  display: "grid",
+  alignContent: "center",
+  justifyItems: "start",
+};
+
+function billingBanner(type: "success" | "cancelled"): CSSProperties {
+  const success = type === "success";
+  return {
+    marginBottom: 24,
+    padding: "14px 16px",
+    borderRadius: 14,
+    border: success
+      ? "1px solid rgba(52,211,153,0.35)"
+      : "1px solid rgba(251,191,36,0.35)",
+    background: success ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.11)",
+    color: success ? "#bbf7d0" : "#fde68a",
+    fontWeight: 800,
+  };
+}
+
+function AuthRoutes() {
+  const navigate = useNavigate();
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [authNotice, setAuthNotice] = useState("");
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [showIdleWarning, setShowIdleWarning] = useState(false);
+  const [idleCountdownSeconds, setIdleCountdownSeconds] = useState(0);
+  const warningTimerRef = useRef<number | null>(null);
+  const logoutTimerRef = useRef<number | null>(null);
+  const countdownTimerRef = useRef<number | null>(null);
+  const idleDeadlineRef = useRef<number | null>(null);
+  const showIdleWarningRef = useRef(false);
+
+  const clearIdleTimers = () => {
+    if (warningTimerRef.current !== null) {
+      window.clearTimeout(warningTimerRef.current);
+      warningTimerRef.current = null;
+    }
+    if (logoutTimerRef.current !== null) {
+      window.clearTimeout(logoutTimerRef.current);
+      logoutTimerRef.current = null;
+    }
+    if (countdownTimerRef.current !== null) {
+      window.clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    idleDeadlineRef.current = null;
+  };
+
+  function finishSession(message: string) {
+    logout();
+    clearSelectedAccount();
+    setSession(null);
+    setAuthNotice(message);
+    setShowIdleWarning(false);
+    clearIdleTimers();
+    navigate("/login", {
+      replace: true,
+      state: { sessionExpiredMessage: message },
+    });
+  }
+
+  function expireSession(message = INACTIVITY_EXPIRED_MESSAGE) {
+    finishSession(message);
+  }
+
+  function logoutNow() {
+    finishSession(LOGGED_OUT_MESSAGE);
+  }
+
+  function startIdleCountdown() {
+    setShowIdleWarning(true);
+    updateIdleCountdown();
+    countdownTimerRef.current = window.setInterval(updateIdleCountdown, 1000);
+  }
+
+  function updateIdleCountdown() {
+    const deadline = idleDeadlineRef.current;
+    if (!deadline) {
+      setIdleCountdownSeconds(0);
+      return;
+    }
+    setIdleCountdownSeconds(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+  }
+
+  function resetIdleTimers() {
+    if (!session) return;
+
+    const timeoutMinutes = envMinutes("VITE_IDLE_TIMEOUT_MINUTES", DEFAULT_IDLE_TIMEOUT_MINUTES);
+    const warningMinutes = envMinutes("VITE_IDLE_WARNING_MINUTES", DEFAULT_IDLE_WARNING_MINUTES);
+    const timeoutMs = timeoutMinutes * 60_000;
+    const warningMs = Math.max(0, timeoutMs - warningMinutes * 60_000);
+
+    clearIdleTimers();
+    setShowIdleWarning(false);
+    setIdleCountdownSeconds(Math.ceil((timeoutMs - warningMs) / 1000));
+    idleDeadlineRef.current = Date.now() + timeoutMs;
+
+    warningTimerRef.current = window.setTimeout(startIdleCountdown, warningMs);
+    logoutTimerRef.current = window.setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent("tradepilot:auth-expired", {
+          detail: {
+            reason: "idle",
+            message: INACTIVITY_EXPIRED_MESSAGE,
+          },
+        })
+      );
+    }, timeoutMs);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function verifyStoredSession() {
+      const stored = getStoredSession();
+
+      if (!stored) {
+        setCheckingAuth(false);
+        return;
+      }
+
+      try {
+        const user = await getCurrentUser();
+        const verifiedSession = { token: stored.token, user };
+        persistSession(verifiedSession);
+
+        if (!cancelled) {
+          setSession(verifiedSession);
+        }
+      } catch (error) {
+        console.error("Stored auth session is no longer valid", error);
+        logout();
+        clearSelectedAccount();
+        if (!cancelled) {
+          setSession(null);
+          setAuthNotice(SESSION_EXPIRED_MESSAGE);
+          navigate("/login", {
+            replace: true,
+            state: { sessionExpiredMessage: SESSION_EXPIRED_MESSAGE },
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingAuth(false);
+        }
+      }
+    }
+
+    verifyStoredSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    function handleExpiredSession(event: Event) {
+      const customEvent = event as CustomEvent<{ message?: string }>;
+      expireSession(customEvent.detail?.message ?? SESSION_EXPIRED_MESSAGE);
+    }
+
+    window.addEventListener("tradepilot:auth-expired", handleExpiredSession);
+
+    return () => {
+      window.removeEventListener("tradepilot:auth-expired", handleExpiredSession);
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    showIdleWarningRef.current = showIdleWarning;
+  }, [showIdleWarning]);
+
+  useEffect(() => {
+    if (!session) {
+      clearIdleTimers();
+      setShowIdleWarning(false);
+      return;
+    }
+
+    const activityEvents = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    const handleActivity = () => {
+      if (showIdleWarningRef.current) return;
+      resetIdleTimers();
+    };
+
+    resetIdleTimers();
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, handleActivity, { passive: true });
+    });
+
+    return () => {
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, handleActivity);
+      });
+      clearIdleTimers();
+    };
+  }, [session]);
+
+  function handleAuthenticated(nextSession: AuthSession) {
+    setAuthNotice("");
+    setSession(nextSession);
+    navigate(nextSession.user.role === "ADMIN" ? "/admin" : "/dashboard", { replace: true });
+  }
+
+  function authenticatedPath(nextSession: AuthSession) {
+    return nextSession.user.role === "ADMIN" ? "/admin" : "/dashboard";
+  }
+
+  function handleLogout() {
+    logout();
+    clearSelectedAccount();
+    setSession(null);
+    setAuthNotice("");
+    clearIdleTimers();
+    setShowIdleWarning(false);
+    navigate("/login", { replace: true });
+  }
+
+  if (checkingAuth) {
+    return (
+      <div style={{ ...page, display: "grid", placeItems: "center" }}>
+        <div style={{ ...heroPill, borderRadius: 8 }}>Checking session...</div>
       </div>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route
+        path="/"
+        element={
+          session ? (
+            <Navigate to={authenticatedPath(session)} replace />
+          ) : (
+            <HomePage />
+          )
+        }
+      />
+      <Route
+        path="/login"
+        element={
+          session ? (
+            <Navigate to={authenticatedPath(session)} replace />
+          ) : (
+            <AuthPage onAuthenticated={handleAuthenticated} sessionMessage={authNotice} />
+          )
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          session ? (
+            <Navigate to={authenticatedPath(session)} replace />
+          ) : (
+            <AuthPage onAuthenticated={handleAuthenticated} initialMode="register" />
+          )
+        }
+      />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/contact" element={<ContactPage />} />
+      <Route
+        path="/verify-email"
+        element={
+          session ? <Navigate to="/dashboard" replace /> : <VerifyEmailPage />
+        }
+      />
+      <Route
+        path="/forgot-password"
+        element={
+          session ? <Navigate to="/dashboard" replace /> : <ForgotPasswordPage />
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          session ? <Navigate to="/dashboard" replace /> : <ResetPasswordPage />
+        }
+      />
+      <Route
+        path="/*"
+        element={
+          session ? (
+            <>
+              <DashboardApp user={session.user} onLogout={handleLogout} />
+      {showIdleWarning && (
+                <IdleWarningModal
+                  countdownSeconds={idleCountdownSeconds}
+                  onStaySignedIn={resetIdleTimers}
+                  onLogoutNow={logoutNow}
+                />
+              )}
+            </>
+          ) : (
+            <Navigate
+              to="/login"
+              replace
+              state={authNotice ? { sessionExpiredMessage: authNotice } : undefined}
+            />
+          )
+        }
+      />
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Suspense fallback={<RouteLoadingState />}>
+        <AuthRoutes />
+      </Suspense>
+    </BrowserRouter>
+  );
+}
+
+function RouteLoadingState() {
+  return (
+    <div style={{ ...page, display: "grid", placeItems: "center" }}>
+      <div style={{ ...heroPill, borderRadius: 8 }}>Loading TradePilot...</div>
+    </div>
+  );
+}
+
+function IdleWarningModal({
+  countdownSeconds,
+  onStaySignedIn,
+  onLogoutNow,
+}: {
+  countdownSeconds: number;
+  onStaySignedIn: () => void;
+  onLogoutNow: () => void;
+}) {
+  const minutes = Math.floor(countdownSeconds / 60);
+  const seconds = countdownSeconds % 60;
+  const countdownLabel = `${minutes}:${String(seconds).padStart(2, "0")}`;
+
+  return (
+    <div style={sessionTimeoutOverlay}>
+      <section style={sessionTimeoutCard} role="dialog" aria-modal="true" aria-labelledby="idle-warning-title">
+        <div style={eyebrow}>Session timeout</div>
+        <h2 id="idle-warning-title" style={{ ...heroTitle, fontSize: 28, marginBottom: 10 }}>
+          You will be logged out soon due to inactivity.
+        </h2>
+        <p style={{ ...heroText, marginBottom: 22 }}>
+          Stay signed in to keep working in TradePilot.
+        </p>
+        <div style={sessionCountdown} aria-live="polite">
+          {countdownLabel}
+        </div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 22 }}>
+          <button type="button" onClick={onStaySignedIn} style={{ ...button, width: "auto", minWidth: 170 }}>
+            Stay signed in
+          </button>
+          <button type="button" onClick={onLogoutNow} style={sessionLogoutButton}>
+            Logout now
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

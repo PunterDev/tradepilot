@@ -5,6 +5,7 @@ export type TradingAccount = {
   name: string;
   propFirm: string;
   accountNumber?: string;
+  accountType?: string;
   startingBalance?: number;
   status: string;
 };
@@ -13,6 +14,7 @@ export type CreateTradingAccountRequest = {
   name: string;
   propFirm: string;
   accountNumber?: string;
+  accountType?: string;
   startingBalance?: number;
   status: string;
 };

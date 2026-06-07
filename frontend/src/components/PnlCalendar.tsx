@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { DailyPnl } from "../utils/dashboardUtils";
 import type { TradovateTrade } from "../utils/tradovateCsv";
 import { getJournalByDate } from "../api/journalApi";
+import AiTradeAnalysisPanel from "./AiTradeAnalysisPanel";
 import {
+  buildDailyPnlFromCalendarTrades,
   formatCurrency,
   formatCompactCurrency,
+  getTradeCalendarDate,
   getMonthCalendarDays,
-  getTradeDate,
 } from "../utils/dashboardUtils";
 import {
   button,
@@ -60,6 +62,7 @@ type PnlCalendarProps = {
   journalNotes: string;
   setJournalNotes: React.Dispatch<React.SetStateAction<string>>;
   handleSaveJournal: () => void | Promise<void>;
+  onTradeSelect?: (tradeId: number) => void;
 };
 
 export default function PnlCalendar({
@@ -83,36 +86,64 @@ export default function PnlCalendar({
   journalNotes,
   setJournalNotes,
   handleSaveJournal,
+  onTradeSelect,
 }: PnlCalendarProps) {
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const dailyPnlByDate = new Map(dailyPnl.map((day) => [day.date, day]));
-  const calendarDays = getMonthCalendarDays(calendarYear, calendarMonth);
+  const { calendarDailyPnl, dailyPnlByDate, tradesByDate } = useMemo(() => {
+    const computedDailyPnl = buildDailyPnlFromCalendarTrades(trades);
+    const nextDailyPnlByDate = new Map(
+      computedDailyPnl.map((day) => [day.date, day])
+    );
+
+    dailyPnl.forEach((day) => {
+      const normalizedDate = getTradeCalendarDate({ tradeDate: day.date });
+      if (normalizedDate) {
+        nextDailyPnlByDate.set(normalizedDate, { ...day, date: normalizedDate });
+      }
+    });
+
+    const nextTradesByDate = new Map<string, TradovateTrade[]>();
+
+    trades.forEach((trade) => {
+      const date = getTradeCalendarDate(trade);
+
+      if (!date) return;
+
+      if (!nextTradesByDate.has(date)) {
+        nextTradesByDate.set(date, []);
+      }
+
+      nextTradesByDate.get(date)!.push(trade);
+    });
+
+    return {
+      calendarDailyPnl: Array.from(nextDailyPnlByDate.values())
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      dailyPnlByDate: nextDailyPnlByDate,
+      tradesByDate: nextTradesByDate,
+    };
+  }, [dailyPnl, trades]);
+
+  const calendarDays = useMemo(
+    () => getMonthCalendarDays(calendarYear, calendarMonth),
+    [calendarYear, calendarMonth]
+  );
 
   const monthName = new Date(calendarYear, calendarMonth).toLocaleString("default", {
     month: "long",
     year: "numeric",
   });
 
-  const monthlyPnl = dailyPnl
-    .filter((day) => {
-      const [year, month] = day.date.split("-").map(Number);
-      return year === calendarYear && month === calendarMonth + 1;
-    })
-    .reduce((sum, day) => sum + day.totalPnl, 0);
-
-  const tradesByDate = new Map<string, TradovateTrade[]>();
-
-  trades.forEach((trade) => {
-    const date = getTradeDate(trade.soldTimestamp || trade.boughtTimestamp);
-
-    if (!tradesByDate.has(date)) {
-      tradesByDate.set(date, []);
-    }
-
-    tradesByDate.get(date)!.push(trade);
-  });
+  const monthlyPnl = useMemo(() => calendarDailyPnl
+      .filter((day) => {
+        const [year, month] = day.date.split("-").map(Number);
+        return year === calendarYear && month === calendarMonth + 1;
+      })
+      .reduce((sum, day) => sum + day.totalPnl, 0),
+    [calendarDailyPnl, calendarMonth, calendarYear]
+  );
 
   const selectedDayTrades = selectedDate ? tradesByDate.get(selectedDate) ?? [] : [];
   const selectedDayStats = selectedDate ? dailyPnlByDate.get(selectedDate) : undefined;
@@ -123,6 +154,13 @@ export default function PnlCalendar({
     setJournalMistakes("");
     setJournalLesson("");
     setJournalNotes("");
+  }
+
+  function getTradeSide(trade: TradovateTrade): "LONG" | "SHORT" {
+    const boughtTime = new Date(trade.boughtTimestamp).getTime();
+    const soldTime = new Date(trade.soldTimestamp).getTime();
+
+    return boughtTime <= soldTime ? "LONG" : "SHORT";
   }
 
   async function openDay(date: string) {
@@ -339,7 +377,17 @@ export default function PnlCalendar({
                     </tr>
                   ) : (
                     selectedDayTrades.map((trade, index) => (
-                      <tr key={`${trade.soldTimestamp}-${index}`}>
+                      <tr
+                        key={`${trade.soldTimestamp}-${index}`}
+                        onClick={() => {
+                          if (trade.id) {
+                            setSelectedDate(null);
+                            onTradeSelect?.(trade.id);
+                          }
+                        }}
+                        title={trade.id ? "Open trade detail" : undefined}
+                        style={{ cursor: trade.id ? "pointer" : "default" }}
+                      >
                         <td style={td}>{trade.soldTimestamp}</td>
                         <td style={td}>{trade.symbol}</td>
                         <td style={td}>{trade.qty}</td>
@@ -448,6 +496,40 @@ export default function PnlCalendar({
                   Save Journal
                 </button>
               </div>
+
+              {selectedDayTrades.length > 0 && (() => {
+                const primaryTrade = selectedDayTrades[0];
+
+                const aiTrade = {
+                  id: (primaryTrade as TradovateTrade & { id?: number }).id ?? 1,
+                  symbol: primaryTrade.symbol,
+                  side: getTradeSide(selectedDayTrades[0]),
+                  pnl: primaryTrade.pnl,
+                  quantity: primaryTrade.qty,
+                  entryPrice: primaryTrade.buyPrice,
+                  exitPrice: primaryTrade.sellPrice,
+                  entryTime: primaryTrade.boughtTimestamp,
+                  exitTime: primaryTrade.soldTimestamp,
+                  notes: journalNotes,
+                };
+
+                const aiJournalText = `
+                  Mood: ${journalMood}
+                  Setup Quality: ${journalSetupQuality}
+                  Mistakes: ${journalMistakes}
+                  Lesson Learned: ${journalLesson}
+                  Notes: ${journalNotes}
+                `;
+
+                return (
+                  <div style={{ marginTop: 24 }}>
+                    <AiTradeAnalysisPanel
+                      trade={aiTrade}
+                      journalText={aiJournalText}
+                    />
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

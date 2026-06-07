@@ -4,6 +4,9 @@ import com.tradepilot.dto.common.PagedResponse;
 import com.tradepilot.dto.trade.*;
 import com.tradepilot.entity.User;
 import com.tradepilot.enums.*;
+import com.tradepilot.featureusage.FeatureKey;
+import com.tradepilot.featureusage.FeatureUsageService;
+import com.tradepilot.service.TradeDetailService;
 import com.tradepilot.service.TradeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +23,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TradeController {
     private final TradeService tradeService;
+    private final TradeDetailService tradeDetailService;
+    private final FeatureUsageService featureUsageService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -38,19 +43,18 @@ public class TradeController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "tradeDate") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir
     ) {
-        TradeFilterRequest filter = TradeFilterRequest.builder()
-                .accountId(accountId)
-                .symbol(symbol)
-                .setup(setup)
-                .session(session)
-                .outcome(outcome)
-                .startDate(startDate)
-                .endDate(endDate)
-                .build();
+        TradeFilterRequest filter = new TradeFilterRequest();
+        filter.setAccountId(accountId);
+        filter.setSymbol(symbol);
+        filter.setSetup(setup);
+        filter.setSession(session);
+        filter.setOutcome(outcome);
+        filter.setStartDate(startDate);
+        filter.setEndDate(endDate);
 
         return tradeService.getTrades(user, filter, page, size, sortBy, sortDir);
     }
@@ -60,9 +64,28 @@ public class TradeController {
         return tradeService.getTradeById(user, id);
     }
 
+    @GetMapping("/{id}/detail")
+    public TradeDetailResponse getTradeDetail(@PathVariable Long id, @AuthenticationPrincipal User user) {
+        TradeDetailResponse response = tradeDetailService.getTradeDetail(user, id);
+        featureUsageService.track(user, FeatureKey.TRADE_DETAIL);
+        if (response.getAiReview() != null) {
+            featureUsageService.track(user, FeatureKey.AI_REVIEW);
+        }
+        return response;
+    }
+
     @PutMapping("/{id}")
     public TradeResponse updateTrade(@PathVariable Long id, @Valid @RequestBody TradeRequest request, @AuthenticationPrincipal User user) {
         return tradeService.updateTrade(user, id, request);
+    }
+
+    @PatchMapping("/{id}/journal")
+    public TradeResponse updateTradeJournal(
+            @PathVariable Long id,
+            @Valid @RequestBody TradeJournalRequest request,
+            @AuthenticationPrincipal User user
+    ) {
+        return tradeService.updateTradeJournal(user, id, request);
     }
 
     @DeleteMapping("/{id}")

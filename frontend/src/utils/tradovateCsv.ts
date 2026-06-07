@@ -4,6 +4,9 @@ import Papa from "papaparse";
  * Raw trade parsed from Tradovate CSV
  */
 export type TradovateTrade = {
+  id?: number;
+  accountId?: number;
+  accountName?: string;
   symbol: string;
   qty: number;
   buyPrice: number;
@@ -12,6 +15,15 @@ export type TradovateTrade = {
   boughtTimestamp: string;
   soldTimestamp: string;
   duration: string;
+  side?: "LONG" | "SHORT";
+  setup?: string;
+  session?: string;
+  mistakeTag?: string | null;
+  notes?: string | null;
+  psychologyNotes?: string | null;
+  lessonLearned?: string | null;
+  pnlR?: number | null;
+  tradeDate?: string;
 };
 
 /**

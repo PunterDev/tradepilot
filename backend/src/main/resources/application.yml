@@ -1,36 +1,108 @@
 spring:
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
-    driver-class-name: org.postgresql.Driver
+    url: ${DB_URL:${DATABASE_URL}}
+    username: ${DB_USERNAME:${DATABASE_USERNAME}}
+    password: ${DB_PASSWORD:${DATABASE_PASSWORD}}
+    driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
 
     hikari:
       maximum-pool-size: 5
       minimum-idle: 1
 
   jpa:
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${JPA_DDL_AUTO:validate}
     properties:
       hibernate:
         jdbc:
           time_zone: UTC
+  servlet:
+    multipart:
+      max-file-size: 8MB
+      max-request-size: 8MB
 
   jackson:
     serialization:
       write-dates-as-timestamps: false
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:${SMTP_USERNAME:}}
+    password: ${MAIL_PASSWORD:${SMTP_PASSWORD:}}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
 server:
   port: ${SERVER_PORT:8080}
 
 app:
+  cors:
+    allowed-origins: ${APP_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:3000}
+  dev-auth:
+    enabled: ${DEV_AUTH_ENABLED:false}
+  dev-tools-enabled: ${DEV_TOOLS_ENABLED:false}
   jwt:
-    # Default is a dev-only Base64 32-byte secret. Replace in real environments.
-    secret: ${JWT_SECRET:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
-    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+    secret: ${JWT_SECRET}
+    expiration-minutes: ${JWT_EXPIRATION_MINUTES:30}
+    expiration-ms: ${JWT_EXPIRATION_MS:1800000}
   openai:
     api-key: ${OPENAI_API_KEY:}
     model: ${OPENAI_MODEL:gpt-4.1-mini}
-
+  ai:
+    async:
+      core-pool-size: ${APP_AI_ASYNC_CORE_POOL_SIZE:2}
+      max-pool-size: ${APP_AI_ASYNC_MAX_POOL_SIZE:6}
+      queue-capacity: ${APP_AI_ASYNC_QUEUE_CAPACITY:50}
+  mail:
+    from: ${MAIL_FROM:no-reply@tradepilot.ai}
+  frontend-url: ${APP_FRONTEND_URL:${FRONTEND_URL:http://localhost:5173}}
+  admin-email: ${APP_ADMIN_EMAIL:}
+  admin-bootstrap:
+    enabled: ${APP_ADMIN_BOOTSTRAP_ENABLED:false}
+  contact-email: ${CONTACT_EMAIL:support@tradepilot.app}
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+    pro-price-id: ${STRIPE_PRO_MONTHLY_PRICE_ID:${STRIPE_PRO_PRICE_ID:}}
+    pro-yearly-price-id: ${STRIPE_PRO_YEARLY_PRICE_ID:}
+  observability:
+    slow-request-warn-ms: ${SLOW_REQUEST_WARN_MS:1000}
+    slow-request-error-ms: ${SLOW_REQUEST_ERROR_MS:5000}
+    slow-query-threshold-ms: ${SLOW_QUERY_THRESHOLD_MS:250}
+    ai-cost-per-1k-tokens: ${AI_COST_PER_1K_TOKENS:0.0006}
+    ai-cost-daily-threshold: ${AI_COST_DAILY_THRESHOLD:10.00}
+    cleanup-cron: ${OBSERVABILITY_CLEANUP_CRON:0 20 3 * * *}
+    alert-evaluation-interval-ms: ${OBSERVABILITY_ALERT_EVALUATION_INTERVAL_MS:300000}
+    retention:
+      api-request-metrics-days: ${OBSERVABILITY_RETENTION_API_REQUEST_METRICS_DAYS:60}
+      slow-request-events-days: ${OBSERVABILITY_RETENTION_SLOW_REQUEST_EVENTS_DAYS:90}
+      ai-request-metrics-days: ${OBSERVABILITY_RETENTION_AI_REQUEST_METRICS_DAYS:90}
+      cache-metrics-days: ${OBSERVABILITY_RETENTION_CACHE_METRICS_DAYS:30}
+      email-delivery-events-days: ${OBSERVABILITY_RETENTION_EMAIL_DELIVERY_EVENTS_DAYS:90}
+      stripe-events-days: ${OBSERVABILITY_RETENTION_STRIPE_EVENTS_DAYS:180}
+      query-performance-events-days: ${OBSERVABILITY_RETENTION_QUERY_PERFORMANCE_EVENTS_DAYS:60}
+      system-alerts-days: ${OBSERVABILITY_RETENTION_SYSTEM_ALERTS_DAYS:180}
+  rate-limit:
+    auth-login:
+      max-requests: ${RATE_LIMIT_AUTH_LOGIN_MAX:8}
+      window-seconds: ${RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS:60}
+    auth-register:
+      max-requests: ${RATE_LIMIT_AUTH_REGISTER_MAX:5}
+      window-seconds: ${RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS:300}
+    auth-email:
+      max-requests: ${RATE_LIMIT_AUTH_EMAIL_MAX:5}
+      window-seconds: ${RATE_LIMIT_AUTH_EMAIL_WINDOW_SECONDS:300}
+    contact:
+      max-requests: ${RATE_LIMIT_CONTACT_MAX:3}
+      window-seconds: ${RATE_LIMIT_CONTACT_WINDOW_SECONDS:300}
+    ai-generation:
+      max-requests: ${RATE_LIMIT_AI_GENERATION_MAX:12}
+      window-seconds: ${RATE_LIMIT_AI_GENERATION_WINDOW_SECONDS:300}

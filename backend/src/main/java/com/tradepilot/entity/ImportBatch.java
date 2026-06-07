@@ -6,7 +6,13 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "import_batches")
+@Table(
+        name = "import_batches",
+        indexes = {
+                @Index(name = "idx_import_batches_user_id", columnList = "user_id"),
+                @Index(name = "idx_import_batches_account_id", columnList = "account_id")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

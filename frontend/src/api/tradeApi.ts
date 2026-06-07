@@ -1,32 +1,35 @@
 import { api } from "./axios";
 import type { TradovateTrade } from "../utils/tradovateCsv";
+import type { PageParams, PagedResponse } from "./pagination";
 
-export async function getTrades() {
-  const res = await api.get("/trades");
+export async function getTrades(params: PageParams = {}) {
+  const res = await api.get("/trades", { params: { size: 25, ...params } });
   return res.data;
 }
 
-export async function getTradesByAccount(accountId: number) {
-  const res = await api.get("/trades", {
+export async function getTradesByAccount(accountId: number, params: PageParams = {}) {
+  const res = await api.get<PagedResponse<any>>("/trades", {
     params: {
       accountId,
       page: 0,
-      size: 1000,
+      size: 100,
       sortBy: "tradeDate",
       sortDir: "asc",
+      ...params,
     },
   });
 
   return res.data.content;
 }
 
-export async function getAllTrades() {
-  const res = await api.get("/trades", {
+export async function getAllTrades(params: PageParams = {}) {
+  const res = await api.get<PagedResponse<any>>("/trades", {
     params: {
       page: 0,
-      size: 5000,
+      size: 100,
       sortBy: "tradeDate",
       sortDir: "asc",
+      ...params,
     },
   });
 

@@ -5,10 +5,25 @@ spring:
     password:
     driver-class-name: org.h2.Driver
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: create-drop
     show-sql: false
 app:
   jwt:
     secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
-    expiration-ms: 86400000
+    expiration-minutes: 30
+    expiration-ms: 1800000
+  admin-bootstrap:
+    enabled: false
+  rate-limit:
+    auth-login:
+      max-requests: 1000
+    auth-register:
+      max-requests: 1000
+    auth-email:
+      max-requests: 1000
+    contact:
+      max-requests: 1000
+    ai-generation:
+      max-requests: 1000
