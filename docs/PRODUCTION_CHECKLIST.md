@@ -7,7 +7,7 @@ Run this checklist before pushing, deploying, or opening beta access.
 - Confirm `application.properties` does not exist.
 - Confirm `.env`, `.env.local`, `backend/.env`, `frontend/.env`, and `backend/src/main/resources/application-dev.yml` are ignored.
 - Confirm committed config files contain placeholders only.
-- Confirm frontend env contains no Stripe secret, webhook secret, OpenAI key, SMTP password, JWT secret, or database credential.
+- Confirm frontend env contains no Stripe secret, webhook secret, OpenAI key, Resend API key, JWT secret, or database credential.
 - Confirm backend production env has a unique `JWT_SECRET` with at least 32 random bytes encoded as Base64.
 - Confirm `APP_ALLOWED_ORIGINS` is explicit and does not use `*`.
 - Confirm `APP_ADMIN_BOOTSTRAP_ENABLED=false` after first admin setup.
@@ -42,11 +42,11 @@ Run this checklist before pushing, deploying, or opening beta access.
 
 ## 5. Email And Contact Gate
 
-- Configure SMTP host, port, username, password, sender, and contact destination.
+- Configure `RESEND_API_KEY`, `EMAIL_FROM`, and `CONTACT_EMAIL`.
 - Register a user and confirm verification email delivery.
 - Trigger password reset and confirm reset email delivery.
 - Submit the public contact form and confirm `contact_messages` is saved.
-- Break SMTP temporarily and confirm contact messages remain saved with delivery failure metadata.
+- Break Resend temporarily and confirm contact messages remain saved with delivery failure metadata.
 - Reply from admin contact CRM and confirm normal users cannot access the CRM.
 
 ## 6. OpenAI And AI Cost Gate
@@ -100,4 +100,4 @@ curl -i -X OPTIONS "$VITE_API_BASE_URL/auth/me" \
 - Migrations have been run and verified.
 - `npm run build` passes.
 - `mvn clean test` passes.
-- Stripe, SMTP, OpenAI, and Supabase production values are configured in the deployment platform, not committed.
+- Stripe, Resend, OpenAI, and Supabase production values are configured in the deployment platform, not committed.

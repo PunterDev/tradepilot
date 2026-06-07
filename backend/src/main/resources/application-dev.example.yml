@@ -8,20 +8,6 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: ${JPA_DDL_AUTO:update}
-  mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
 
 app:
   jwt:
@@ -33,8 +19,10 @@ app:
     model: ${OPENAI_MODEL:gpt-4.1-mini}
   dev-auth:
     enabled: ${DEV_AUTH_ENABLED:true}
-  mail:
-    from: ${MAIL_FROM:no-reply@tradepilot.ai}
+  email:
+    resend:
+      api-key: ${RESEND_API_KEY:}
+    from: ${EMAIL_FROM:TradePilot <no-reply@tradepilot.ai>}
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   stripe:
     secret-key: ${STRIPE_SECRET_KEY:}

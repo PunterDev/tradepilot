@@ -25,21 +25,6 @@ spring:
   jackson:
     serialization:
       write-dates-as-timestamps: false
-  mail:
-    host: ${MAIL_HOST:}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:${SMTP_USERNAME:}}
-    password: ${MAIL_PASSWORD:${SMTP_PASSWORD:}}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-          connectiontimeout: ${MAIL_CONNECTION_TIMEOUT_MS:3000}
-          timeout: ${MAIL_READ_TIMEOUT_MS:5000}
-          writetimeout: ${MAIL_WRITE_TIMEOUT_MS:5000}
-
 server:
   port: ${SERVER_PORT:8080}
 
@@ -62,12 +47,13 @@ app:
       max-pool-size: ${APP_AI_ASYNC_MAX_POOL_SIZE:6}
       queue-capacity: ${APP_AI_ASYNC_QUEUE_CAPACITY:50}
   email:
+    resend:
+      api-key: ${RESEND_API_KEY:}
+    from: ${EMAIL_FROM:}
     async:
       core-pool-size: ${APP_EMAIL_ASYNC_CORE_POOL_SIZE:1}
       max-pool-size: ${APP_EMAIL_ASYNC_MAX_POOL_SIZE:3}
       queue-capacity: ${APP_EMAIL_ASYNC_QUEUE_CAPACITY:100}
-  mail:
-    from: ${MAIL_FROM:no-reply@tradepilot.ai}
   frontend-url: ${APP_FRONTEND_URL:${FRONTEND_URL:http://localhost:5173}}
   admin-email: ${APP_ADMIN_EMAIL:}
   admin-bootstrap:

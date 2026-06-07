@@ -16,14 +16,8 @@ Required:
 - `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret.
 - `STRIPE_PRO_MONTHLY_PRICE_ID`: Stripe monthly Pro price ID.
 - `STRIPE_PRO_YEARLY_PRICE_ID`: Stripe yearly Pro price ID.
-- `MAIL_HOST`: SMTP host.
-- `MAIL_PORT`: SMTP port.
-- `MAIL_USERNAME`: SMTP username.
-- `MAIL_PASSWORD`: SMTP password.
-- `MAIL_FROM`: Sender address.
-- `MAIL_CONNECTION_TIMEOUT_MS`: SMTP connection timeout.
-- `MAIL_READ_TIMEOUT_MS`: SMTP read timeout.
-- `MAIL_WRITE_TIMEOUT_MS`: SMTP write timeout.
+- `RESEND_API_KEY`: Resend API key for transactional email delivery.
+- `EMAIL_FROM`: Verified Resend sender, for example `TradePilot <no-reply@tradepilot.app>`.
 - `CONTACT_EMAIL`: Destination address for public contact form.
 - `APP_ALLOWED_ORIGINS`: Comma-separated frontend origins.
 - `APP_FRONTEND_URL`: Public frontend URL used for auth and Stripe redirects.
@@ -39,7 +33,6 @@ Required:
 Accepted aliases:
 
 - `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`
-- `SMTP_USERNAME`, `SMTP_PASSWORD`
 - `STRIPE_PRO_PRICE_ID` for the monthly price only
 - `FRONTEND_URL`
 

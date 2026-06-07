@@ -2,43 +2,16 @@ package com.tradepilot.service;
 
 import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.util.LogSanitizer;
-import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-
-import java.nio.charset.StandardCharsets;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class EmailService {
-    private final ObjectProvider<JavaMailSender> mailSenderProvider;
+    private final ResendEmailClient resendEmailClient;
     private final ObservabilityService observabilityService;
-
-    @Value("${spring.mail.host:}")
-    private String mailHost;
-
-    @Value("${spring.mail.username:}")
-    private String mailUsername;
-
-    @Value("${spring.mail.password:}")
-    private String mailPassword;
-
-    @Value("${app.mail.from:}")
-    private String mailFrom;
-
-    @EventListener(ApplicationReadyEvent.class)
-    public void logEmailMode() {
-        log.info("EMAIL MODE: {}", isSmtpConfigured() ? "SMTP_ENABLED" : "DEV_LOG_ONLY");
-    }
 
     public void sendVerificationEmail(String email, String link) {
         sendOrLog(
@@ -81,71 +54,45 @@ public class EmailService {
 
     private void sendOrLog(String to, String subject, String htmlBody, String link) {
         long start = System.currentTimeMillis();
-        JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
 
-        if (!isSmtpConfigured() || mailSender == null) {
-            log.warn("EMAIL MODE: DEV_LOG_ONLY. Email link generated but not logged. template={}, recipient={}",
+        if (!resendEmailClient.isConfigured()) {
+            log.warn("EMAIL MODE: RESEND_NOT_CONFIGURED. Email link generated but not logged. template={}, recipient={}",
                     subject, LogSanitizer.maskEmail(to));
             observabilityService.recordEmail(to, subject, true, System.currentTimeMillis() - start, null);
             return;
         }
 
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(
-                    message,
-                    MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED,
-                    StandardCharsets.UTF_8.name()
-            );
-
-            helper.setFrom(mailFrom);
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(htmlBody, true);
-
-            mailSender.send(message);
-            log.info("EMAIL MODE: SMTP_ENABLED. Email sent. template={}, recipient={}",
-                    subject, LogSanitizer.maskEmail(to));
+            String emailId = resendEmailClient.sendHtml(to, subject, htmlBody);
+            log.info("EMAIL MODE: RESEND_ENABLED. Email sent. template={}, recipient={}, emailId={}",
+                    subject, LogSanitizer.maskEmail(to), emailId);
             observabilityService.recordEmail(to, subject, true, System.currentTimeMillis() - start, null);
         } catch (Exception e) {
-            log.warn("SMTP email send failed. Link not logged. template={}, recipient={}",
-                    subject, LogSanitizer.maskEmail(to), e);
+            log.warn("Resend email send failed. Link not logged. template={}, recipient={}, error={}",
+                    subject, LogSanitizer.maskEmail(to), LogSanitizer.summarizeError(e.getMessage()));
             observabilityService.recordEmail(to, subject, false, System.currentTimeMillis() - start, LogSanitizer.summarizeError(e.getMessage()));
         }
     }
 
     private EmailSendResult sendOrLogHtmlEmail(String to, String subject, String htmlBody, String template) {
         long start = System.currentTimeMillis();
-        JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
 
-        if (!isSmtpConfigured() || mailSender == null) {
-            log.warn("EMAIL MODE: DEV_LOG_ONLY. Email not sent. template={}, recipient={}",
+        if (!resendEmailClient.isConfigured()) {
+            log.warn("EMAIL MODE: RESEND_NOT_CONFIGURED. Email not sent. template={}, recipient={}",
                     template, LogSanitizer.maskEmail(to));
-            observabilityService.recordEmail(to, subject, true, System.currentTimeMillis() - start, "DEV_LOG_ONLY");
-            return new EmailSendResult(false, "SMTP is not configured; message was logged only.");
+            observabilityService.recordEmail(to, subject, true, System.currentTimeMillis() - start, "RESEND_NOT_CONFIGURED");
+            return new EmailSendResult(false, "Resend is not configured; message was not sent.");
         }
 
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(
-                    message,
-                    MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED,
-                    StandardCharsets.UTF_8.name()
-            );
-
-            helper.setFrom(mailFrom);
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(htmlBody, true);
-
-            mailSender.send(message);
-            log.info("EMAIL MODE: SMTP_ENABLED. Email sent. template={}, recipient={}",
-                    template, LogSanitizer.maskEmail(to));
+            String emailId = resendEmailClient.sendHtml(to, subject, htmlBody);
+            log.info("EMAIL MODE: RESEND_ENABLED. Email sent. template={}, recipient={}, emailId={}",
+                    template, LogSanitizer.maskEmail(to), emailId);
             observabilityService.recordEmail(to, subject, true, System.currentTimeMillis() - start, null);
             return new EmailSendResult(true, null);
         } catch (Exception e) {
-            log.warn("SMTP email send failed. template={}, recipient={}",
-                    template, LogSanitizer.maskEmail(to), e);
+            log.warn("Resend email send failed. template={}, recipient={}, error={}",
+                    template, LogSanitizer.maskEmail(to), LogSanitizer.summarizeError(e.getMessage()));
             String error = LogSanitizer.summarizeError(e.getMessage());
             observabilityService.recordEmail(to, subject, false, System.currentTimeMillis() - start, error);
             return new EmailSendResult(false, error);
@@ -162,51 +109,30 @@ public class EmailService {
             String contactMessage
     ) {
         long start = System.currentTimeMillis();
-        JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
 
-        if (!isSmtpConfigured() || mailSender == null) {
-            log.warn("EMAIL MODE: DEV_LOG_ONLY. Contact message not emailed. recipient={}, from={}, subjectLength={}, messageLength={}",
+        if (!resendEmailClient.isConfigured()) {
+            log.warn("EMAIL MODE: RESEND_NOT_CONFIGURED. Contact message not emailed. recipient={}, from={}, subjectLength={}, messageLength={}",
                     LogSanitizer.maskEmail(to),
                     LogSanitizer.maskEmail(fromEmail),
                     contactSubject == null ? 0 : contactSubject.length(),
                     contactMessage == null ? 0 : contactMessage.length());
-            observabilityService.recordEmail(to, "CONTACT", true, System.currentTimeMillis() - start, "DEV_LOG_ONLY");
-            return new EmailSendResult(false, "SMTP is not configured; message was logged only.");
+            observabilityService.recordEmail(to, "CONTACT", true, System.currentTimeMillis() - start, "RESEND_NOT_CONFIGURED");
+            return new EmailSendResult(false, "Resend is not configured; message was not sent.");
         }
 
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(
-                    message,
-                    MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED,
-                    StandardCharsets.UTF_8.name()
-            );
-
-            helper.setFrom(mailFrom);
-            helper.setTo(to);
-            helper.setReplyTo(fromEmail);
-            helper.setSubject(subject);
-            helper.setText(htmlBody, true);
-
-            mailSender.send(message);
-            log.info("EMAIL MODE: SMTP_ENABLED. Contact email sent. recipient={}, from={}",
-                    LogSanitizer.maskEmail(to), LogSanitizer.maskEmail(fromEmail));
+            String emailId = resendEmailClient.sendHtml(to, subject, htmlBody, fromEmail);
+            log.info("EMAIL MODE: RESEND_ENABLED. Contact email sent. recipient={}, from={}, emailId={}",
+                    LogSanitizer.maskEmail(to), LogSanitizer.maskEmail(fromEmail), emailId);
             observabilityService.recordEmail(to, "CONTACT", true, System.currentTimeMillis() - start, null);
             return new EmailSendResult(true, null);
         } catch (Exception e) {
-            log.warn("SMTP contact email send failed. Message body not logged. recipient={}, from={}",
-                    LogSanitizer.maskEmail(to), LogSanitizer.maskEmail(fromEmail), e);
+            log.warn("Resend contact email send failed. Message body not logged. recipient={}, from={}, error={}",
+                    LogSanitizer.maskEmail(to), LogSanitizer.maskEmail(fromEmail), LogSanitizer.summarizeError(e.getMessage()));
             String error = LogSanitizer.summarizeError(e.getMessage());
             observabilityService.recordEmail(to, "CONTACT", false, System.currentTimeMillis() - start, error);
             return new EmailSendResult(false, error);
         }
-    }
-
-    private boolean isSmtpConfigured() {
-        return StringUtils.hasText(mailHost)
-                && StringUtils.hasText(mailUsername)
-                && StringUtils.hasText(mailPassword)
-                && StringUtils.hasText(mailFrom);
     }
 
     private String buildVerificationEmail(String link) {

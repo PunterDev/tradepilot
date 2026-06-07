@@ -399,10 +399,14 @@ class AdminPortalTests {
                 .andExpect(status().isOk());
 
         ContactMessage saved = contactMessageRepository.findAllByOrderByCreatedAtDesc().get(0);
+        for (int i = 0; i < 10 && saved.getEmailError() == null; i++) {
+            Thread.sleep(100);
+            saved = contactMessageRepository.findById(saved.getId()).orElseThrow();
+        }
         assertThat(saved.getEmail()).isEqualTo("contact-tester@example.com");
         assertThat(saved.getStatus()).isEqualTo(ContactMessageStatus.NEW);
         assertThat(saved.isEmailSent()).isFalse();
-        assertThat(saved.getEmailError()).contains("SMTP");
+        assertThat(saved.getEmailError()).contains("Resend");
         assertThat(saved.getUserAgent()).isEqualTo("JUnit");
     }
 

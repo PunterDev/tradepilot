@@ -63,10 +63,10 @@ Do not leave admin bootstrap enabled.
 - Subscribe at minimum to checkout session, subscription updated/deleted, invoice paid/succeeded, and invoice failed events.
 - Copy the endpoint signing secret into `STRIPE_WEBHOOK_SECRET`.
 
-## SMTP
+## Resend Email
 
-- Use SMTP app-specific credentials.
-- Set `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, and `MAIL_FROM`.
+- Configure a verified sender/domain in Resend.
+- Set `RESEND_API_KEY`, `EMAIL_FROM`, and `CONTACT_EMAIL`.
 - Verify account verification, password reset, contact form, and admin reply flows.
 
 ## OpenAI
@@ -88,4 +88,4 @@ After deploy:
 7. Start yearly checkout and verify the Stripe price in test mode.
 8. Submit the contact form.
 9. Log in as admin and verify admin pages.
-10. Confirm backend logs contain no secrets, JWTs, reset tokens, webhook signatures, raw prompts, or SMTP credentials.
+10. Confirm backend logs contain no secrets, JWTs, reset tokens, webhook signatures, raw prompts, or Resend credentials.

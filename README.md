@@ -49,7 +49,7 @@ Data and integrations:
 - Supabase Postgres
 - Stripe Checkout, Customer Portal, and webhooks
 - OpenAI
-- SMTP email
+- Resend transactional email
 
 Deployment targets:
 
@@ -90,7 +90,7 @@ Important production rules:
 - Configure frontend public environment variables in Vercel or the selected frontend host.
 - `APP_ADMIN_BOOTSTRAP_ENABLED` is opt-in and must be intentionally enabled to promote the first admin.
 - Stripe webhooks are public at the route level but require Stripe signature verification.
-- Do not expose Stripe secret keys, webhook secrets, OpenAI keys, SMTP passwords, JWT secrets, or database credentials to the frontend.
+- Do not expose Stripe secret keys, webhook secrets, OpenAI keys, Resend API keys, JWT secrets, or database credentials to the frontend.
 
 ## Backend Setup
 
@@ -119,8 +119,8 @@ STRIPE_SECRET_KEY=...
 STRIPE_WEBHOOK_SECRET=...
 STRIPE_PRO_MONTHLY_PRICE_ID=...
 STRIPE_PRO_YEARLY_PRICE_ID=...
-SMTP_USERNAME=...
-SMTP_PASSWORD=...
+RESEND_API_KEY=...
+EMAIL_FROM=TradePilot <no-reply@your-domain.com>
 CONTACT_EMAIL=...
 APP_ALLOWED_ORIGINS=https://your-frontend-domain.com
 APP_ADMIN_EMAIL=founder@example.com
@@ -207,14 +207,14 @@ Supported billing flows include checkout, customer portal, subscription updates,
 
 ## Email Setup
 
-TradePilot uses SMTP for:
+TradePilot uses Resend for transactional email:
 
 - Email verification
 - Password reset
 - Contact form notifications
 - Admin contact replies
 
-Configure SMTP credentials through environment variables only. If SMTP is not configured locally, the backend uses safe development behavior and does not send real email.
+Configure Resend credentials through environment variables only. If Resend is not configured locally, the backend uses safe development behavior and does not send real email.
 
 ## Admin Setup
 
@@ -268,7 +268,7 @@ Deployment notes:
 - Configure `APP_ALLOWED_ORIGINS` to the deployed frontend origin.
 - Apply Supabase migrations before backend smoke tests.
 - Configure Stripe webhook endpoint after backend deployment.
-- Verify SMTP, auth, checkout, AI generation, admin access, and CORS using [Production Checklist](docs/PRODUCTION_CHECKLIST.md).
+- Verify Resend email, auth, checkout, AI generation, admin access, and CORS using [Production Checklist](docs/PRODUCTION_CHECKLIST.md).
 
 ## Roadmap
 
