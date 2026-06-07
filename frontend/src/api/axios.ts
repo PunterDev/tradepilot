@@ -2,8 +2,21 @@ import axios from "axios";
 
 export const TOKEN_STORAGE_KEY = "tradepilot_token";
 
+const DEFAULT_API_BASE_URL = "http://localhost:8080/api";
+
+function normalizeApiBaseUrl(rawBaseUrl: string | undefined) {
+  const value = rawBaseUrl?.trim() || DEFAULT_API_BASE_URL;
+  const withoutTrailingSlash = value.replace(/\/+$/, "");
+
+  if (withoutTrailingSlash.endsWith("/api")) {
+    return withoutTrailingSlash;
+  }
+
+  return `${withoutTrailingSlash}/api`;
+}
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api",
+  baseURL: normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL),
 });
 
 api.interceptors.request.use((config) => {
