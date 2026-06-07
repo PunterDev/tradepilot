@@ -32,8 +32,8 @@ Vercel-style setup:
 
 Routing:
 
-- Configure SPA fallback to `index.html`.
-- Keep `/privacy`, `/terms`, and `/contact` public.
+- Keep `frontend/vercel.json` deployed so browser deep links rewrite to `index.html`.
+- Verify `/verify-email`, `/reset-password`, `/pricing`, `/dashboard`, `/privacy`, `/terms`, and `/contact` do not return Vercel `404`.
 
 ## Supabase
 
