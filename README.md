@@ -1,324 +1,291 @@
-# TradePilot 📈
+# TradePilot
 
-AI-powered trading journal built for futures traders.
+TradePilot is an AI-powered trading journal for futures and prop firm traders. It helps traders import executions, review sessions, understand behavioral patterns, and turn trading data into practical coaching.
 
-TradePilot helps traders track performance, review executions, analyze setups, and generate AI-driven trading insights using a modern full-stack architecture.
+The product is built for beta launch with CSV trade import, multi-account tracking, AI coaching, billing, usage limits, admin operations, and production deployment documentation.
 
----
+## Product
 
-# 🚀 Features
+Core trader workflow:
 
-## Trading Journal
-- Log trades manually
-- Import Tradovate CSV exports
+- CSV trade import
 - Multi-account support
-- Track:
-  - Entry / Exit
-  - Contracts
-  - P&L
-  - Setup type
-  - Session
-  - Notes
-  - Psychology
+- PnL calendar
+- Analytics dashboard
+- Session Review
+- AI Trade Review
+- AI Daily Coach
+- AI Weekly Coach
+- Trading DNA
+- Trade journal metadata: setup, confidence, emotion, notes
 
----
+SaaS and operations:
 
-## Analytics Dashboard
-- Win rate
-- Equity curve
-- Daily / Weekly performance
-- Performance by:
-  - Setup
-  - Session
-  - Symbol
-  - Weekday
+- Stripe billing and usage limits
+- Admin Portal
+- Contact CRM
+- Feature Usage Analytics
+- Retention Analytics
 
----
+## Tech Stack
 
-## AI Insights
-- Weekly AI trade reviews
-- Performance reflection summaries
-- Trading psychology observations
-- Pattern detection
+Frontend:
 
----
-
-## Calendar Journal
-- Daily trading calendar
-- Click any trading day to:
-  - Review trades
-  - Add journal notes
-  - Track emotions & discipline
-
----
-
-# 🏗 Tech Stack
-
-## Frontend
 - React
-- TypeScript
 - Vite
+- TypeScript
 - Axios
-- TailwindCSS
 
-## Backend
+Backend:
+
+- Spring Boot 3.3.5
 - Java 17
-- Spring Boot 3
-- Spring Security
-- JWT Authentication
 - Maven
+- Spring Security
+- JWT authentication
 
-## Database
-- PostgreSQL
-- H2 (tests/local fallback)
+Data and integrations:
 
-## Infrastructure
-- GitHub
-- Render (backend hosting)
-- Vercel (frontend hosting)
 - Supabase Postgres
+- Stripe Checkout, Customer Portal, and webhooks
+- OpenAI
+- SMTP email
 
----
+Deployment targets:
 
-# 📂 Project Structure
+- Vercel frontend
+- Render backend
+- Supabase database
 
-```bash
+## Documentation
+
+Production and launch docs:
+
+- [Production Checklist](docs/PRODUCTION_CHECKLIST.md)
+- [Environment Variables](docs/ENVIRONMENT_VARIABLES.md)
+- [Database Migration Order](docs/DB_MIGRATION_ORDER.md)
+- [Deployment Notes](docs/DEPLOYMENT_NOTES.md)
+
+Maintenance utilities:
+
+- [Safe Test Data Cleanup SQL](docs/SAFE_TEST_DATA_CLEANUP.sql)
+
+## Project Structure
+
+```text
 tradepilot/
- ├── backend/
- ├── frontend/
- └── README.md
+  backend/    Spring Boot API, billing, AI services, Supabase SQL
+  frontend/   React/Vite app
+  docs/       production, deployment, migration, and cleanup docs
 ```
 
----
+## Security
 
-# ⚙️ Backend Setup
+Never commit `.env` files or real secrets. Production secrets must be configured in the hosting provider, not in Git.
 
-## Requirements
-- Java 17+
+Important production rules:
+
+- Keep `.env`, `.env.local`, `backend/.env`, and `frontend/.env` out of Git.
+- Configure backend secrets in Render or the selected backend host.
+- Configure frontend public environment variables in Vercel or the selected frontend host.
+- `APP_ADMIN_BOOTSTRAP_ENABLED` is opt-in and must be intentionally enabled to promote the first admin.
+- Stripe webhooks are public at the route level but require Stripe signature verification.
+- Do not expose Stripe secret keys, webhook secrets, OpenAI keys, SMTP passwords, JWT secrets, or database credentials to the frontend.
+
+## Backend Setup
+
+Requirements:
+
+- Java 17
 - Maven 3.9+
-- PostgreSQL
+- Postgres or Supabase Postgres
 
----
+Copy the backend example env file and set real local values outside Git:
 
-## Run Backend
+```bash
+cp backend/.env.example backend/.env
+```
+
+Required production backend variables are documented in [Environment Variables](docs/ENVIRONMENT_VARIABLES.md). The most important values are:
+
+```env
+DATABASE_URL=jdbc:postgresql://...
+DATABASE_USERNAME=...
+DATABASE_PASSWORD=...
+JWT_SECRET=...
+JWT_EXPIRATION_MS=86400000
+OPENAI_API_KEY=...
+STRIPE_SECRET_KEY=...
+STRIPE_WEBHOOK_SECRET=...
+STRIPE_PRO_MONTHLY_PRICE_ID=...
+STRIPE_PRO_YEARLY_PRICE_ID=...
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+CONTACT_EMAIL=...
+APP_ALLOWED_ORIGINS=https://your-frontend-domain.com
+APP_ADMIN_EMAIL=founder@example.com
+APP_ADMIN_BOOTSTRAP_ENABLED=false
+```
+
+Run the backend:
 
 ```bash
 cd backend
-mvn clean install
 mvn spring-boot:run
 ```
 
-For local development with the temporary `/api/dev/token` auto-login helper:
+The backend defaults to:
+
+```text
+http://localhost:8080
+```
+
+For local development with dev-only helpers:
 
 ```bash
 cd backend
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-Backend runs on:
+Dev helpers must stay disabled in production.
+
+## Frontend Setup
+
+Requirements:
+
+- Node.js
+- npm
+
+Create a frontend env file outside Git:
 
 ```bash
-http://localhost:8080
+cp frontend/.env.example frontend/.env
 ```
 
----
-
-# 🔐 Environment Variables
-
-TradePilot uses environment variables to avoid committing secrets to GitHub.
-
-Use `backend/.env.example` as the reference for required environment variables.
-
-Example:
+Set the API URL:
 
 ```env
-DB_URL=jdbc:postgresql://localhost:5432/tradepilot
-DB_USERNAME=postgres
-DB_PASSWORD=your_password
-
-JWT_SECRET=your_base64_32_byte_secret
-
-OPENAI_API_KEY=your_openai_key
-
-SERVER_PORT=8080
-DEV_AUTH_ENABLED=false
+VITE_API_BASE_URL=http://localhost:8080/api
 ```
 
-## How to configure Gmail SMTP
-
-TradePilot sends auth emails for account verification and password reset. In development, Gmail SMTP works well with a Gmail App Password.
-
-1. Enable 2-Step Verification on the Gmail account that will send TradePilot emails.
-2. Go to your Google Account security settings and create an App Password for Mail.
-3. Use the generated 16-character app password as `MAIL_PASSWORD`. Do not use your normal Gmail password.
-4. Set the frontend URL to the Vite app URL so email links open the right screen.
-
-Example backend `.env` values:
-
-```env
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_USERNAME=your-gmail-address@gmail.com
-MAIL_PASSWORD=your-16-character-app-password
-MAIL_FROM=your-gmail-address@gmail.com
-FRONTEND_URL=http://localhost:5173
-```
-
-On startup the backend logs either `EMAIL MODE: SMTP_ENABLED` or `EMAIL MODE: DEV_LOG_ONLY`. If SMTP settings are missing, registration and password reset still work, but the verification/reset links are logged to the backend console instead of emailed.
-
----
-
-# 🛡 Important
-
-Never commit:
-- database passwords
-- API keys
-- JWT secrets
-- `.env` files
-
-The repository includes `.gitignore` to protect sensitive files.
-
----
-
-# 🗄 Database
-
-Default database:
-
-```bash
-PostgreSQL
-```
-
-Test database:
-
-```bash
-H2 in-memory database
-```
-
----
-
-# 🔌 API Endpoints
-
-## Authentication
-
-```http
-POST /api/auth/register
-POST /api/auth/login
-GET  /api/auth/me
-```
-
----
-
-## Trades
-
-```http
-GET    /api/trades
-POST   /api/trades
-PUT    /api/trades/{id}
-DELETE /api/trades/{id}
-```
-
----
-
-## Statistics
-
-```http
-GET /api/stats/summary
-GET /api/stats/by-setup
-GET /api/stats/by-session
-GET /api/stats/by-symbol
-GET /api/stats/by-weekday
-```
-
----
-
-## AI
-
-```http
-POST /api/ai/weekly-review
-```
-
----
-
-# 💻 Frontend Setup
-
-## Install dependencies
+Run the frontend:
 
 ```bash
 cd frontend
 npm install
-```
-
----
-
-## Run frontend
-
-```bash
 npm run dev
 ```
 
-Frontend runs on:
+The frontend defaults to:
 
-```bash
+```text
 http://localhost:5173
 ```
 
----
+## Database Setup
 
-# Admin Portal
+TradePilot uses Supabase Postgres for hosted environments and H2 for tests.
 
-Set the first local admin with:
+Apply SQL migrations in the documented order:
+
+- [Database Migration Order](docs/DB_MIGRATION_ORDER.md)
+
+The migration set includes core users/accounts/trades, user isolation indexes, billing limits, admin audit logs, contact messages, feature usage events, session reviews, Trading DNA, journal metadata, observability tables, and performance indexes.
+
+## Stripe Setup
+
+Required Stripe setup:
+
+- Create monthly and yearly Pro price IDs.
+- Configure `STRIPE_SECRET_KEY`.
+- Configure `STRIPE_WEBHOOK_SECRET`.
+- Configure `STRIPE_PRO_MONTHLY_PRICE_ID`.
+- Configure `STRIPE_PRO_YEARLY_PRICE_ID`.
+- Point Stripe webhooks to `/api/stripe/webhook`.
+
+Supported billing flows include checkout, customer portal, subscription updates, invoice payment events, duplicate webhook protection, and billing usage limits.
+
+## Email Setup
+
+TradePilot uses SMTP for:
+
+- Email verification
+- Password reset
+- Contact form notifications
+- Admin contact replies
+
+Configure SMTP credentials through environment variables only. If SMTP is not configured locally, the backend uses safe development behavior and does not send real email.
+
+## Admin Setup
+
+Admin bootstrap is intentionally opt-in.
+
+To bootstrap the first admin:
+
+1. Register the admin user normally.
+2. Set `APP_ADMIN_EMAIL` to that user's email.
+3. Set `APP_ADMIN_BOOTSTRAP_ENABLED=true`.
+4. Start the backend once.
+5. Disable bootstrap again after the admin is promoted.
+
+Admin users can access `/admin` for user management, billing operations, contact CRM, observability, feature usage analytics, and retention analytics.
+
+## Testing
+
+Frontend production build:
 
 ```bash
-APP_ADMIN_EMAIL=you@example.com
+cd frontend
+npm run build
 ```
 
-On backend startup, if a user with that email exists, TradePilot promotes that user to `ADMIN`.
-Admin users can open `/admin` to search users and manually upgrade or downgrade plans. Run
-`backend/supabase_admin_portal.sql` in Supabase for existing databases.
+Backend tests:
 
----
+```bash
+cd backend
+mvn test
+```
 
-# 🌍 Deployment
+Full backend clean test:
 
-## Recommended Free Stack
+```bash
+cd backend
+mvn clean test
+```
 
-| Service | Platform |
-|---|---|
-| Frontend | Vercel |
-| Backend | Render |
-| Database | Supabase |
+## Deployment
 
----
+Recommended beta deployment:
 
-# 📌 Roadmap
+- Frontend: Vercel
+- Backend: Render
+- Database: Supabase Postgres
 
-- Tradovate API integration
-- AI trade coaching
-- Screenshot uploads
-- Mobile responsive dashboard
-- Advanced analytics
-- Trade replay
-- Order flow integrations
-- Multi-user support
-- Prop firm metrics
-- Risk management dashboard
+Deployment notes:
 
----
+- Configure all backend secrets in Render.
+- Configure `VITE_API_BASE_URL` in Vercel.
+- Configure `APP_ALLOWED_ORIGINS` to the deployed frontend origin.
+- Apply Supabase migrations before backend smoke tests.
+- Configure Stripe webhook endpoint after backend deployment.
+- Verify SMTP, auth, checkout, AI generation, admin access, and CORS using [Production Checklist](docs/PRODUCTION_CHECKLIST.md).
 
-# 🤝 Contributing
+## Roadmap
 
-Private personal project for now.
+- Observability dashboard
+- Broker integrations
+- Chart screenshot AI review
+- Advanced risk analytics
+- Mobile responsive polish
 
----
+## Contributing
 
-# 📜 License
+Private beta project for now.
+
+## License
 
 MIT License
 
----
+## Author
 
-# 👨‍💻 Author
-
-Built by Atish Shrestha
-
-Futures trader + software engineer building tools for traders.
+Built by Atish Shrestha.
