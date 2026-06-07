@@ -21,6 +21,9 @@ Required:
 - `MAIL_USERNAME`: SMTP username.
 - `MAIL_PASSWORD`: SMTP password.
 - `MAIL_FROM`: Sender address.
+- `MAIL_CONNECTION_TIMEOUT_MS`: SMTP connection timeout.
+- `MAIL_READ_TIMEOUT_MS`: SMTP read timeout.
+- `MAIL_WRITE_TIMEOUT_MS`: SMTP write timeout.
 - `CONTACT_EMAIL`: Destination address for public contact form.
 - `APP_ALLOWED_ORIGINS`: Comma-separated frontend origins.
 - `APP_FRONTEND_URL`: Public frontend URL used for auth and Stripe redirects.
@@ -29,6 +32,9 @@ Required:
 - `APP_AI_ASYNC_CORE_POOL_SIZE`: AI worker core pool size.
 - `APP_AI_ASYNC_MAX_POOL_SIZE`: AI worker max pool size.
 - `APP_AI_ASYNC_QUEUE_CAPACITY`: AI worker queue capacity.
+- `APP_EMAIL_ASYNC_CORE_POOL_SIZE`: Email worker core pool size.
+- `APP_EMAIL_ASYNC_MAX_POOL_SIZE`: Email worker max pool size.
+- `APP_EMAIL_ASYNC_QUEUE_CAPACITY`: Email worker queue capacity.
 
 Accepted aliases:
 

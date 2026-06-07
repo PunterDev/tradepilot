@@ -18,7 +18,7 @@ import java.util.Locale;
 @RequiredArgsConstructor
 @Slf4j
 public class ContactService {
-    private final EmailService emailService;
+    private final EmailAsyncService emailAsyncService;
     private final ContactMessageRepository contactMessageRepository;
 
     @Value("${app.contact-email:support@tradepilot.app}")
@@ -43,23 +43,15 @@ public class ContactService {
                 .leadSource("Contact form")
                 .build());
 
-        EmailService.EmailSendResult sendResult = emailService.sendContactEmail(
+        emailAsyncService.sendContactEmail(
+                message.getId(),
                 resolveDestination(),
                 message.getName(),
                 email,
                 message.getSubject(),
                 message.getMessage()
         );
-
-        message.setEmailSent(sendResult.sent());
-        message.setEmailError(sendResult.sent() ? null : truncate(LogSanitizer.summarizeError(sendResult.error()), 1000));
-        contactMessageRepository.save(message);
-        if (sendResult.sent()) {
-            log.info("Contact form processed. contactMessageId={}, emailSent=true", message.getId());
-        } else {
-            log.warn("Contact form saved but email delivery failed. contactMessageId={}, email={}",
-                    message.getId(), LogSanitizer.maskEmail(email));
-        }
+        log.info("Contact form processed. contactMessageId={}, emailQueued=true", message.getId());
 
         return new ContactResponse(true, "Message sent successfully.");
     }

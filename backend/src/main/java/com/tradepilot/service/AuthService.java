@@ -36,7 +36,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final AuthTokenService authTokenService;
-    private final EmailService emailService;
+    private final EmailAsyncService emailAsyncService;
 
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
@@ -131,7 +131,7 @@ public class AuthService {
         userRepository.findByEmail(email)
                 .ifPresent(user -> {
                     String rawToken = authTokenService.createToken(user, AuthTokenType.PASSWORD_RESET, Duration.ofMinutes(30));
-                    emailService.sendPasswordResetEmail(user.getEmail(), buildLink("/reset-password", rawToken));
+                    emailAsyncService.sendPasswordResetEmail(user.getId(), user.getEmail(), buildLink("/reset-password", rawToken));
                     log.info("Password reset email queued. userId={}", user.getId());
                 });
 
@@ -153,7 +153,7 @@ public class AuthService {
 
     private void sendVerification(User user) {
         String rawToken = authTokenService.createToken(user, AuthTokenType.EMAIL_VERIFICATION, Duration.ofHours(24));
-        emailService.sendVerificationEmail(user.getEmail(), buildLink("/verify-email", rawToken));
+        emailAsyncService.sendVerificationEmail(user.getId(), user.getEmail(), buildLink("/verify-email", rawToken));
         log.info("Verification email queued. userId={}", user.getId());
     }
 
