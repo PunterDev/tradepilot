@@ -1,174 +1,153 @@
 # TradePilot
 
-TradePilot is an AI-powered trading journal for futures and prop firm traders. It helps traders import executions, review sessions, understand behavioral patterns, and turn trading data into practical coaching.
+## AI-Powered Trading Performance Coach
 
-The product is built for beta launch with CSV trade import, multi-account tracking, AI coaching, billing, usage limits, admin operations, and production deployment documentation.
+TradePilot helps futures traders discover costly habits, analyze their execution, and improve consistency using AI-driven coaching and behavioral analytics.
 
-## Product
+Built for traders who want more than a journal, TradePilot turns imported trade history into performance reports, coaching feedback, risk insights, and measurable improvement plans.
 
-Core trader workflow:
+**Key highlights**
 
-- CSV trade import
-- Multi-account support
-- PnL calendar
-- Analytics dashboard
-- Session Review
-- AI Trade Review
-- AI Daily Coach
-- AI Weekly Coach
+- AI Leak Detector
 - Trading DNA
-- Trade journal metadata: setup, confidence, emotion, notes
+- Daily & Weekly AI Coach
+- AI Trade Review
+- Performance Analytics
+- Risk & Behavioral Insights
 
-SaaS and operations:
+## Screenshots
 
-- Stripe billing and usage limits
-- Admin Portal
-- Contact CRM
-- Feature Usage Analytics
-- Retention Analytics
+Screenshots will be added as the beta UI is finalized.
 
-## Tech Stack
+| Dashboard Command Center | AI Leak Detector Performance Report |
+| --- | --- |
+| `docs/screenshots/dashboard-command-center.png` | `docs/screenshots/ai-leak-detector-report.png` |
 
-Frontend:
+| Trading DNA | Daily Coach | Analytics |
+| --- | --- | --- |
+| `docs/screenshots/trading-dna.png` | `docs/screenshots/daily-coach.png` | `docs/screenshots/analytics.png` |
 
-- React
-- Vite
-- TypeScript
-- Axios
+## Product Features
 
-Backend:
+| Feature | Description |
+| --- | --- |
+| AI Leak Detector | Finds recurring habits costing traders money and generates a 30-day recovery plan. |
+| Trading DNA | Builds a long-term profile of strengths, weaknesses, and behavioral patterns. |
+| Daily Coach | Provides personalized daily preparation, risks to watch, and trading focus. |
+| Weekly Coach | Reviews weekly performance and improvement areas. |
+| AI Trade Review | Analyzes individual trades with execution feedback. |
+| Session Review | Reviews complete trading sessions and patterns. |
+| Advanced Analytics | Analyze performance by setup, day, session, confidence, and behavior. |
+| Trade Calendar | Visualize historical trading performance. |
+| CSV Import | Import Tradovate and other broker trade history. |
+| Multi Account Support | Manage multiple prop and live trading accounts. |
 
-- Spring Boot 3.3.5
-- Java 17
-- Maven
-- Spring Security
-- JWT authentication
+## AI Leak Detector
 
-Data and integrations:
+The AI Leak Detector is TradePilot's flagship performance report. It identifies the behaviors and trading conditions most likely to be draining consistency, then turns those findings into a focused recovery plan.
 
-- Supabase Postgres
-- Stripe Checkout, Customer Portal, and webhooks
-- OpenAI
-- Resend transactional email
+**Performance Leak Report capabilities**
 
-Deployment targets:
+- Deterministic trade analysis
+- Confidence scoring
+- Monthly money impact calculations
+- Potential yearly improvement
+- Data quality scoring
+- Related trade investigation
+- AI-generated coaching explanations
+- 30-day recovery plans
 
-- Vercel frontend
-- Render backend
-- Supabase database
+AI does not invent statistics. TradePilot calculates real metrics from trade history first, then uses AI to explain the findings in practical coaching language.
+
+## Technology Stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, React Router, Tailwind CSS |
+| Backend | Java 17, Spring Boot 3.3.5, Spring Security, JPA/Hibernate |
+| Database | PostgreSQL via Supabase |
+| Infrastructure | Vercel frontend hosting, Render backend hosting, Supabase PostgreSQL |
+| Integrations | Stripe billing, Resend email, OpenAI |
+
+## Architecture Overview
+
+```mermaid
+flowchart TD
+    A["User Browser"] --> B["React Frontend<br/>Vercel"]
+    B --> C["Spring Boot API<br/>Render"]
+    C --> D["PostgreSQL<br/>Supabase"]
+    C --> E["OpenAI<br/>AI coaching and explanations"]
+    C --> F["Stripe<br/>Checkout, Portal, Webhooks"]
+    C --> G["Resend<br/>Transactional Email"]
+```
+
+## Security & Reliability
+
+TradePilot is built with production SaaS controls in mind:
+
+- JWT authentication for protected API access
+- Spring Security route protection
+- Role-based admin access
+- Backend feature access enforcement
+- Monthly AI credit limits by plan
+- Rate limiting for sensitive flows where implemented
+- Async AI and email processing
+- Cached AI results to reduce latency, cost, and duplicate credit usage
+- Stripe webhook signature verification
+- User ownership checks for user-scoped resources
+
+Never commit `.env` files or real secrets. Production secrets belong in Render, Vercel, Supabase, Stripe, Resend, and OpenAI configuration surfaces.
+
+## Subscription Model
+
+| Plan | Included |
+| --- | --- |
+| Free | Dashboard, Calendar, Basic Analytics, 10 AI credits/month |
+| Pro - $29.99/month | AI Leak Detector, Trading DNA, Daily Coach, Weekly Coach, Session Review, Advanced Analytics, 100 AI credits/month |
+
+Cached AI results do not consume credits. Regeneration or force refresh consumes credits according to the feature cost.
 
 ## Documentation
-
-Production and launch docs:
 
 - [Production Checklist](docs/PRODUCTION_CHECKLIST.md)
 - [Environment Variables](docs/ENVIRONMENT_VARIABLES.md)
 - [Database Migration Order](docs/DB_MIGRATION_ORDER.md)
 - [Deployment Notes](docs/DEPLOYMENT_NOTES.md)
-
-Maintenance utilities:
-
 - [Safe Test Data Cleanup SQL](docs/SAFE_TEST_DATA_CLEANUP.sql)
 
-## Project Structure
+## Local Development
 
-```text
-tradepilot/
-  backend/    Spring Boot API, billing, AI services, Supabase SQL
-  frontend/   React/Vite app
-  docs/       production, deployment, migration, and cleanup docs
-```
-
-## Security
-
-Never commit `.env` files or real secrets. Production secrets must be configured in the hosting provider, not in Git.
-
-Important production rules:
-
-- Keep `.env`, `.env.local`, `backend/.env`, and `frontend/.env` out of Git.
-- Configure backend secrets in Render or the selected backend host.
-- Configure frontend public environment variables in Vercel or the selected frontend host.
-- `APP_ADMIN_BOOTSTRAP_ENABLED` is opt-in and must be intentionally enabled to promote the first admin.
-- Stripe webhooks are public at the route level but require Stripe signature verification.
-- Do not expose Stripe secret keys, webhook secrets, OpenAI keys, Resend API keys, JWT secrets, or database credentials to the frontend.
-
-## Backend Setup
-
-Requirements:
+### Prerequisites
 
 - Java 17
-- Maven 3.9+
-- Postgres or Supabase Postgres
+- Node.js
+- Maven
+- PostgreSQL or Supabase Postgres for local database-backed development
 
-Copy the backend example env file and set real local values outside Git:
+### Backend
 
-```bash
-cp backend/.env.example backend/.env
-```
-
-Required production backend variables are documented in [Environment Variables](docs/ENVIRONMENT_VARIABLES.md). The most important values are:
-
-```env
-DATABASE_URL=jdbc:postgresql://...
-DATABASE_USERNAME=...
-DATABASE_PASSWORD=...
-JWT_SECRET=...
-JWT_EXPIRATION_MS=86400000
-OPENAI_API_KEY=...
-STRIPE_SECRET_KEY=...
-STRIPE_WEBHOOK_SECRET=...
-STRIPE_PRO_MONTHLY_PRICE_ID=...
-STRIPE_PRO_YEARLY_PRICE_ID=...
-RESEND_API_KEY=...
-EMAIL_FROM=TradePilot <no-reply@your-domain.com>
-CONTACT_EMAIL=...
-APP_ALLOWED_ORIGINS=https://your-frontend-domain.com
-APP_ADMIN_EMAIL=founder@example.com
-APP_ADMIN_BOOTSTRAP_ENABLED=false
-```
-
-Run the backend:
+Configure backend environment variables outside Git. See [Environment Variables](docs/ENVIRONMENT_VARIABLES.md) for the complete production list.
 
 ```bash
 cd backend
 mvn spring-boot:run
 ```
 
-The backend defaults to:
+The backend runs on:
 
 ```text
 http://localhost:8080
 ```
 
-For local development with dev-only helpers:
+### Frontend
 
-```bash
-cd backend
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
-```
-
-Dev helpers must stay disabled in production.
-
-## Frontend Setup
-
-Requirements:
-
-- Node.js
-- npm
-
-Create a frontend env file outside Git:
-
-```bash
-cp frontend/.env.example frontend/.env
-```
-
-Set the API URL:
+Set the frontend API base URL:
 
 ```env
 VITE_API_BASE_URL=http://localhost:8080/api
 ```
 
-Run the frontend:
+Run the app:
 
 ```bash
 cd frontend
@@ -176,115 +155,70 @@ npm install
 npm run dev
 ```
 
-The frontend defaults to:
+The frontend runs on:
 
 ```text
 http://localhost:5173
 ```
 
-## Database Setup
-
-TradePilot uses Supabase Postgres for hosted environments and H2 for tests.
-
-Apply SQL migrations in the documented order:
-
-- [Database Migration Order](docs/DB_MIGRATION_ORDER.md)
-
-The migration set includes core users/accounts/trades, user isolation indexes, billing limits, admin audit logs, contact messages, feature usage events, session reviews, Trading DNA, journal metadata, observability tables, and performance indexes.
-
-## Stripe Setup
-
-Required Stripe setup:
-
-- Create monthly and yearly Pro price IDs.
-- Configure `STRIPE_SECRET_KEY`.
-- Configure `STRIPE_WEBHOOK_SECRET`.
-- Configure `STRIPE_PRO_MONTHLY_PRICE_ID`.
-- Configure `STRIPE_PRO_YEARLY_PRICE_ID`.
-- Point Stripe webhooks to `/api/stripe/webhook`.
-
-Supported billing flows include checkout, customer portal, subscription updates, invoice payment events, duplicate webhook protection, and billing usage limits.
-
-Feature access is enforced by the backend:
-
-| Feature | Free | Pro |
-| --- | --- | --- |
-| CSV Import | Yes | Yes |
-| PnL Calendar | Yes | Yes |
-| Basic Analytics | Yes | Yes |
-| AI Trade Review | Yes, subject to credits | Yes, subject to credits |
-| Session Review | No | Yes |
-| Daily Coach | No | Yes |
-| Weekly Coach | No | Yes |
-| Trading DNA | No | Yes |
-| Advanced Analytics | No | Yes |
-
-Monthly AI credit limits:
-
-| Plan | Credits |
-| --- | ---: |
-| Free | 10 |
-| Pro | 100 |
-
-AI credit costs:
-
-| AI feature | Credits |
-| --- | ---: |
-| AI Trade Review | 1 |
-| Session Review | 2 |
-| Daily Coach | 2 |
-| Weekly Coach | 4 |
-| Trading DNA | 3 |
-
-Cached AI results do not consume credits. Force refresh or regeneration consumes credits.
-
-## Email Setup
-
-TradePilot uses Resend for transactional email:
-
-- Email verification
-- Password reset
-- Contact form notifications
-- Admin contact replies
-
-Configure Resend credentials through environment variables only. If Resend is not configured locally, the backend uses safe development behavior and does not send real email.
-
-## Admin Setup
-
-Admin bootstrap is intentionally opt-in.
-
-To bootstrap the first admin:
-
-1. Register the admin user normally.
-2. Set `APP_ADMIN_EMAIL` to that user's email.
-3. Set `APP_ADMIN_BOOTSTRAP_ENABLED=true`.
-4. Start the backend once.
-5. Disable bootstrap again after the admin is promoted.
-
-Admin users can access `/admin` for user management, billing operations, contact CRM, observability, feature usage analytics, and retention analytics.
-
 ## Testing
 
-Frontend production build:
+Backend:
+
+```bash
+cd backend
+mvn clean test
+```
+
+Frontend:
 
 ```bash
 cd frontend
 npm run build
 ```
 
-Backend tests:
+The backend includes extensive automated coverage, currently 90+ tests, including:
 
-```bash
-cd backend
-mvn test
-```
+- Feature gating
+- AI credit logic
+- Security and data isolation
+- Leak detection calculations
+- Stripe billing and webhook behavior
+- Admin and observability flows
 
-Full backend clean test:
+## Version 1.1 - AI Trading Performance Coach
 
-```bash
-cd backend
-mvn clean test
-```
+Recent V1.1 improvements:
+
+- Released AI Leak Detector
+- Added confidence scoring
+- Added monthly and yearly impact analysis
+- Added 30-day recovery plans
+- Improved Daily Coach integration
+- Added AI credit-aware caching
+- Improved premium Pro feature UX
+- Removed runtime dependence on Lombok builder classes in sensitive DTO paths
+
+## Future Roadmap
+
+| Near Term | Future |
+| --- | --- |
+| Dashboard V2 Trading Command Center | Trading Discipline Score |
+| Production observability with Sentry | Historical improvement tracking |
+| Performance optimization | Monthly performance reports |
+|  | PDF exports |
+|  | More broker integrations |
+
+## Code Quality Notes
+
+TradePilot follows production-oriented engineering practices:
+
+- Test-driven fixes for billing, AI, analytics, and security flows
+- Production-grade error handling for user-facing requests
+- Database migrations for schema changes
+- DTO stability without runtime Lombok builder dependencies in critical paths
+- Clear separation between deterministic analytics and AI explanations
+- Backend enforcement for subscription features and AI credit usage
 
 ## Deployment
 
@@ -292,28 +226,21 @@ Recommended beta deployment:
 
 - Frontend: Vercel
 - Backend: Render
-- Database: Supabase Postgres
+- Database: Supabase PostgreSQL
 
-Deployment notes:
+Deployment essentials:
 
-- Configure all backend secrets in Render.
 - Configure `VITE_API_BASE_URL` in Vercel.
-- Configure `APP_ALLOWED_ORIGINS` to the deployed frontend origin.
-- Apply Supabase migrations before backend smoke tests.
-- Configure Stripe webhook endpoint after backend deployment.
-- Verify Resend email, auth, checkout, AI generation, admin access, and CORS using [Production Checklist](docs/PRODUCTION_CHECKLIST.md).
-
-## Roadmap
-
-- Observability dashboard
-- Broker integrations
-- Chart screenshot AI review
-- Advanced risk analytics
-- Mobile responsive polish
+- Configure backend secrets in Render.
+- Set `APP_ALLOWED_ORIGINS` to the deployed frontend origin.
+- Apply Supabase migrations in the documented order.
+- Configure Stripe webhooks to point at `/api/stripe/webhook`.
+- Configure Resend for verification, password reset, contact, and admin reply emails.
+- Keep admin bootstrap opt-in and disable it after the first admin is promoted.
 
 ## Contributing
 
-Private beta project for now.
+TradePilot is currently a private beta project. Future contributor guidelines will be added as the product moves toward a broader release.
 
 ## License
 
