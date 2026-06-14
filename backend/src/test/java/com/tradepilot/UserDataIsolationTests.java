@@ -1,6 +1,8 @@
 package com.tradepilot;
 
 import com.tradepilot.analytics.TradeAnalyticsService;
+import com.tradepilot.billing.PlanType;
+import com.tradepilot.billing.SubscriptionStatus;
 import com.tradepilot.coach.entity.AiCoachSnapshot;
 import com.tradepilot.coach.entity.CoachSnapshotStatus;
 import com.tradepilot.coach.entity.CoachSnapshotType;
@@ -185,19 +187,23 @@ class UserDataIsolationTests {
                 .name(name)
                 .email(email)
                 .passwordHash("test-password-hash")
+                .emailVerified(true)
+                .plan(PlanType.PRO)
+                .subscriptionStatus(SubscriptionStatus.ACTIVE)
                 .build());
     }
 
     private TradeImportRequest importTrade(Long accountId, String externalTradeKey, BigDecimal pnl) {
+        LocalDate tradeDate = LocalDate.now().minusDays(7);
         return new TradeImportRequest(
                 accountId,
                 "tradovate.csv",
                 externalTradeKey,
                 "NQ",
                 "FUTURES",
-                LocalDate.of(2026, 5, 15),
-                LocalDateTime.of(2026, 5, 15, 9, 30),
-                LocalDateTime.of(2026, 5, 15, 9, 45),
+                tradeDate,
+                tradeDate.atTime(9, 30),
+                tradeDate.atTime(9, 45),
                 "LONG",
                 SetupType.ORB,
                 SessionType.NY_AM,

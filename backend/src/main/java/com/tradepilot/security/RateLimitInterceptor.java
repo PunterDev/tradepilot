@@ -100,8 +100,11 @@ public class RateLimitInterceptor implements HandlerInterceptor {
                 || "/api/ai/trade-analysis/async".equals(path)
                 || "/api/coach/daily/generate".equals(path)
                 || "/api/coach/weekly/generate".equals(path)
-                || "/api/sessions/review/generate".equals(path)))
-                || (HttpMethod.GET.matches(method) && "/api/ai/trading-dna".equals(path));
+                || "/api/sessions/review/generate".equals(path)
+                || "/api/ai/leak-detector/regenerate".equals(path)))
+                || (HttpMethod.GET.matches(method)
+                && ("/api/ai/trading-dna".equals(path)
+                || "/api/ai/leak-detector".equals(path)));
     }
 
     private String aiFeature(String path) {

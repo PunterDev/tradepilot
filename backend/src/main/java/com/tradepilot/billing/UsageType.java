@@ -5,5 +5,6 @@ public enum UsageType {
     DAILY_COACH,
     WEEKLY_COACH,
     TRADING_DNA,
+    AI_LEAK_DETECTOR,
     SESSION_REVIEW
 }

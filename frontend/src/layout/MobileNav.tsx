@@ -9,9 +9,10 @@ type Props = {
 export default function MobileNav({ items }: Props) {
   return (
     <nav className="tradepilot-mobile-nav" style={mobileNav}>
-      {items.slice(0, 6).map((item) => (
+      {items.slice(0, 7).map((item) => (
         <NavLink key={item.to} to={item.to} style={({ isActive }) => mobileLink(isActive)}>
-          {item.label}
+          <span style={mobileLabel}>{item.label}</span>
+          {item.locked && <span style={mobileBadge}>PRO</span>}
         </NavLink>
       ))}
     </nav>
@@ -25,7 +26,7 @@ const mobileNav: CSSProperties = {
   bottom: 12,
   zIndex: 40,
   display: "none",
-  gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
   gap: 6,
   padding: 8,
   borderRadius: 18,
@@ -36,7 +37,8 @@ const mobileNav: CSSProperties = {
 
 function mobileLink(active: boolean): CSSProperties {
   return {
-    padding: "9px 6px",
+    position: "relative",
+    padding: "9px 4px",
     borderRadius: 12,
     color: active ? "#f8fafc" : "#94a3b8",
     background: active ? "rgba(52,211,153,0.16)" : "transparent",
@@ -49,3 +51,23 @@ function mobileLink(active: boolean): CSSProperties {
     textOverflow: "ellipsis",
   };
 }
+
+const mobileLabel: CSSProperties = {
+  display: "block",
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const mobileBadge: CSSProperties = {
+  position: "absolute",
+  top: 2,
+  right: 3,
+  padding: "1px 2px",
+  borderRadius: 4,
+  background: "rgba(15,23,42,0.86)",
+  color: "#6ee7b7",
+  fontSize: 6,
+  fontWeight: 950,
+  lineHeight: 1.2,
+};

@@ -54,7 +54,10 @@ Run this checklist before pushing, deploying, or opening beta access.
 - Configure `OPENAI_API_KEY`.
 - Confirm AI trade review, chart analysis, Daily Coach, Weekly Coach, Trading DNA, and Session Review return safe fallbacks on OpenAI failure.
 - Confirm cached AI responses return before usage checks.
-- Confirm force refresh consumes usage.
+- Confirm force refresh consumes AI credits.
+- Confirm Free users have 10 monthly AI credits and Pro users have 100 monthly AI credits.
+- Confirm Free users receive `403` for Session Review, Daily Coach, Weekly Coach, Trading DNA, and Advanced Analytics API calls.
+- Confirm exhausted AI credits return an AI credit limit response and cached AI reads do not consume credits.
 - Confirm async AI work uses bounded `ai-worker-*` threads.
 - Confirm duplicate AI trade review requests reuse the unique cache row.
 

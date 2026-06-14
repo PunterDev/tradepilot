@@ -1,5 +1,9 @@
 package com.tradepilot.coach.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradepilot.billing.Feature;
+import com.tradepilot.billing.FeatureAccessService;
 import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.billing.UsageType;
 import com.tradepilot.coach.dto.CoachGenerateRequest;
@@ -10,13 +14,17 @@ import com.tradepilot.coach.entity.CoachSnapshotType;
 import com.tradepilot.coach.repository.AiCoachSnapshotRepository;
 import com.tradepilot.entity.User;
 import com.tradepilot.exception.ResourceNotFoundException;
+import com.tradepilot.leakdetector.dto.LeakResultDto;
+import com.tradepilot.leakdetector.repository.AiLeakDetectorSnapshotRepository;
 import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.service.TradingAccountService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -27,7 +35,10 @@ public class AiCoachService {
     private final AiCoachAsyncWorker asyncWorker;
     private final TradingAccountService tradingAccountService;
     private final UsageLimitService usageLimitService;
+    private final FeatureAccessService featureAccessService;
     private final ObservabilityService observabilityService;
+    private final AiLeakDetectorSnapshotRepository leakDetectorSnapshotRepository;
+    private final ObjectMapper objectMapper;
 
     public CoachSnapshotDto getDailyCoach(
             User user,
@@ -35,6 +46,7 @@ public class AiCoachService {
             LocalDate date
     ) {
         Long userId = requireUserId(user);
+        featureAccessService.requireFeature(user, Feature.DAILY_COACH);
         validateOwnedAccount(user, accountId);
 
         AiCoachSnapshot snapshot =
@@ -48,7 +60,7 @@ public class AiCoachService {
                         false
                 );
 
-        return mapper.toDto(snapshot);
+        return enrichWithTopLeak(mapper.toDto(snapshot), userId, accountId);
     }
 
     public CoachSnapshotDto getWeeklyCoach(
@@ -57,6 +69,7 @@ public class AiCoachService {
             LocalDate weekStart
     ) {
         Long userId = requireUserId(user);
+        featureAccessService.requireFeature(user, Feature.WEEKLY_COACH);
         validateOwnedAccount(user, accountId);
         LocalDate weekEnd = weekStart.plusDays(6);
 
@@ -79,6 +92,7 @@ public class AiCoachService {
             CoachGenerateRequest request
     ) {
         Long userId = requireUserId(user);
+        featureAccessService.requireFeature(user, Feature.DAILY_COACH);
         validateOwnedAccount(user, request.getAccountId());
         LocalDate date = request.getPeriodStart();
 
@@ -93,7 +107,7 @@ public class AiCoachService {
                         Boolean.TRUE.equals(request.getForceRefresh())
                 );
 
-        return mapper.toDto(snapshot);
+        return enrichWithTopLeak(mapper.toDto(snapshot), userId, request.getAccountId());
     }
 
     public CoachSnapshotDto generateWeeklyCoach(
@@ -101,6 +115,7 @@ public class AiCoachService {
             CoachGenerateRequest request
     ) {
         Long userId = requireUserId(user);
+        featureAccessService.requireFeature(user, Feature.WEEKLY_COACH);
         validateOwnedAccount(user, request.getAccountId());
         LocalDate weekStart = request.getPeriodStart();
 
@@ -129,6 +144,7 @@ public class AiCoachService {
             CoachSnapshotType type
     ) {
         Long userId = requireUserId(user);
+        featureAccessService.requireFeature(user, type == CoachSnapshotType.DAILY ? Feature.DAILY_COACH : Feature.WEEKLY_COACH);
         validateOwnedAccount(user, accountId);
 
         return repository
@@ -212,6 +228,26 @@ public class AiCoachService {
         }
 
         return user.getId();
+    }
+
+    private CoachSnapshotDto enrichWithTopLeak(CoachSnapshotDto dto, Long userId, Long accountId) {
+        topLeak(userId, accountId).ifPresent(dto::setTopLeakToWatch);
+        return dto;
+    }
+
+    private Optional<LeakResultDto> topLeak(Long userId, Long accountId) {
+        return leakDetectorSnapshotRepository.findTopByUserIdAndAccountIdOrderByUpdatedAtDesc(userId, accountId)
+                .flatMap(snapshot -> {
+                    try {
+                        List<LeakResultDto> leaks = objectMapper.readValue(snapshot.getResultJson(), new TypeReference<>() {});
+                        return leaks.stream()
+                                .max(Comparator
+                                        .comparing((LeakResultDto leak) -> leak.getSeverity() == null ? 0 : leak.getSeverity().ordinal())
+                                        .thenComparing(leak -> leak.getConfidenceScore() == null ? 0 : leak.getConfidenceScore()));
+                    } catch (Exception e) {
+                        return Optional.empty();
+                    }
+                });
     }
 
     private void validateOwnedAccount(User user, Long accountId) {

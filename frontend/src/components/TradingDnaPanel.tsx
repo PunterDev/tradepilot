@@ -48,7 +48,7 @@ export default function TradingDnaPanel({
   });
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const data = dna.data;
-  const remaining = usage?.remaining.TRADING_DNA ?? 1;
+  const remaining = usage?.remaining.AI_CREDITS ?? 1;
   const limitReached = remaining === 0;
 
   return (

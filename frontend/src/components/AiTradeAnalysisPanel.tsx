@@ -42,7 +42,7 @@ export default function AiTradeAnalysisPanel({ trade, journalText }: Props) {
     retry,
   } = useAiTradeAnalysisPolling();
   const billing = useBillingUsage(true);
-  const aiReviewsRemaining = billing.usage?.remaining.AI_TRADE_REVIEW ?? 1;
+  const aiReviewsRemaining = billing.usage?.remaining.AI_CREDITS ?? 1;
   const reviewLimitReached = aiReviewsRemaining === 0;
 
   const hasAnalysisContent = Boolean(

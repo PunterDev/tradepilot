@@ -52,6 +52,9 @@ public interface TradeRepository extends JpaRepository<Trade, Long>, JpaSpecific
             LocalDate endDate
     );
 
+    @EntityGraph(attributePaths = {"account"})
+    List<Trade> findByUserAndAccount_IdOrderByTradeDateAscEntryTimeAscIdAsc(User user, Long accountId);
+
     @Query("""
             select count(t), max(t.updatedAt), coalesce(sum(t.id), 0), coalesce(sum(t.pnlAmount), 0)
             from Trade t

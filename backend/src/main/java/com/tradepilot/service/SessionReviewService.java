@@ -1,6 +1,8 @@
 package com.tradepilot.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradepilot.billing.Feature;
+import com.tradepilot.billing.FeatureAccessService;
 import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.billing.UsageType;
 import com.tradepilot.dto.session.AiSessionReviewResponse;
@@ -52,6 +54,7 @@ public class SessionReviewService {
     private final AiSessionReviewRepository aiSessionReviewRepository;
     private final AiSessionReviewGeneratorService generatorService;
     private final UsageLimitService usageLimitService;
+    private final FeatureAccessService featureAccessService;
     private final ObjectMapper objectMapper;
     private final ObservabilityService observabilityService;
     private final AggregateCacheService aggregateCacheService;
@@ -59,6 +62,7 @@ public class SessionReviewService {
 
     @Transactional(readOnly = true)
     public SessionReviewResponse getSessionReview(User user, Long accountId, LocalDate date) {
+        featureAccessService.requireFeature(user, Feature.SESSION_REVIEW);
         log.info("Session review requested. userId={}, accountId={}, date={}", user.getId(), accountId, date);
         return aggregateCacheService.get(
                 sessionReviewCacheKey(user.getId(), accountId, date),
@@ -78,6 +82,7 @@ public class SessionReviewService {
     }
 
     public SessionReviewResponse generateSessionReview(User user, Long accountId, LocalDate date, boolean forceRefresh) {
+        featureAccessService.requireFeature(user, Feature.SESSION_REVIEW);
         long requestStartedAt = System.nanoTime();
         log.info("AI session review generation requested. userId={}, accountId={}, date={}, forceRefresh={}",
                 user.getId(), accountId, date, forceRefresh);
@@ -468,22 +473,22 @@ public class SessionReviewService {
                 .min(Map.Entry.comparingByValue())
                 .orElse(null);
 
-        return SessionReplayInsightsResponse.builder()
-                .firstTrade(sorted.isEmpty() ? null : mapTimelineTrade(sorted.get(0)))
-                .lastTrade(sorted.isEmpty() ? null : mapTimelineTrade(sorted.get(sorted.size() - 1)))
-                .largestWinner(sorted.stream().filter(t -> pnl(t).compareTo(BigDecimal.ZERO) > 0).max(Comparator.comparing(this::pnl)).map(this::mapTimelineTrade).orElse(null))
-                .largestLoser(sorted.stream().filter(t -> pnl(t).compareTo(BigDecimal.ZERO) < 0).min(Comparator.comparing(this::pnl)).map(this::mapTimelineTrade).orElse(null))
-                .longestHold(longest == null ? null : mapTimelineTrade(longest))
-                .shortestHold(shortest == null ? null : mapTimelineTrade(shortest))
-                .longestHoldMinutes(longest == null ? null : Math.toIntExact(holdMinutes(longest)))
-                .shortestHoldMinutes(shortest == null ? null : Math.toIntExact(holdMinutes(shortest)))
-                .bestTradingHour(bestHour == null ? null : bestHour.getKey())
-                .bestTradingHourPnl(bestHour == null ? null : bestHour.getValue())
-                .worstTradingHour(worstHour == null ? null : worstHour.getKey())
-                .worstTradingHourPnl(worstHour == null ? null : worstHour.getValue())
-                .firstTradeTime(sorted.isEmpty() ? null : sorted.get(0).getEntryTime())
-                .lastTradeTime(sorted.isEmpty() ? null : sorted.get(sorted.size() - 1).getEntryTime())
-                .build();
+        return SessionReplayInsightsResponse.of(
+                sorted.isEmpty() ? null : mapTimelineTrade(sorted.get(0)),
+                sorted.isEmpty() ? null : mapTimelineTrade(sorted.get(sorted.size() - 1)),
+                sorted.stream().filter(t -> pnl(t).compareTo(BigDecimal.ZERO) > 0).max(Comparator.comparing(this::pnl)).map(this::mapTimelineTrade).orElse(null),
+                sorted.stream().filter(t -> pnl(t).compareTo(BigDecimal.ZERO) < 0).min(Comparator.comparing(this::pnl)).map(this::mapTimelineTrade).orElse(null),
+                longest == null ? null : mapTimelineTrade(longest),
+                shortest == null ? null : mapTimelineTrade(shortest),
+                longest == null ? null : Math.toIntExact(holdMinutes(longest)),
+                shortest == null ? null : Math.toIntExact(holdMinutes(shortest)),
+                bestHour == null ? null : bestHour.getKey(),
+                bestHour == null ? null : bestHour.getValue(),
+                worstHour == null ? null : worstHour.getKey(),
+                worstHour == null ? null : worstHour.getValue(),
+                sorted.isEmpty() ? null : sorted.get(0).getEntryTime(),
+                sorted.isEmpty() ? null : sorted.get(sorted.size() - 1).getEntryTime()
+        );
     }
 
     private long holdMinutes(Trade trade) {

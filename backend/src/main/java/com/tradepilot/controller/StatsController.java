@@ -1,5 +1,7 @@
 package com.tradepilot.controller;
 
+import com.tradepilot.billing.Feature;
+import com.tradepilot.billing.FeatureAccessService;
 import com.tradepilot.dto.stats.*;
 import com.tradepilot.entity.User;
 import com.tradepilot.service.StatsService;
@@ -16,6 +18,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class StatsController {
     private final StatsService statsService;
+    private final FeatureAccessService featureAccessService;
 
     @GetMapping("/summary")
     public DashboardSummaryResponse summary(
@@ -24,6 +27,7 @@ public class StatsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
+        featureAccessService.requireFeature(user, Feature.BASIC_ANALYTICS);
         return statsService.getDashboardSummary(user, accountId, startDate, endDate);
     }
 
@@ -34,6 +38,7 @@ public class StatsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
+        featureAccessService.requireFeature(user, Feature.BASIC_ANALYTICS);
         return statsService.getStatsBySetup(user, accountId, startDate, endDate);
     }
 
@@ -44,6 +49,7 @@ public class StatsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
+        featureAccessService.requireFeature(user, Feature.BASIC_ANALYTICS);
         return statsService.getStatsBySession(user, accountId, startDate, endDate);
     }
 
@@ -54,6 +60,7 @@ public class StatsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
+        featureAccessService.requireFeature(user, Feature.BASIC_ANALYTICS);
         return statsService.getStatsBySymbol(user, accountId, startDate, endDate);
     }
 
@@ -64,6 +71,7 @@ public class StatsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
+        featureAccessService.requireFeature(user, Feature.BASIC_ANALYTICS);
         return statsService.getStatsByWeekday(user, accountId, startDate, endDate);
     }
 }

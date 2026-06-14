@@ -11,13 +11,7 @@ type Props = {
 
 export default function CompactUsageWidget({ usage, loading, error }: Props) {
   const aiReviews = usagePair(usage, "AI_TRADE_REVIEW");
-  const dailyCoach = usagePair(usage, "DAILY_COACH");
-  const weeklyCoach = usagePair(usage, "WEEKLY_COACH");
-  const tradingDna = usagePair(usage, "TRADING_DNA");
-  const coachUsed = dailyCoach.used + weeklyCoach.used;
-  const coachLimit = dailyCoach.limit === -1 || weeklyCoach.limit === -1
-    ? -1
-    : dailyCoach.limit + weeklyCoach.limit;
+  const aiCredits = usagePair(usage, "AI_CREDITS");
 
   return (
     <section style={{ ...card, padding: 18, marginTop: 18 }}>
@@ -37,8 +31,7 @@ export default function CompactUsageWidget({ usage, loading, error }: Props) {
 
       <div style={usageGrid}>
         <MiniUsage label="AI Reviews" used={aiReviews.used} limit={aiReviews.limit} />
-        <MiniUsage label="Coach" used={coachUsed} limit={coachLimit} />
-        <MiniUsage label="Trading DNA" used={tradingDna.used} limit={tradingDna.limit} />
+        <MiniUsage label="AI Credits" used={aiCredits.used} limit={aiCredits.limit} />
       </div>
     </section>
   );

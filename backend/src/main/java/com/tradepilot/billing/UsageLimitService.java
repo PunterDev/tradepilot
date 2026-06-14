@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.Duration;
 import java.time.YearMonth;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -23,12 +22,16 @@ import java.util.Map;
 public class UsageLimitService {
     private static final int UNLIMITED = -1;
     private static final Duration BILLING_USAGE_TTL = Duration.ofSeconds(45);
+    private static final int FREE_MONTHLY_AI_CREDITS = 10;
+    private static final int PRO_MONTHLY_AI_CREDITS = 100;
 
     private final AiUsageEventRepository usageEventRepository;
+    private final AiCreditUsageRepository creditUsageRepository;
     private final TradingAccountRepository tradingAccountRepository;
     private final TradeRepository tradeRepository;
     private final AggregateCacheService aggregateCacheService;
     private final PerformanceCacheInvalidationService cacheInvalidationService;
+    private final FeatureAccessService featureAccessService;
 
     public void enforceAccountCreation(User user) {
         if (plan(user) == PlanType.PRO) {
@@ -57,23 +60,39 @@ public class UsageLimitService {
     }
 
     public void enforceAiUsage(User user, UsageType usageType) {
-        int limit = limits(plan(user)).get(usageType);
-        if (limit == UNLIMITED) {
-            return;
-        }
+        Feature feature = featureFor(usageType);
+        featureAccessService.requireFeature(user, feature);
+        requireCredits(user, creditsFor(feature));
+    }
 
+    public int getMonthlyCreditLimit(User user) {
+        return plan(user) == PlanType.PRO ? PRO_MONTHLY_AI_CREDITS : FREE_MONTHLY_AI_CREDITS;
+    }
+
+    public int getCreditsUsedThisMonth(User user) {
         Period period = period(user);
-        long used = usageEventRepository.countByUserIdAndUsageTypeAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+        return Math.toIntExact(Math.min(
+                Integer.MAX_VALUE,
+                creditUsageRepository.sumCreditsByUserBetween(
                 user.getId(),
-                usageType,
                 period.start(),
                 period.end()
-        );
+                )
+        ));
+    }
 
-        if (used >= limit) {
-            log.warn("AI usage plan limit exceeded. userId={}, usageType={}, used={}, limit={}",
-                    user.getId(), usageType, used, limit);
-            throw limit(messageFor(usageType));
+    public int getCreditsRemaining(User user) {
+        return Math.max(0, getMonthlyCreditLimit(user) - getCreditsUsedThisMonth(user));
+    }
+
+    public void requireCredits(User user, int requiredCredits) {
+        int limit = getMonthlyCreditLimit(user);
+        int used = getCreditsUsedThisMonth(user);
+        int remaining = Math.max(0, limit - used);
+        if (remaining < requiredCredits) {
+            log.warn("AI credit limit exceeded. userId={}, plan={}, used={}, limit={}, remaining={}, requested={}",
+                    user.getId(), plan(user), used, limit, remaining, requiredCredits);
+            throw new AiCreditLimitExceededException(used, limit, remaining);
         }
     }
 
@@ -84,8 +103,32 @@ public class UsageLimitService {
                 .usageType(usageType)
                 .relatedResourceId(relatedResourceId)
                 .build());
+        consumeCredits(user, featureFor(usageType), creditsFor(featureFor(usageType)), relatedResourceId, null);
         log.info("AI usage recorded. userId={}, usageType={}, relatedResourceId={}",
                 user.getId(), usageType, relatedResourceId);
+    }
+
+    @Transactional
+    public void consumeCredits(User user, Feature feature, int credits) {
+        consumeCredits(user, feature, credits, null, null);
+    }
+
+    @Transactional
+    public void consumeCredits(User user, Feature feature, int credits, Long requestId, String metadata) {
+        if (credits <= 0) {
+            return;
+        }
+        featureAccessService.requireFeature(user, feature);
+        requireCredits(user, credits);
+        creditUsageRepository.save(AiCreditUsage.builder()
+                .userId(user.getId())
+                .feature(feature)
+                .credits(credits)
+                .requestId(requestId)
+                .metadata(metadata)
+                .build());
+        log.info("AI credits consumed. userId={}, feature={}, credits={}, requestId={}",
+                user.getId(), feature, credits, requestId);
         cacheInvalidationService.invalidateBillingUsage(user.getId());
     }
 
@@ -104,7 +147,6 @@ public class UsageLimitService {
     private BillingUsageResponse buildUsage(User user) {
         PlanType plan = plan(user);
         log.trace("Billing usage requested. userId={}, plan={}", user.getId(), plan);
-        Map<UsageType, Integer> aiLimits = limits(plan);
         Period period = period(user);
 
         Map<String, Integer> limits = new LinkedHashMap<>();
@@ -115,20 +157,22 @@ public class UsageLimitService {
         limits.put("IMPORTED_TRADES", plan == PlanType.PRO ? UNLIMITED : 100);
         used.put("TRADING_ACCOUNTS", Math.toIntExact(Math.min(Integer.MAX_VALUE, tradingAccountRepository.countByUser(user))));
         used.put("IMPORTED_TRADES", Math.toIntExact(Math.min(Integer.MAX_VALUE, tradeRepository.countByUser(user))));
+        limits.put("AI_CREDITS", getMonthlyCreditLimit(user));
+        used.put("AI_CREDITS", getCreditsUsedThisMonth(user));
 
         for (UsageType type : UsageType.values()) {
-            int limit = aiLimits.get(type);
-            int count = Math.toIntExact(Math.min(
+            Feature feature = featureFor(type);
+            int featureCredits = Math.toIntExact(Math.min(
                     Integer.MAX_VALUE,
-                    usageEventRepository.countByUserIdAndUsageTypeAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                    creditUsageRepository.sumCreditsByUserAndFeatureBetween(
                             user.getId(),
-                            type,
+                            feature,
                             period.start(),
                             period.end()
                     )
             ));
-            limits.put(type.name(), limit);
-            used.put(type.name(), count);
+            limits.put(type.name(), getMonthlyCreditLimit(user));
+            used.put(type.name(), featureCredits);
         }
 
         limits.forEach((key, limit) -> {
@@ -154,25 +198,6 @@ public class UsageLimitService {
         return user.getSubscriptionStatus() == null ? SubscriptionStatus.NONE : user.getSubscriptionStatus();
     }
 
-    private Map<UsageType, Integer> limits(PlanType plan) {
-        Map<UsageType, Integer> limits = new EnumMap<>(UsageType.class);
-        if (plan == PlanType.PRO) {
-            limits.put(UsageType.AI_TRADE_REVIEW, 100);
-            limits.put(UsageType.DAILY_COACH, 30);
-            limits.put(UsageType.WEEKLY_COACH, 10);
-            limits.put(UsageType.TRADING_DNA, 10);
-            limits.put(UsageType.SESSION_REVIEW, 30);
-            return limits;
-        }
-
-        limits.put(UsageType.AI_TRADE_REVIEW, 5);
-        limits.put(UsageType.DAILY_COACH, 3);
-        limits.put(UsageType.WEEKLY_COACH, 1);
-        limits.put(UsageType.TRADING_DNA, 1);
-        limits.put(UsageType.SESSION_REVIEW, 3);
-        return limits;
-    }
-
     private PlanType plan(User user) {
         return user.getPlan() == null ? PlanType.FREE : user.getPlan();
     }
@@ -186,6 +211,27 @@ public class UsageLimitService {
         return new Period(current.atDay(1).atStartOfDay(), current.plusMonths(1).atDay(1).atStartOfDay());
     }
 
+    private Feature featureFor(UsageType usageType) {
+        return switch (usageType) {
+            case AI_TRADE_REVIEW -> Feature.AI_TRADE_REVIEW;
+            case DAILY_COACH -> Feature.DAILY_COACH;
+            case WEEKLY_COACH -> Feature.WEEKLY_COACH;
+            case TRADING_DNA -> Feature.TRADING_DNA;
+            case AI_LEAK_DETECTOR -> Feature.AI_LEAK_DETECTOR;
+            case SESSION_REVIEW -> Feature.SESSION_REVIEW;
+        };
+    }
+
+    private int creditsFor(Feature feature) {
+        return switch (feature) {
+            case AI_TRADE_REVIEW -> 1;
+            case SESSION_REVIEW, DAILY_COACH -> 2;
+            case TRADING_DNA, AI_LEAK_DETECTOR -> 3;
+            case WEEKLY_COACH -> 4;
+            default -> 0;
+        };
+    }
+
     private PlanLimitExceededException limit(String message) {
         return new PlanLimitExceededException(message);
     }
@@ -196,6 +242,7 @@ public class UsageLimitService {
             case DAILY_COACH -> "You have reached your free plan limit for Daily Coach generations.";
             case WEEKLY_COACH -> "You have reached your free plan limit for Weekly Coach generations.";
             case TRADING_DNA -> "You have reached your free plan limit for Trading DNA generations.";
+            case AI_LEAK_DETECTOR -> "You have reached your free plan limit for AI Leak Detector generations.";
             case SESSION_REVIEW -> "You have reached your free plan limit for Session Review generations.";
         };
     }

@@ -1,5 +1,7 @@
 package com.tradepilot.controller;
 
+import com.tradepilot.billing.Feature;
+import com.tradepilot.billing.FeatureAccessService;
 import com.tradepilot.dto.common.PagedResponse;
 import com.tradepilot.dto.trade.*;
 import com.tradepilot.entity.User;
@@ -25,6 +27,7 @@ public class TradeController {
     private final TradeService tradeService;
     private final TradeDetailService tradeDetailService;
     private final FeatureUsageService featureUsageService;
+    private final FeatureAccessService featureAccessService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -99,6 +102,7 @@ public class TradeController {
             @RequestBody List<TradeImportRequest> requests,
             @AuthenticationPrincipal User user
     ) {
+        featureAccessService.requireFeature(user, Feature.CSV_IMPORT);
         return tradeService.importTrades(user, requests);
     }
 }

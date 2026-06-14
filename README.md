@@ -205,6 +205,39 @@ Required Stripe setup:
 
 Supported billing flows include checkout, customer portal, subscription updates, invoice payment events, duplicate webhook protection, and billing usage limits.
 
+Feature access is enforced by the backend:
+
+| Feature | Free | Pro |
+| --- | --- | --- |
+| CSV Import | Yes | Yes |
+| PnL Calendar | Yes | Yes |
+| Basic Analytics | Yes | Yes |
+| AI Trade Review | Yes, subject to credits | Yes, subject to credits |
+| Session Review | No | Yes |
+| Daily Coach | No | Yes |
+| Weekly Coach | No | Yes |
+| Trading DNA | No | Yes |
+| Advanced Analytics | No | Yes |
+
+Monthly AI credit limits:
+
+| Plan | Credits |
+| --- | ---: |
+| Free | 10 |
+| Pro | 100 |
+
+AI credit costs:
+
+| AI feature | Credits |
+| --- | ---: |
+| AI Trade Review | 1 |
+| Session Review | 2 |
+| Daily Coach | 2 |
+| Weekly Coach | 4 |
+| Trading DNA | 3 |
+
+Cached AI results do not consume credits. Force refresh or regeneration consumes credits.
+
 ## Email Setup
 
 TradePilot uses Resend for transactional email:

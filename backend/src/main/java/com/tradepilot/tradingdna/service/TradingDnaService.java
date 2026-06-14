@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradepilot.analytics.TradeAnalyticsService;
 import com.tradepilot.analytics.dto.BehavioralInsightDto;
+import com.tradepilot.billing.Feature;
+import com.tradepilot.billing.FeatureAccessService;
 import com.tradepilot.billing.PlanLimitExceededException;
 import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.billing.UsageType;
@@ -60,6 +62,7 @@ public class TradingDnaService {
     private final TradeAnalyticsService tradeAnalyticsService;
     private final TradingDnaAiGeneratorService aiGeneratorService;
     private final UsageLimitService usageLimitService;
+    private final FeatureAccessService featureAccessService;
     private final ObjectMapper objectMapper;
     private final ObservabilityService observabilityService;
     private final OpenAiProperties openAiProperties;
@@ -77,6 +80,7 @@ public class TradingDnaService {
         if (user == null) {
             throw new IllegalArgumentException("Authenticated user is required");
         }
+        featureAccessService.requireFeature(user, Feature.TRADING_DNA);
 
         int timeframeDays = normalizeDays(days);
         boolean allAccounts = Boolean.TRUE.equals(includeAllAccounts);
@@ -348,38 +352,38 @@ public class TradingDnaService {
         int executionScore = averageInteger(trades.stream().map(Trade::getExecutionRating).filter(Objects::nonNull).map(v -> v * 10).toList(), 70);
         int patienceScore = clamp(100 - (int) Math.min(70, detectRevengeTrades(trades) * 12L + detectOvertradeDays(trades) * 8L));
 
-        TradingDnaContext context = TradingDnaContext.builder()
-                .userId(user.getId())
-                .accountId(accountId)
-                .includeAllAccounts(includeAllAccounts)
-                .days(days)
-                .startDate(startDate)
-                .endDate(endDate)
-                .totalTrades(trades.size())
-                .netPnl(netPnl)
-                .winRate(winRate)
-                .bestSetup(bestByPnl(trades, this::setup))
-                .worstSetup(worstByPnl(trades, this::setup))
-                .bestSession(bestByPnl(trades, this::session))
-                .worstSession(worstByPnl(trades, this::session))
-                .mistakeCounts(mistakeCounts)
-                .setupPnl(pnlByClassifier(trades, this::setup))
-                .emotionPnl(pnlByClassifier(trades, Trade::getEmotion))
-                .confidencePnl(pnlByClassifier(trades, trade -> trade.getConfidence() == null ? null : String.valueOf(trade.getConfidence())))
-                .violationCounts(violationCounts)
-                .journalMetadataExamples(journalMetadataExamples(trades))
-                .behavioralInsights(behavioralInsights)
-                .tradeReviewSummaries(reviews.stream().map(AiTradeReview::getSummary).filter(this::hasText).limit(8).toList())
-                .aiTradeStrengths(analyses.stream().flatMap(a -> parseList(a.getStrengthsJson()).stream()).limit(10).toList())
-                .aiTradeMistakes(analyses.stream().flatMap(a -> parseList(a.getMistakesJson()).stream()).limit(10).toList())
-                .coachNotes(coachSnapshots.stream().map(AiCoachSnapshot::getAiResponseJson).filter(this::hasText).limit(8).toList())
-                .deterministicSignals(buildSignals(trades, mistakeCounts, violationCounts))
-                .timeline(timeline)
-                .deterministicDisciplineScore(disciplineScore)
-                .deterministicExecutionScore(executionScore)
-                .deterministicPatienceScore(patienceScore)
-                .deterministicConsistencyScore(consistencyScore)
-                .build();
+        TradingDnaContext context = TradingDnaContext.of(
+                user.getId(),
+                accountId,
+                includeAllAccounts,
+                days,
+                startDate,
+                endDate,
+                trades.size(),
+                netPnl,
+                winRate,
+                bestByPnl(trades, this::setup),
+                worstByPnl(trades, this::setup),
+                bestByPnl(trades, this::session),
+                worstByPnl(trades, this::session),
+                mistakeCounts,
+                pnlByClassifier(trades, this::setup),
+                pnlByClassifier(trades, Trade::getEmotion),
+                pnlByClassifier(trades, trade -> trade.getConfidence() == null ? null : String.valueOf(trade.getConfidence())),
+                violationCounts,
+                journalMetadataExamples(trades),
+                behavioralInsights,
+                reviews.stream().map(AiTradeReview::getSummary).filter(this::hasText).limit(8).toList(),
+                analyses.stream().flatMap(a -> parseList(a.getStrengthsJson()).stream()).limit(10).toList(),
+                analyses.stream().flatMap(a -> parseList(a.getMistakesJson()).stream()).limit(10).toList(),
+                coachSnapshots.stream().map(AiCoachSnapshot::getAiResponseJson).filter(this::hasText).limit(8).toList(),
+                buildSignals(trades, mistakeCounts, violationCounts),
+                timeline,
+                disciplineScore,
+                executionScore,
+                patienceScore,
+                consistencyScore
+        );
         log.debug("Trading DNA context built. userId={}, accountId={}, includeAllAccounts={}, days={}, tradeCount={}, reviewsQueryMs={}, analysesQueryMs={}, coachQueryMs={}, violationsQueryMs={}, behavioralInsightsMs={}, totalMs={}",
                 user.getId(), accountId, includeAllAccounts, days, trades.size(), reviewsElapsedMs, analysesElapsedMs, coachElapsedMs, violationsElapsedMs, behavioralInsightsElapsedMs, elapsedMs(contextStartedAt));
         return context;

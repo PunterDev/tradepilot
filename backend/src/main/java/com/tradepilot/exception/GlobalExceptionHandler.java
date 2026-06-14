@@ -1,6 +1,8 @@
 package com.tradepilot.exception;
 
 import com.tradepilot.billing.PlanLimitExceededException;
+import com.tradepilot.billing.AiCreditLimitExceededException;
+import com.tradepilot.billing.FeatureAccessException;
 import com.tradepilot.billing.StripeNotConfiguredException;
 import com.tradepilot.observability.RequestCorrelationFilter;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +36,25 @@ public class GlobalExceptionHandler {
     public Map<String, String> handleAccessDenied(Exception ex){ return Map.of("error", "Access denied"); }
     @ExceptionHandler(PlanLimitExceededException.class) @ResponseStatus(HttpStatus.FORBIDDEN)
     public Map<String, Object> handlePlanLimit(PlanLimitExceededException ex){ return Map.of("code", ex.getCode(), "message", ex.getMessage(), "upgradeRequired", ex.isUpgradeRequired()); }
+    @ExceptionHandler(FeatureAccessException.class) @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Map<String, Object> handleFeatureAccess(FeatureAccessException ex) {
+        return Map.of(
+                "error", "Subscription required",
+                "message", ex.getMessage(),
+                "requiredPlan", ex.getRequiredPlan(),
+                "feature", ex.getFeature().name()
+        );
+    }
+    @ExceptionHandler(AiCreditLimitExceededException.class) @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public Map<String, Object> handleAiCreditLimit(AiCreditLimitExceededException ex) {
+        return Map.of(
+                "error", "AI credit limit reached",
+                "message", ex.getMessage(),
+                "creditsUsed", ex.getCreditsUsed(),
+                "creditsLimit", ex.getCreditsLimit(),
+                "creditsRemaining", ex.getCreditsRemaining()
+        );
+    }
     @ExceptionHandler(StripeNotConfiguredException.class) @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handleStripeNotConfigured(StripeNotConfiguredException ex){ return Map.of("error", ex.getMessage()); }
     @ExceptionHandler(ResponseStatusException.class)

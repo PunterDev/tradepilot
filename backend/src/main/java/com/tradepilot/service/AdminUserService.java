@@ -208,8 +208,10 @@ public class AdminUserService {
         monthlyUsage.put(UsageType.DAILY_COACH.name(), metrics.dailyCoachUsage());
         monthlyUsage.put(UsageType.WEEKLY_COACH.name(), metrics.weeklyCoachUsage());
         monthlyUsage.put(UsageType.TRADING_DNA.name(), metrics.tradingDnaUsage());
+        monthlyUsage.put(UsageType.AI_LEAK_DETECTOR.name(), metrics.leakDetectorUsage());
         monthlyUsage.put(UsageType.AI_TRADE_REVIEW.name(), metrics.aiReviewUsage());
         monthlyUsage.put(UsageType.SESSION_REVIEW.name(), metrics.sessionReviewUsage());
+        monthlyUsage.put("AI_CREDITS", metrics.totalAiCredits());
         Map<String, Integer> limits = limits(user.getPlan());
         Map<String, Integer> remaining = remaining(limits, monthlyUsage);
         AdminUserResponse response = new AdminUserResponse();
@@ -260,7 +262,7 @@ public class AdminUserService {
             }
             UsageType type = (UsageType) row[1];
             int count = Math.toIntExact(Math.min(Integer.MAX_VALUE, longValue(row[2])));
-            applyUsageCount(builder, type, count);
+            applyUsageCount(builder, type, count * creditsFor(type));
         });
 
         Map<Long, UserMetrics> metrics = new HashMap<>();
@@ -283,6 +285,8 @@ public class AdminUserService {
             builder.weeklyCoachUsage = count;
         } else if (type == UsageType.TRADING_DNA) {
             builder.tradingDnaUsage = count;
+        } else if (type == UsageType.AI_LEAK_DETECTOR) {
+            builder.leakDetectorUsage = count;
         } else if (type == UsageType.SESSION_REVIEW) {
             builder.sessionReviewUsage = count;
         }
@@ -298,12 +302,24 @@ public class AdminUserService {
         Map<String, Integer> limits = new HashMap<>();
         limits.put("TRADING_ACCOUNTS", pro ? -1 : 1);
         limits.put("IMPORTED_TRADES", pro ? -1 : 100);
-        limits.put(UsageType.AI_TRADE_REVIEW.name(), pro ? 100 : 5);
-        limits.put(UsageType.DAILY_COACH.name(), pro ? 30 : 3);
-        limits.put(UsageType.WEEKLY_COACH.name(), pro ? 10 : 1);
-        limits.put(UsageType.TRADING_DNA.name(), pro ? 10 : 1);
-        limits.put(UsageType.SESSION_REVIEW.name(), pro ? 30 : 3);
+        int monthlyCredits = pro ? 100 : 10;
+        limits.put("AI_CREDITS", monthlyCredits);
+        limits.put(UsageType.AI_TRADE_REVIEW.name(), monthlyCredits);
+        limits.put(UsageType.DAILY_COACH.name(), monthlyCredits);
+        limits.put(UsageType.WEEKLY_COACH.name(), monthlyCredits);
+        limits.put(UsageType.TRADING_DNA.name(), monthlyCredits);
+        limits.put(UsageType.AI_LEAK_DETECTOR.name(), monthlyCredits);
+        limits.put(UsageType.SESSION_REVIEW.name(), monthlyCredits);
         return limits;
+    }
+
+    private int creditsFor(UsageType type) {
+        return switch (type) {
+            case AI_TRADE_REVIEW -> 1;
+            case DAILY_COACH, SESSION_REVIEW -> 2;
+            case TRADING_DNA, AI_LEAK_DETECTOR -> 3;
+            case WEEKLY_COACH -> 4;
+        };
     }
 
     private Map<String, Integer> remaining(Map<String, Integer> limits, Map<String, Integer> used) {
@@ -330,10 +346,15 @@ public class AdminUserService {
             int dailyCoachUsage,
             int weeklyCoachUsage,
             int tradingDnaUsage,
+            int leakDetectorUsage,
             int sessionReviewUsage
     ) {
+        private int totalAiCredits() {
+            return aiReviewUsage + dailyCoachUsage + weeklyCoachUsage + tradingDnaUsage + leakDetectorUsage + sessionReviewUsage;
+        }
+
         private static UserMetrics empty() {
-            return new UserMetrics(0, 0, 0, 0, 0, 0, 0, 0);
+            return new UserMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
     }
 
@@ -345,6 +366,7 @@ public class AdminUserService {
         private int dailyCoachUsage;
         private int weeklyCoachUsage;
         private int tradingDnaUsage;
+        private int leakDetectorUsage;
         private int sessionReviewUsage;
 
         private UserMetrics build() {
@@ -356,6 +378,7 @@ public class AdminUserService {
                     dailyCoachUsage,
                     weeklyCoachUsage,
                     tradingDnaUsage,
+                    leakDetectorUsage,
                     sessionReviewUsage
             );
         }

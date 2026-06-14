@@ -1,6 +1,8 @@
 package com.tradepilot.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradepilot.billing.AiCreditLimitExceededException;
+import com.tradepilot.billing.FeatureAccessException;
 import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.billing.UsageType;
 import com.tradepilot.dto.ai.AiTradeReviewJobResponse;
@@ -101,6 +103,11 @@ public class AiTradeReviewService {
             return aiResponse;
 
         } catch (Exception e) {
+            if (e instanceof RuntimeException runtimeException
+                    && (runtimeException instanceof FeatureAccessException
+                    || runtimeException instanceof AiCreditLimitExceededException)) {
+                throw runtimeException;
+            }
             long elapsedMs = Duration.between(start, Instant.now()).toMillis();
 
             log.error("AI trade review failed. tradeId={}, elapsedMs={}", tradeId, elapsedMs, e);

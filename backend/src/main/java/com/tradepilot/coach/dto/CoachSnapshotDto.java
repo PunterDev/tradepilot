@@ -2,6 +2,7 @@ package com.tradepilot.coach.dto;
 
 import com.tradepilot.coach.entity.CoachSnapshotStatus;
 import com.tradepilot.coach.entity.CoachSnapshotType;
+import com.tradepilot.leakdetector.dto.LeakResultDto;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -46,6 +47,8 @@ public class CoachSnapshotDto {
     private String aiResponseJson;
 
     private String errorMessage;
+
+    private LeakResultDto topLeakToWatch;
 
     private LocalDateTime createdAt;
 

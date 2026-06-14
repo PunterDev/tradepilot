@@ -36,8 +36,8 @@ export function CoachDashboard({ selectedAccountId, usage, onUsageChanged }: Pro
 
   const daily = useDailyCoach(accountId, dailyDate);
   const weekly = useWeeklyCoach(accountId, weeklyStartDate);
-  const dailyRemaining = usage?.remaining.DAILY_COACH ?? 1;
-  const weeklyRemaining = usage?.remaining.WEEKLY_COACH ?? 1;
+  const dailyRemaining = usage?.remaining.AI_CREDITS ?? 1;
+  const weeklyRemaining = usage?.remaining.AI_CREDITS ?? 1;
 
   if (allAccountsSelected) {
     return (

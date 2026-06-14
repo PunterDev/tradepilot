@@ -1,3 +1,5 @@
+import type { LeakResult } from "./leakDetectorTypes";
+
 export type CoachSnapshotType = "DAILY" | "WEEKLY";
 export type CoachSnapshotStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
 
@@ -23,6 +25,7 @@ export type CoachSnapshot = {
   deterministicSummaryJson?: string;
   aiResponseJson?: string;
   errorMessage?: string;
+  topLeakToWatch?: LeakResult;
 
   createdAt: string;
   updatedAt: string;

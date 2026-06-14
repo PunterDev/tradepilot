@@ -5,6 +5,7 @@ export type NavItem = {
   label: string;
   to: string;
   devOnly?: boolean;
+  locked?: boolean;
 };
 
 type Props = {
@@ -26,7 +27,8 @@ export default function SidebarNav({ items }: Props) {
             to={item.to}
             style={({ isActive }) => navLink(isActive)}
           >
-            {item.label}
+            <span style={navLabel}>{item.label}</span>
+            {item.locked && <span style={proBadge}>PRO</span>}
           </NavLink>
         ))}
       </nav>
@@ -72,9 +74,12 @@ const navList: CSSProperties = {
 
 function navLink(active: boolean): CSSProperties {
   return {
-    display: "block",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
     padding: "12px 13px",
-    borderRadius: 12,
+    borderRadius: 8,
     color: active ? "#f8fafc" : "#94a3b8",
     textDecoration: "none",
     fontWeight: 850,
@@ -82,3 +87,22 @@ function navLink(active: boolean): CSSProperties {
     border: active ? "1px solid rgba(56,189,248,0.28)" : "1px solid transparent",
   };
 }
+
+const navLabel: CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const proBadge: CSSProperties = {
+  flex: "0 0 auto",
+  padding: "2px 5px",
+  borderRadius: 5,
+  border: "1px solid rgba(148,163,184,0.18)",
+  background: "rgba(15,23,42,0.58)",
+  color: "#6ee7b7",
+  fontSize: 8,
+  fontWeight: 950,
+  letterSpacing: "0.03em",
+};

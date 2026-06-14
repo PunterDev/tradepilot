@@ -5,6 +5,7 @@ import { button, heroPill } from "../styles/dashboardStyles";
 import MobileNav from "./MobileNav";
 import SidebarNav, { type NavItem } from "./SidebarNav";
 import { UserPill } from "./PageHeader";
+import { hasFeature } from "../utils/featureAccess";
 
 type Props = {
   user: AuthUser;
@@ -19,14 +20,23 @@ const baseNav: NavItem[] = [
   { label: "Analytics", to: "/analytics" },
   { label: "Calendar", to: "/calendar" },
   { label: "Session", to: "/session-review" },
-  { label: "DNA", to: "/trading-dna" },
+  { label: "Trading DNA", to: "/trading-dna" },
+  { label: "Leak Detector", to: "/leak-detector" },
   { label: "Coach", to: "/coach" },
   { label: "Billing", to: "/billing" },
 ];
 
 export default function AppShell({ user, accountCount, usage, onLogout, children }: Props) {
+  const userNav = baseNav.map((item) => {
+    if (item.to === "/analytics") return { ...item, locked: !hasFeature("ADVANCED_ANALYTICS", user, usage) };
+    if (item.to === "/session-review") return { ...item, locked: !hasFeature("SESSION_REVIEW", user, usage) };
+    if (item.to === "/trading-dna") return { ...item, locked: !hasFeature("TRADING_DNA", user, usage) };
+    if (item.to === "/leak-detector") return { ...item, locked: !hasFeature("AI_LEAK_DETECTOR", user, usage) };
+    if (item.to === "/coach") return { ...item, locked: !hasFeature("DAILY_COACH", user, usage) };
+    return item;
+  });
   const adminBaseNav: NavItem[] = accountCount > 0
-    ? [...baseNav, { label: "Admin", to: "/admin" }, { label: "Users", to: "/admin/users" }, { label: "Contact Messages", to: "/admin/contact-messages" }, { label: "Feature Usage", to: "/admin/feature-usage" }, { label: "Retention Analytics", to: "/admin/retention" }, { label: "Observability", to: "/admin/observability" }]
+    ? [...userNav, { label: "Admin", to: "/admin" }, { label: "Users", to: "/admin/users" }, { label: "Contact Messages", to: "/admin/contact-messages" }, { label: "Feature Usage", to: "/admin/feature-usage" }, { label: "Retention Analytics", to: "/admin/retention" }, { label: "Observability", to: "/admin/observability" }]
     : [
         { label: "Admin", to: "/admin" },
         { label: "Users", to: "/admin/users" },
@@ -39,12 +49,12 @@ export default function AppShell({ user, accountCount, usage, onLogout, children
 
   const navItems = import.meta.env.DEV
     ? [
-        ...(user.role === "ADMIN" ? adminBaseNav : baseNav),
+        ...(user.role === "ADMIN" ? adminBaseNav : userNav),
         { label: "Dev Tools", to: "/dev-tools", devOnly: true },
       ]
     : user.role === "ADMIN"
       ? adminBaseNav
-      : baseNav;
+      : userNav;
   return (
     <div className="tradepilot-shell" style={shell}>
       <style>

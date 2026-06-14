@@ -28,6 +28,7 @@ import ForgotPasswordPage from "./components/ForgotPasswordPage";
 import ResetPasswordPage from "./components/ResetPasswordPage";
 import TradeDetailModal from "./components/TradeDetailModal";
 import VerifyEmailPage from "./components/VerifyEmailPage";
+import LockedFeaturePage, { type LockedFeaturePreview } from "./components/LockedFeaturePage";
 import { useDashboardData } from "./hooks/useDashboardData";
 import { useBillingUsage } from "./hooks/useBillingUsage";
 import type { SelectedAccountId } from "./types/dashboard";
@@ -47,6 +48,7 @@ import {
   parseStoredSelectedAccount,
   persistSelectedAccount,
 } from "./utils/accountSelection";
+import { creditsRemaining, hasFeature, type Feature } from "./utils/featureAccess";
 
 const AdminContactMessagesPage = lazy(() => import("./features/admin/AdminContactMessagesPage"));
 const AdminDashboardPage = lazy(() => import("./features/admin/AdminDashboardPage"));
@@ -60,12 +62,180 @@ const CalendarPage = lazy(() => import("./features/calendar/CalendarPage"));
 const CoachPage = lazy(() => import("./features/coach/CoachPage"));
 const DashboardHome = lazy(() => import("./features/dashboard/DashboardHome"));
 const DevToolsPage = lazy(() => import("./features/dev-tools/DevToolsPage"));
+const LeakDetectorPage = lazy(() => import("./features/leak-detector/LeakDetectorPage"));
 const HomePage = lazy(() => import("./features/marketing/HomePage"));
 const ContactPage = lazy(() => import("./features/marketing/ContactPage"));
 const PrivacyPage = lazy(() => import("./features/marketing/PrivacyPage"));
 const TermsPage = lazy(() => import("./features/marketing/TermsPage"));
 const SessionReviewPage = lazy(() => import("./features/session-review/SessionReviewPage"));
 const TradingDnaPage = lazy(() => import("./features/trading-dna/TradingDnaPage"));
+
+type LockedFeatureContent = {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  features: LockedFeaturePreview[];
+  ctaTitle: string;
+  ctaText: string;
+};
+
+const lockedFeatureContent: Record<"ADVANCED_ANALYTICS" | "SESSION_REVIEW" | "TRADING_DNA" | "AI_LEAK_DETECTOR" | "DAILY_COACH", LockedFeatureContent> = {
+  ADVANCED_ANALYTICS: {
+    eyebrow: "Advanced Analytics",
+    title: "Unlock the data behind your best trades.",
+    subtitle:
+      "Discover your highest-performing setups, avoid costly habits, and get AI-powered insights that help you improve faster.",
+    features: [
+      {
+        title: "Session Heatmap",
+        icon: "◷",
+        description: "Discover which times of day produce your best trades.",
+      },
+      {
+        title: "Setup Performance",
+        icon: "R",
+        description: "Measure win rate, expectancy, and average R by strategy.",
+      },
+      {
+        title: "Behavioral Insights",
+        icon: "!",
+        description: "Detect revenge trading, hesitation, overtrading, and broken rules.",
+      },
+      {
+        title: "Friday / OPEX Analysis",
+        icon: "F",
+        description: "Identify difficult market conditions and avoid low-probability trades.",
+      },
+    ],
+    ctaTitle: "Your journal records trades. TradePilot Pro turns them into improvement.",
+    ctaText:
+      "Pro includes Advanced Analytics, Daily Coach, Weekly Coach, Trading DNA, Session Review, and 100 AI credits/month.",
+  },
+  SESSION_REVIEW: {
+    eyebrow: "Session Review",
+    title: "Unlock the data behind your best trades.",
+    subtitle:
+      "Discover your highest-performing setups, avoid costly habits, and get AI-powered insights that help you improve faster.",
+    features: [
+      {
+        title: "AI Coach Notes",
+        icon: "AI",
+        description: "Get a concise read on what drove the session and where discipline slipped.",
+      },
+      {
+        title: "Rule for Tomorrow",
+        icon: "→",
+        description: "Leave every session with one practical guardrail for the next trading day.",
+      },
+      {
+        title: "Mistake Patterns",
+        icon: "!",
+        description: "Spot repeated errors across entries, exits, timing, and risk decisions.",
+      },
+      {
+        title: "Replay Insights",
+        icon: "↺",
+        description: "Review best and worst moments without digging through raw trades.",
+      },
+    ],
+    ctaTitle: "Your journal records trades. TradePilot Pro turns them into improvement.",
+    ctaText:
+      "Pro adds Session Review, Daily Coach, Weekly Coach, Trading DNA, Advanced Analytics, and 100 AI credits/month.",
+  },
+  TRADING_DNA: {
+    eyebrow: "Trading DNA",
+    title: "Unlock the data behind your best trades.",
+    subtitle:
+      "Discover your highest-performing setups, avoid costly habits, and get AI-powered insights that help you improve faster.",
+    features: [
+      {
+        title: "Strength Profile",
+        icon: "S",
+        description: "Identify which setups, sessions, and conditions consistently suit you.",
+      },
+      {
+        title: "Risk Fingerprint",
+        icon: "R",
+        description: "Understand how sizing, timing, and drawdown behavior affect outcomes.",
+      },
+      {
+        title: "Emotion Signals",
+        icon: "E",
+        description: "Use journal metadata to connect confidence and emotion to performance.",
+      },
+      {
+        title: "Action Plan",
+        icon: "✓",
+        description: "Convert your data into focused adjustments for the next review cycle.",
+      },
+    ],
+    ctaTitle: "Your journal records trades. TradePilot Pro turns them into improvement.",
+    ctaText:
+      "Pro unlocks Trading DNA plus coaching, Session Review, Advanced Analytics, and 100 AI credits/month.",
+  },
+  AI_LEAK_DETECTOR: {
+    eyebrow: "AI Leak Detector",
+    title: "Unlock the data behind your best trades.",
+    subtitle:
+      "Find the costly habits, weak time windows, and behavior patterns quietly draining your trading account.",
+    features: [
+      {
+        title: "PnL Leak Impact",
+        icon: "R",
+        description: "See total R, average R, and estimated monthly impact for each leak.",
+      },
+      {
+        title: "Confidence Scores",
+        icon: "%",
+        description: "Separate strong signals from patterns that still need more sample size.",
+      },
+      {
+        title: "Behavioral Fixes",
+        icon: "✓",
+        description: "Turn detected leaks into direct rules for your next session.",
+      },
+      {
+        title: "Related Trades",
+        icon: "↗",
+        description: "Jump back to the trades behind each leak and review the context.",
+      },
+    ],
+    ctaTitle: "Your journal records trades. TradePilot Pro turns them into improvement.",
+    ctaText:
+      "Pro unlocks AI Leak Detector, Trading DNA, Daily Coach, Weekly Coach, Session Review, Advanced Analytics, and 100 AI credits/month.",
+  },
+  DAILY_COACH: {
+    eyebrow: "AI Coach",
+    title: "Unlock the data behind your best trades.",
+    subtitle:
+      "Discover your highest-performing setups, avoid costly habits, and get AI-powered insights that help you improve faster.",
+    features: [
+      {
+        title: "Daily Coach",
+        icon: "D",
+        description: "Summarize the day, surface discipline issues, and capture what to repeat.",
+      },
+      {
+        title: "Weekly Coach",
+        icon: "W",
+        description: "Review your week by behavior, setup quality, risk, and process consistency.",
+      },
+      {
+        title: "Priority AI Credits",
+        icon: "AI",
+        description: "Use 100 monthly AI credits across reviews, coaching, DNA, and sessions.",
+      },
+      {
+        title: "Progress Memory",
+        icon: "↗",
+        description: "Build a coaching trail that shows how your trading habits are changing.",
+      },
+    ],
+    ctaTitle: "Your journal records trades. TradePilot Pro turns them into improvement.",
+    ctaText:
+      "Pro includes Daily Coach, Weekly Coach, Trading DNA, Session Review, Advanced Analytics, and 100 AI credits/month.",
+  },
+};
 
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 30;
 const DEFAULT_IDLE_WARNING_MINUTES = 2;
@@ -86,6 +256,7 @@ type DashboardAppProps = {
 
 function DashboardApp({ user, onLogout }: DashboardAppProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const isAdmin = user.role === "ADMIN";
   const [accounts, setAccounts] = useState<TradingAccount[]>([]);
   const [selectedAccountId, setSelectedAccountIdState] = useState<SelectedAccountId>(() =>
@@ -110,6 +281,20 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const billing = useBillingUsage(true);
   const billingResult = new URLSearchParams(location.search).get("billing");
+  const canAccess = (feature: Feature) => hasFeature(feature, user, billing.usage);
+
+  function renderLockedFeature(feature: keyof typeof lockedFeatureContent) {
+    const content = lockedFeatureContent[feature];
+    return (
+      <LockedFeaturePage
+        {...content}
+        creditsRemaining={billing.usage ? creditsRemaining(billing.usage) : undefined}
+        creditsLimit={billing.usage?.limits?.AI_CREDITS ?? 10}
+        resetDate={billing.usage?.resetDate}
+        onUpgrade={() => navigate("/billing")}
+      />
+    );
+  }
 
   function setSelectedAccountId(next: SelectedAccountId | ((current: SelectedAccountId) => SelectedAccountId)) {
     setSelectedAccountIdState((current) => {
@@ -478,12 +663,16 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
         <Route
           path="/analytics"
           element={
-            <AnalyticsPage
-              dailyPnl={dailyPnl}
-              trades={trades}
-              dashboardStats={dashboardStats}
-              onTradeSelect={setSelectedTradeId}
-            />
+            canAccess("ADVANCED_ANALYTICS") ? (
+              <AnalyticsPage
+                dailyPnl={dailyPnl}
+                trades={trades}
+                dashboardStats={dashboardStats}
+                onTradeSelect={setSelectedTradeId}
+              />
+            ) : (
+              renderLockedFeature("ADVANCED_ANALYTICS")
+            )
           }
         />
         <Route
@@ -517,12 +706,16 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
         <Route
           path="/session-review"
           element={
-            <SessionReviewPage
-              accounts={accounts}
-              selectedAccountId={selectedAccountId}
-              trades={trades}
-              onTradeSelect={setSelectedTradeId}
-            />
+            canAccess("SESSION_REVIEW") ? (
+              <SessionReviewPage
+                accounts={accounts}
+                selectedAccountId={selectedAccountId}
+                trades={trades}
+                onTradeSelect={setSelectedTradeId}
+              />
+            ) : (
+              renderLockedFeature("SESSION_REVIEW")
+            )
           }
         />
         <Route
@@ -532,24 +725,49 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
         <Route
           path="/trading-dna"
           element={
-            <TradingDnaPage
-              selectedAccountId={validatedSelectedAccountId}
-              accounts={accounts}
-              accountsLoading={loadingAccounts}
-              onInvalidAccount={recoverInvalidSelectedAccount}
-              usage={billing.usage}
-              onUsageChanged={billing.reload}
-            />
+            canAccess("TRADING_DNA") ? (
+              <TradingDnaPage
+                selectedAccountId={validatedSelectedAccountId}
+                accounts={accounts}
+                accountsLoading={loadingAccounts}
+                onInvalidAccount={recoverInvalidSelectedAccount}
+                usage={billing.usage}
+                onUsageChanged={billing.reload}
+              />
+            ) : (
+              renderLockedFeature("TRADING_DNA")
+            )
+          }
+        />
+        <Route
+          path="/leak-detector"
+          element={
+            canAccess("AI_LEAK_DETECTOR") ? (
+              <LeakDetectorPage
+                accounts={accounts}
+                selectedAccountId={selectedAccountId}
+                usage={billing.usage}
+                onSelectAccount={setSelectedAccountId}
+                onUsageChanged={billing.reload}
+                onTradeSelect={setSelectedTradeId}
+              />
+            ) : (
+              renderLockedFeature("AI_LEAK_DETECTOR")
+            )
           }
         />
         <Route
           path="/coach"
           element={
-            <CoachPage
-              selectedAccountId={selectedAccountId}
-              usage={billing.usage}
-              onUsageChanged={billing.reload}
-            />
+            canAccess("DAILY_COACH") ? (
+              <CoachPage
+                selectedAccountId={selectedAccountId}
+                usage={billing.usage}
+                onUsageChanged={billing.reload}
+              />
+            ) : (
+              renderLockedFeature("DAILY_COACH")
+            )
           }
         />
         <Route

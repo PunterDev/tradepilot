@@ -5,6 +5,8 @@ import com.tradepilot.analytics.dto.CalendarSummaryDto;
 import com.tradepilot.analytics.dto.FridayOpexAnalyticsResponse;
 import com.tradepilot.analytics.dto.HeatmapCellDto;
 import com.tradepilot.analytics.dto.SessionPerformanceDto;
+import com.tradepilot.billing.Feature;
+import com.tradepilot.billing.FeatureAccessService;
 import com.tradepilot.entity.User;
 import com.tradepilot.featureusage.FeatureKey;
 import com.tradepilot.featureusage.FeatureUsageService;
@@ -21,12 +23,14 @@ public class TradeAnalyticsController {
 
     private final TradeAnalyticsService tradeAnalyticsService;
     private final FeatureUsageService featureUsageService;
+    private final FeatureAccessService featureAccessService;
 
     @GetMapping("/friday-opex")
     public FridayOpexAnalyticsResponse fridayOpex(
             @AuthenticationPrincipal User user,
             @RequestParam(required = false) Long accountId
     ) {
+        featureAccessService.requireFeature(user, Feature.ADVANCED_ANALYTICS);
         FridayOpexAnalyticsResponse response = tradeAnalyticsService.getFridayOpexAnalytics(user, accountId);
         featureUsageService.track(user, FeatureKey.ANALYTICS_VIEW);
         return response;
@@ -37,6 +41,7 @@ public class TradeAnalyticsController {
             @AuthenticationPrincipal User user,
             @RequestParam(required = false) Long accountId
     ) {
+        featureAccessService.requireFeature(user, Feature.ADVANCED_ANALYTICS);
         List<SessionPerformanceDto> response = tradeAnalyticsService.getSessionPerformance(user, accountId);
         featureUsageService.track(user, FeatureKey.ANALYTICS_VIEW);
         return response;
@@ -47,6 +52,7 @@ public class TradeAnalyticsController {
             @AuthenticationPrincipal User user,
             @RequestParam(required = false) Long accountId
     ) {
+        featureAccessService.requireFeature(user, Feature.ADVANCED_ANALYTICS);
         List<HeatmapCellDto> response = tradeAnalyticsService.getHeatmap(user, accountId);
         featureUsageService.track(user, FeatureKey.ANALYTICS_VIEW);
         return response;
@@ -57,6 +63,7 @@ public class TradeAnalyticsController {
             @AuthenticationPrincipal User user,
             @RequestParam(required = false) Long accountId
     ) {
+        featureAccessService.requireFeature(user, Feature.PNL_CALENDAR);
         List<CalendarSummaryDto> response = tradeAnalyticsService.getCalendarSummary(user, accountId);
         featureUsageService.track(user, FeatureKey.CALENDAR_VIEW);
         return response;
@@ -67,6 +74,7 @@ public class TradeAnalyticsController {
             @AuthenticationPrincipal User user,
             @RequestParam(required = false) Long accountId
     ) {
+        featureAccessService.requireFeature(user, Feature.ADVANCED_ANALYTICS);
         List<BehavioralInsightDto> response = tradeAnalyticsService.getBehavioralInsights(user, accountId);
         featureUsageService.track(user, FeatureKey.ANALYTICS_VIEW);
         return response;

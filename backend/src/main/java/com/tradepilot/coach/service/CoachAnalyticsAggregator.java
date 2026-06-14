@@ -109,27 +109,27 @@ public class CoachAnalyticsAggregator {
                 disciplineAvg
         );
 
-        return CoachDeterministicSummary.builder()
-                .totalTrades(totalTrades)
-                .netPnl(netPnl)
-                .winRate(winRate)
-                .profitFactor(profitFactor)
-                .bestSetup(bestSetup)
-                .worstSetup(worstSetup)
-                .bestSession(bestSession)
-                .worstSession(worstSession)
-                .biggestMistake(biggestMistake)
-                .setupAnalysis(analysisByPnl("Setup Analysis", trades, this::getSetup))
-                .emotionAnalysis(analysisByPnl("Emotion Analysis", trades, Trade::getEmotion))
-                .confidenceAnalysis(analysisByPnl("Confidence Analysis", trades, t -> t.getConfidence() == null ? null : String.valueOf(t.getConfidence())))
-                .journalMetadataExamples(journalMetadataExamples(trades))
-                .executionScoreAverage(executionAvg)
-                .riskScoreAverage(riskAvg)
-                .disciplineScoreAverage(disciplineAvg)
-                .repeatedMistakes(repeatedMistakes)
-                .strengths(strengths)
-                .warnings(warnings)
-                .build();
+        return CoachDeterministicSummary.of(
+                totalTrades,
+                netPnl,
+                winRate,
+                profitFactor,
+                bestSetup,
+                worstSetup,
+                bestSession,
+                worstSession,
+                biggestMistake,
+                analysisByPnl("Setup Analysis", trades, this::getSetup),
+                analysisByPnl("Emotion Analysis", trades, Trade::getEmotion),
+                analysisByPnl("Confidence Analysis", trades, t -> t.getConfidence() == null ? null : String.valueOf(t.getConfidence())),
+                journalMetadataExamples(trades),
+                executionAvg,
+                riskAvg,
+                disciplineAvg,
+                repeatedMistakes,
+                strengths,
+                warnings
+        );
     }
 
     private CoachDeterministicSummary emptySummary(CoachSnapshotType type) {
@@ -137,27 +137,7 @@ public class CoachAnalyticsAggregator {
                 ? "Import trades first to generate a meaningful daily coach."
                 : "Import more trades to generate a meaningful weekly coach.";
 
-        return CoachDeterministicSummary.builder()
-                .totalTrades(0)
-                .netPnl(BigDecimal.ZERO)
-                .winRate(BigDecimal.ZERO)
-                .profitFactor(BigDecimal.ZERO)
-                .bestSetup("Not enough data")
-                .worstSetup("Not enough data")
-                .bestSession("Not enough data")
-                .worstSession("Not enough data")
-                .biggestMistake("Not enough data")
-                .setupAnalysis("No setup metadata available yet.")
-                .emotionAnalysis("No emotion metadata available yet.")
-                .confidenceAnalysis("No confidence metadata available yet.")
-                .journalMetadataExamples(List.of())
-                .executionScoreAverage(BigDecimal.ZERO)
-                .riskScoreAverage(BigDecimal.ZERO)
-                .disciplineScoreAverage(BigDecimal.ZERO)
-                .repeatedMistakes(List.of())
-                .strengths(List.of())
-                .warnings(List.of(warning))
-                .build();
+        return CoachDeterministicSummary.empty(warning);
     }
 
     private String bestByPnl(List<Trade> trades, Function<Trade, String> classifier) {

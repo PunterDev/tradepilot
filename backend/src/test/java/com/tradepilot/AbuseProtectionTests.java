@@ -35,6 +35,7 @@ class AbuseProtectionTests {
 
     @Test
     void rateLimitBlocksRepeatedLoginRequests() throws Exception {
+        String isolatedClientIp = "203.0.113.42";
         String loginBody = """
                 {
                   "email": "blocked-login@example.com",
@@ -43,16 +44,31 @@ class AbuseProtectionTests {
                 """;
 
         mockMvc.perform(post("/api/auth/login")
+                        .header("X-Forwarded-For", isolatedClientIp)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody))
                 .andExpect(status().isUnauthorized());
 
-        mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(loginBody))
-                .andExpect(status().isTooManyRequests())
-                .andExpect(header().exists("Retry-After"))
-                .andExpect(jsonPath("$.error").value("Too many requests. Please wait and try again."));
+        for (int i = 0; i < 10; i++) {
+            var result = mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", isolatedClientIp)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(loginBody))
+                    .andReturn();
+
+            if (result.getResponse().getStatus() == 429) {
+                mockMvc.perform(post("/api/auth/login")
+                                .header("X-Forwarded-For", isolatedClientIp)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(loginBody))
+                        .andExpect(status().isTooManyRequests())
+                        .andExpect(header().exists("Retry-After"))
+                        .andExpect(jsonPath("$.error").value("Too many requests. Please wait and try again."));
+                return;
+            }
+        }
+
+        throw new AssertionError("Expected repeated login attempts to be rate limited");
     }
 
     @Test

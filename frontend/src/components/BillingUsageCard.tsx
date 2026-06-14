@@ -10,15 +10,18 @@ type Props = {
 };
 
 const usageRows = [
+  ["AI_CREDITS", "Monthly AI Credits"],
   ["AI_TRADE_REVIEW", "AI Reviews"],
   ["DAILY_COACH", "Daily Coach"],
   ["WEEKLY_COACH", "Weekly Coach"],
   ["TRADING_DNA", "Trading DNA"],
+  ["AI_LEAK_DETECTOR", "AI Leak Detector"],
+  ["SESSION_REVIEW", "Session Review"],
   ["TRADING_ACCOUNTS", "Trading Accounts"],
   ["IMPORTED_TRADES", "Imported Trades"],
 ] as const;
 
-const visibleRows = usageRows.slice(0, 4);
+const visibleRows = usageRows.slice(0, 1);
 
 export default function BillingUsageCard({ usage, loading, error }: Props) {
   const [billingActionLoading, setBillingActionLoading] = useState(false);
@@ -121,7 +124,7 @@ export default function BillingUsageCard({ usage, loading, error }: Props) {
       </div>
 
       <p style={{ ...mutedText, maxWidth: 780, lineHeight: 1.6, marginTop: 12 }}>
-        Monthly AI credits are tracked below.
+        Monthly AI credits are tracked below. AI Trade Review costs 1 credit, Session Review and Daily Coach cost 2, Trading DNA costs 3, and Weekly Coach costs 4.
         <span className="billing-tooltip" style={tooltipWrap} tabIndex={0}>
           Usage rules
           <span className="billing-tooltip-bubble" style={tooltipBubble}>

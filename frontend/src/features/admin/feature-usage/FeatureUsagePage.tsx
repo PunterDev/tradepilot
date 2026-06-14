@@ -26,6 +26,7 @@ const featureLabels: Record<FeatureKey, string> = {
   DAILY_COACH: "Daily Coach",
   WEEKLY_COACH: "Weekly Coach",
   TRADING_DNA: "Trading DNA",
+  AI_LEAK_DETECTOR: "AI Leak Detector",
   SESSION_REVIEW: "Session Review",
   TRADE_DETAIL: "Trade Detail",
   CALENDAR_VIEW: "PnL Calendar",
