@@ -22,8 +22,14 @@ export function MarketingNavbar() {
     <nav className="marketing-nav">
       <div className="marketing-container marketing-nav-inner">
         <Link className="marketing-logo" to="/">
-          <span className="marketing-logo-mark">TP</span>
-          <span>TradePilot</span>
+          <span className="marketing-navbar-logo">
+            <img
+              src="/assets/tradepilot-logo-navbar.png"
+              alt="TradePilot"
+              width={1460}
+              height={430}
+            />
+          </span>
         </Link>
         <div className="marketing-nav-links">
           <a href="/#features">Features</a>
