@@ -1,3 +1,4 @@
+import Seo from "../../components/Seo";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
 import { PolicyContent } from "./PrivacyPage";
@@ -44,6 +45,11 @@ const sections = [
 export default function TermsPage() {
   return (
     <MarketingShell>
+      <Seo
+        title="TradePilot Terms of Service | AI Trading Journal"
+        description="Review the TradePilot terms for using AI trading analytics, subscriptions, journaling tools, and futures trading performance software."
+        path="/terms"
+      />
       <section className="policy-hero">
         <div className="marketing-container">
           <div className="marketing-eyebrow">Terms of Service</div>

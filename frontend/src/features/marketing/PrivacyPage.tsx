@@ -1,3 +1,4 @@
+import Seo from "../../components/Seo";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
 
@@ -39,6 +40,11 @@ const sections = [
 export default function PrivacyPage() {
   return (
     <MarketingShell>
+      <Seo
+        title="TradePilot Privacy Policy | AI Trading Journal Data Privacy"
+        description="Learn how TradePilot handles account data, imported trade records, AI processing, payments, and privacy for futures traders."
+        path="/privacy"
+      />
       <PolicyHero
         eyebrow="Privacy Policy"
         title="Privacy Policy"

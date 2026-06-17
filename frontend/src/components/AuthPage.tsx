@@ -22,6 +22,7 @@ import {
   authPageStyle,
   authPanelStyle,
 } from "./authStyles";
+import Seo from "./Seo";
 
 type AuthMode = "login" | "register";
 
@@ -69,6 +70,13 @@ export default function AuthPage({ onAuthenticated, initialMode = "login", sessi
   }, [initialMessage]);
 
   const isRegister = mode === "register";
+  const seoPath = location.pathname === "/register" || isRegister ? "/register" : "/login";
+  const seoTitle = isRegister
+    ? "Create a TradePilot Account | AI Trading Journal for Futures Traders"
+    : "Login to TradePilot | AI Trading Journal and Futures Analytics";
+  const seoDescription = isRegister
+    ? "Create your TradePilot account to import trades, track performance, and use AI coaching for futures trading improvement."
+    : "Log in to TradePilot to access your AI trading journal, futures analytics dashboard, coaching insights, and performance reports.";
   const copy = useMemo(
     () =>
       isRegister
@@ -148,6 +156,7 @@ export default function AuthPage({ onAuthenticated, initialMode = "login", sessi
 
   return (
     <main style={authPageStyle}>
+      <Seo title={seoTitle} description={seoDescription} path={seoPath} />
       <AuthIntro />
 
       <section style={authFormShellStyle}>

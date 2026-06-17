@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import axios from "axios";
 import { sendContactMessage } from "../../api/contactApi";
+import Seo from "../../components/Seo";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
 
@@ -66,6 +67,11 @@ export default function ContactPage() {
 
   return (
     <MarketingShell>
+      <Seo
+        title="Contact TradePilot | AI Trading Journal Support"
+        description="Contact TradePilot for questions about AI trading journals, futures analytics, CSV imports, billing, and trader coaching workflows."
+        path="/contact"
+      />
       <section className="policy-hero contact-hero">
         <div className="marketing-container">
           <div className="marketing-eyebrow">Contact Us</div>

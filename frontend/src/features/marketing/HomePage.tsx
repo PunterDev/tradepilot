@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import Seo from "../../components/Seo";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
 
@@ -79,11 +80,29 @@ export default function HomePage() {
 
   return (
     <MarketingShell>
+      <Seo
+        title="TradePilot AI Trading Journal | Futures Trading Analytics & AI Coach"
+        description="AI-powered trading journal for futures traders. Analyze trades, find your best setups, track mistakes, and improve faster with personalized AI coaching."
+        structuredData={{
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "TradePilot",
+          applicationCategory: "FinanceApplication",
+          operatingSystem: "Web",
+          url: "https://www.tradepilotcoach.com",
+          description: "AI-powered trading journal and performance analytics software for futures traders.",
+          offers: {
+            "@type": "Offer",
+            price: "29.99",
+            priceCurrency: "USD",
+          },
+        }}
+      />
       <section className="marketing-hero">
         <div className="marketing-container marketing-hero-grid">
           <div>
             <div className="marketing-eyebrow">AI-powered performance coaching</div>
-            <h1 className="marketing-title">Stop wondering why you're losing money.</h1>
+            <h1 className="marketing-title">AI Trading Journal That Helps Futures Traders Improve Faster</h1>
             <p className="marketing-subtitle hero-lead">
               TradePilot finds the habits costing you thousands and gives you a plan to improve.
             </p>
