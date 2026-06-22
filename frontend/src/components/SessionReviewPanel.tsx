@@ -82,7 +82,7 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
         quantity: trade.quantity,
         pnl: trade.pnlAmount,
         setup: trade.setup,
-        outcome: toNumber(trade.pnlAmount) > 0 ? "WIN" : toNumber(trade.pnlAmount) < 0 ? "LOSS" : "BREAKEVEN",
+        outcome: timelineOutcome(toNumber(trade.pnlAmount)),
       })) ?? [];
   const hasTrades = timelineTrades.length > 0;
   const ruleForTomorrow = review?.aiSessionReview?.oneRuleForTomorrow || review?.worstTradeWhy || "Review the timeline, then define one rule before the next session.";
@@ -148,7 +148,7 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
                   </section>
 
                   <div style={twoCol}>
-                    <TradeSpotlight title="Best Trade" trade={review.bestTrade} why={review.bestTradeWhy} emptyLabel="No winning trade" positive />
+                    <TradeSpotlight title="Best Trade" trade={review.bestTrade} why={review.bestTradeWhy} emptyLabel="No meaningful winner" positive />
                     <TradeSpotlight title="Worst Trade" trade={review.worstTrade} why={review.worstTradeWhy} emptyLabel="No losing trade" />
                   </div>
 
@@ -178,7 +178,7 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
                     <div style={insightGrid}>
                       <Insight label="First Trade" value={tradeLabel(review.replayInsights?.firstTrade)} />
                       <Insight label="Last Trade" value={tradeLabel(review.replayInsights?.lastTrade)} />
-                      <Insight label="Largest Winner" value={tradeLabel(review.replayInsights?.largestWinner, "No winning trade")} />
+                      <Insight label="Largest Winner" value={tradeLabel(review.replayInsights?.largestWinner, "No meaningful winner")} />
                       <Insight label="Largest Loser" value={tradeLabel(review.replayInsights?.largestLoser, "No losing trade")} />
                       <Insight label="Longest Hold" value={holdLabel(review.replayInsights?.longestHold, review.replayInsights?.longestHoldMinutes)} />
                       <Insight label="Shortest Hold" value={holdLabel(review.replayInsights?.shortestHold, review.replayInsights?.shortestHoldMinutes)} />
@@ -288,6 +288,10 @@ function EmptyFilm() {
 
 function today() { return new Date().toISOString().slice(0, 10); }
 function toNumber(value: number | string | null | undefined) { const parsed = Number(value ?? 0); return Number.isFinite(parsed) ? parsed : 0; }
+function timelineOutcome(pnl: number) {
+  if (Math.abs(pnl) <= 5) return "BREAKEVEN";
+  return pnl > 0 ? "WIN" : "LOSS";
+}
 function humanize(value?: string | null) { return value ? value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (m) => m.toUpperCase()) : "Untagged"; }
 function formatTime(value?: string) { if (!value) return "-"; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
 function tradeLabel(trade?: SessionTimelineTrade | null, fallback = "-") { return trade ? `${trade.symbol} ${formatCurrency(toNumber(trade.pnl))}` : fallback; }

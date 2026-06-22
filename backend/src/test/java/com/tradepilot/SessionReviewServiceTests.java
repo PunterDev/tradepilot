@@ -80,20 +80,72 @@ class SessionReviewServiceTests {
     }
 
     @Test
-    void oneBreakevenTradeCanBeBestButIsNotCalledAWinner() {
+    void oneBreakevenTradeHasNoMeaningfulWinner() {
         Fixture fixture = fixture("one-breakeven");
         trade(fixture, "ESM6", "LONG", "0.00", 11);
 
         SessionReviewResponse review = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), SESSION_DATE);
 
-        assertTrade(review.getBestTrade(), "ESM6", "0.00");
+        assertThat(review.getBestTrade()).isNull();
         assertThat(review.getWorstTrade()).isNull();
-        assertThat(review.getBestTradeWhy()).contains("No profitable trade was found");
-        assertThat(review.getSessionStory()).contains("No trade finished profitably");
-        assertThat(review.getSessionStory()).doesNotContain("strongest winner");
-        assertThat(review.getReplayInsights().getBestTradingHour()).isEqualTo(11);
-        assertThat(review.getReplayInsights().getBestTradingHourPnl()).isEqualByComparingTo("0.00");
+        assertThat(review.getBestTradeWhy()).contains("No meaningful winning trade was found");
+        assertThat(review.getSessionStory()).contains("There was no meaningful winning trade");
+        assertThat(review.getSessionStory()).doesNotContain("strongest trade");
+        assertThat(review.getReplayInsights().getLargestWinner()).isNull();
+        assertThat(review.getReplayInsights().getBestTradingHour()).isNull();
+        assertThat(review.getReplayInsights().getBestTradingHourPnl()).isNull();
         assertThat(review.getReplayInsights().getWorstTradingHour()).isNull();
+    }
+
+    @Test
+    void scratchWinnerIsNotBestTradeOrLargestWinner() {
+        Fixture fixture = fixture("scratch-winner");
+        trade(fixture, "MESM6", "LONG", "1.25", 9);
+        trade(fixture, "MESM6", "SHORT", "-138.75", 10);
+        trade(fixture, "MNQM6", "LONG", "0.00", 11);
+
+        SessionReviewResponse review = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), SESSION_DATE);
+
+        assertThat(review.getBestTrade()).isNull();
+        assertTrade(review.getWorstTrade(), "MESM6", "-138.75");
+        assertThat(review.getLargestWinner()).isEqualByComparingTo("0.00");
+        assertThat(review.getReplayInsights().getLargestWinner()).isNull();
+        assertThat(review.getReplayInsights().getLargestLoser().getSymbol()).isEqualTo("MESM6");
+        assertThat(review.getSessionStory()).contains("essentially a scratch winner");
+        assertThat(review.getSessionStory()).contains("did not materially affect the session");
+        assertThat(review.getSessionStory()).doesNotContain("The strongest trade was MESM6 LONG for 1.25");
+        assertThat(review.getTimelineTrades())
+                .filteredOn(trade -> trade.getTradeId().equals(review.getTrades().get(0).getId()))
+                .first()
+                .extracting("outcome")
+                .isEqualTo(OutcomeType.BE);
+    }
+
+    @Test
+    void tradeBelowScratchThresholdIsNotMeaningfulWinner() {
+        Fixture fixture = fixture("below-threshold");
+        trade(fixture, "MESM6", "LONG", "4.99", 9);
+        trade(fixture, "MESM6", "SHORT", "-100.00", 10);
+
+        SessionReviewResponse review = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), SESSION_DATE);
+
+        assertThat(review.getBestTrade()).isNull();
+        assertThat(review.getReplayInsights().getLargestWinner()).isNull();
+        assertThat(review.getSessionStory()).contains("essentially a scratch winner");
+    }
+
+    @Test
+    void tradeAboveScratchThresholdIsMeaningfulBestTrade() {
+        Fixture fixture = fixture("above-threshold");
+        trade(fixture, "MESM6", "LONG", "75.00", 9);
+        trade(fixture, "MESM6", "SHORT", "-25.00", 10);
+
+        SessionReviewResponse review = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), SESSION_DATE);
+
+        assertTrade(review.getBestTrade(), "MESM6", "75.00");
+        assertThat(review.getReplayInsights().getLargestWinner()).isNotNull();
+        assertThat(review.getReplayInsights().getLargestWinner().getPnl()).isEqualByComparingTo("75.00");
+        assertThat(review.getSessionStory()).contains("The strongest trade was MESM6 LONG for 75.00");
     }
 
     @Test
@@ -126,7 +178,7 @@ class SessionReviewServiceTests {
 
         assertThat(review.getBestTrade()).isNull();
         assertTrade(review.getWorstTrade(), "MESM6", "-140.00");
-        assertThat(review.getSessionStory()).contains("There was no profitable trade in this session");
+        assertThat(review.getSessionStory()).contains("There was no meaningful winning trade in this session");
         assertThat(review.getReplayInsights().getBestTradingHour()).isNull();
         assertThat(review.getReplayInsights().getWorstTradingHour()).isEqualTo(14);
     }

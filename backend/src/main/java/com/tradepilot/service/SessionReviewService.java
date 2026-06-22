@@ -16,6 +16,7 @@ import com.tradepilot.entity.Trade;
 import com.tradepilot.entity.TradeRuleViolation;
 import com.tradepilot.entity.TradingAccount;
 import com.tradepilot.entity.User;
+import com.tradepilot.enums.OutcomeType;
 import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.repository.AiSessionReviewRepository;
 import com.tradepilot.repository.TradeRepository;
@@ -46,6 +47,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SessionReviewService {
     private static final Duration SESSION_REVIEW_TTL = Duration.ofSeconds(45);
+    private static final BigDecimal SCRATCH_TRADE_DOLLAR_THRESHOLD = new BigDecimal("5.00");
 
     private final TradingAccountService tradingAccountService;
     private final TradeService tradeService;
@@ -186,21 +188,21 @@ public class SessionReviewService {
         BigDecimal grossProfit = trades.stream().map(this::pnl).filter(value -> value.compareTo(BigDecimal.ZERO) > 0).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal grossLoss = trades.stream().map(this::pnl).filter(value -> value.compareTo(BigDecimal.ZERO) < 0).reduce(BigDecimal.ZERO, BigDecimal::add);
         long wins = trades.stream()
-                .filter(trade -> pnl(trade).compareTo(BigDecimal.ZERO) > 0)
+                .filter(trade -> isMeaningfulWinner(pnl(trade)))
                 .count();
         long losses = trades.stream()
-                .filter(trade -> pnl(trade).compareTo(BigDecimal.ZERO) < 0)
+                .filter(trade -> isMeaningfulLoser(pnl(trade)))
                 .count();
         long breakeven = trades.stream()
-                .filter(trade -> pnl(trade).compareTo(BigDecimal.ZERO) == 0)
+                .filter(trade -> isScratchPnl(pnl(trade)))
                 .count();
         BigDecimal winRate = trades.isEmpty()
                 ? BigDecimal.ZERO
                 : BigDecimal.valueOf(wins * 100.0 / trades.size()).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal largestWinner = trades.stream().map(this::pnl).filter(value -> value.compareTo(BigDecimal.ZERO) > 0).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-        BigDecimal largestLoser = trades.stream().map(this::pnl).filter(value -> value.compareTo(BigDecimal.ZERO) < 0).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-        BigDecimal averageWinner = averagePnl(trades.stream().map(this::pnl).filter(value -> value.compareTo(BigDecimal.ZERO) > 0).toList());
-        BigDecimal averageLoser = averagePnl(trades.stream().map(this::pnl).filter(value -> value.compareTo(BigDecimal.ZERO) < 0).toList());
+        BigDecimal largestWinner = trades.stream().map(this::pnl).filter(this::isMeaningfulWinner).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+        BigDecimal largestLoser = trades.stream().map(this::pnl).filter(this::isMeaningfulLoser).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+        BigDecimal averageWinner = averagePnl(trades.stream().map(this::pnl).filter(this::isMeaningfulWinner).toList());
+        BigDecimal averageLoser = averagePnl(trades.stream().map(this::pnl).filter(this::isMeaningfulLoser).toList());
         BigDecimal profitFactor = grossLoss.compareTo(BigDecimal.ZERO) == 0
                 ? (grossProfit.compareTo(BigDecimal.ZERO) > 0 ? BigDecimal.valueOf(99) : BigDecimal.ZERO)
                 : grossProfit.divide(grossLoss.abs(), 2, RoundingMode.HALF_UP);
@@ -344,7 +346,7 @@ public class SessionReviewService {
         response.setConfidence(trade.getConfidence());
         response.setEmotion(trade.getEmotion());
         response.setNotes(trade.getNotes());
-        response.setOutcome(trade.getOutcome());
+        response.setOutcome(isScratchPnl(pnl(trade)) ? OutcomeType.BE : trade.getOutcome());
         return response;
     }
 
@@ -360,10 +362,22 @@ public class SessionReviewService {
         return total.divide(BigDecimal.valueOf(values.size()), 2, RoundingMode.HALF_UP);
     }
 
+    private boolean isScratchPnl(BigDecimal value) {
+        return value != null && value.abs().compareTo(SCRATCH_TRADE_DOLLAR_THRESHOLD) <= 0;
+    }
+
+    private boolean isMeaningfulWinner(BigDecimal value) {
+        return value != null && value.compareTo(SCRATCH_TRADE_DOLLAR_THRESHOLD) > 0;
+    }
+
+    private boolean isMeaningfulLoser(BigDecimal value) {
+        return value != null && value.compareTo(SCRATCH_TRADE_DOLLAR_THRESHOLD.negate()) < 0;
+    }
+
     private TradeResponse selectBestTrade(List<TradeResponse> trades) {
         return trades.stream()
                 .filter(trade -> trade.getPnlAmount() != null)
-                .filter(trade -> trade.getPnlAmount().compareTo(BigDecimal.ZERO) >= 0)
+                .filter(trade -> isMeaningfulWinner(trade.getPnlAmount()))
                 .max(Comparator.comparing(TradeResponse::getPnlAmount))
                 .orElse(null);
     }
@@ -371,7 +385,7 @@ public class SessionReviewService {
     private TradeResponse selectWorstTrade(List<TradeResponse> trades) {
         return trades.stream()
                 .filter(trade -> trade.getPnlAmount() != null)
-                .filter(trade -> trade.getPnlAmount().compareTo(BigDecimal.ZERO) < 0)
+                .filter(trade -> isMeaningfulLoser(trade.getPnlAmount()))
                 .min(Comparator.comparing(TradeResponse::getPnlAmount))
                 .orElse(null);
     }
@@ -465,7 +479,7 @@ public class SessionReviewService {
                         Collectors.reducing(BigDecimal.ZERO, this::pnl, BigDecimal::add)
                 ));
         Map.Entry<Integer, BigDecimal> bestHour = pnlByHour.entrySet().stream()
-                .filter(entry -> entry.getValue().compareTo(BigDecimal.ZERO) >= 0)
+                .filter(entry -> isMeaningfulWinner(entry.getValue()))
                 .max(Map.Entry.comparingByValue())
                 .orElse(null);
         Map.Entry<Integer, BigDecimal> worstHour = pnlByHour.entrySet().stream()
@@ -476,8 +490,8 @@ public class SessionReviewService {
         return SessionReplayInsightsResponse.of(
                 sorted.isEmpty() ? null : mapTimelineTrade(sorted.get(0)),
                 sorted.isEmpty() ? null : mapTimelineTrade(sorted.get(sorted.size() - 1)),
-                sorted.stream().filter(t -> pnl(t).compareTo(BigDecimal.ZERO) > 0).max(Comparator.comparing(this::pnl)).map(this::mapTimelineTrade).orElse(null),
-                sorted.stream().filter(t -> pnl(t).compareTo(BigDecimal.ZERO) < 0).min(Comparator.comparing(this::pnl)).map(this::mapTimelineTrade).orElse(null),
+                sorted.stream().filter(t -> isMeaningfulWinner(pnl(t))).max(Comparator.comparing(this::pnl)).map(this::mapTimelineTrade).orElse(null),
+                sorted.stream().filter(t -> isMeaningfulLoser(pnl(t))).min(Comparator.comparing(this::pnl)).map(this::mapTimelineTrade).orElse(null),
                 longest == null ? null : mapTimelineTrade(longest),
                 shortest == null ? null : mapTimelineTrade(shortest),
                 longest == null ? null : Math.toIntExact(holdMinutes(longest)),
@@ -518,11 +532,16 @@ public class SessionReviewService {
                 : "Session started under pressure after the first trade closed red.";
         String best;
         if (bestTrade == null) {
-            best = trades.size() == 1 && pnl(trades.get(0)).compareTo(BigDecimal.ZERO) < 0
-                    ? " The session was defined by a single losing trade."
-                    : " There was no profitable trade in this session.";
-        } else if (bestTrade.getPnlAmount() != null && bestTrade.getPnlAmount().compareTo(BigDecimal.ZERO) == 0) {
-            best = " No trade finished profitably; the best result was breakeven on " + bestTrade.getSymbol() + " " + bestTrade.getSide() + ".";
+            Trade scratchWinner = largestScratchWinner(trades);
+            if (scratchWinner != null) {
+                best = " The only positive trade was essentially a scratch winner on "
+                        + scratchWinner.getSymbol() + " " + scratchWinner.getSide()
+                        + " for " + pnl(scratchWinner) + " and did not materially affect the session.";
+            } else {
+                best = trades.size() == 1 && pnl(trades.get(0)).compareTo(BigDecimal.ZERO) < 0
+                        ? " The session was defined by a single losing trade."
+                        : " There was no meaningful winning trade in this session.";
+            }
         } else {
             best = " The strongest trade was " + bestTrade.getSymbol() + " " + bestTrade.getSide() + " for " + bestTrade.getPnlAmount() + ".";
         }
@@ -536,12 +555,17 @@ public class SessionReviewService {
 
     private String bestTradeWhy(TradeResponse trade) {
         if (trade == null) {
-            return "No winning trade was found.";
-        }
-        if (trade.getPnlAmount() != null && trade.getPnlAmount().compareTo(BigDecimal.ZERO) == 0) {
-            return "No profitable trade was found; this breakeven result is useful for reviewing risk control.";
+            return "No meaningful winning trade was found. Scratch results are useful context, but not strong enough to offset session risk.";
         }
         return "It produced the strongest P&L in the session and is the trade to reverse-engineer for repeatable execution.";
+    }
+
+    private Trade largestScratchWinner(List<Trade> trades) {
+        return trades.stream()
+                .filter(trade -> pnl(trade).compareTo(BigDecimal.ZERO) > 0)
+                .filter(trade -> isScratchPnl(pnl(trade)))
+                .max(Comparator.comparing(this::pnl))
+                .orElse(null);
     }
 
     private String worstTradeWhy(TradeResponse trade, List<SessionMistakeResponse> mistakes) {
