@@ -181,15 +181,25 @@ function RecoveryPlan({ leak }: { leak?: LeakResult }) {
   const steps = getRecoveryPlan(leak);
   return (
     <section style={recoverySection}>
-      <div style={recoveryIntro}>
-        <span style={heroEyebrow}>30-Day Recovery Plan</span>
-        <h2 style={recoveryTitle}>Turn this leak into a trading rule.</h2>
-        <p style={recoveryText}>Expected improvement target: reduce this leak by 25-50% over the next 30 days.</p>
+      <div style={recoveryHeader}>
+        <div style={recoveryIntro}>
+          <span style={heroEyebrow}>30-Day Recovery Plan</span>
+          <h2 style={recoveryTitle}>Turn this leak into a trading rule.</h2>
+          <p style={recoveryText}>Expected improvement target: reduce this leak by 25-50% over the next 30 days.</p>
+        </div>
+        <div style={recoveryChipRow} aria-label="Recovery plan details">
+          <span style={recoveryChip}>30 days</span>
+          <span style={recoveryChip}>25-50% target</span>
+          <span style={recoveryChip}>Based on biggest leak</span>
+        </div>
       </div>
       <div style={recoveryGrid}>
         {steps.map((step) => (
           <div key={step.week} style={recoveryStep}>
-            <span style={stepKicker}>{step.week}</span>
+            <div style={stepTopline}>
+              <span style={stepIcon}>✓</span>
+              <span style={stepKicker}>{step.week}</span>
+            </div>
             <p style={stepText}>{step.text}</p>
           </div>
         ))}
@@ -514,12 +524,17 @@ const heroMetaPillStrong: CSSProperties = { ...heroMetaPill, borderColor: "rgba(
 const heroStats: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 };
 const impactTone: CSSProperties = { borderColor: "rgba(248,113,113,0.3)", background: "rgba(127,29,29,0.24)" };
 const improvementTone: CSSProperties = { borderColor: "rgba(52,211,153,0.32)", background: "rgba(20,83,45,0.24)" };
-const recoverySection: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 16, padding: 20, borderRadius: 8, border: "1px solid rgba(56,189,248,0.16)", background: "linear-gradient(135deg, rgba(8,47,73,0.28), rgba(15,23,42,0.78))" };
+const recoverySection: CSSProperties = { display: "grid", gap: 16, padding: 20, borderRadius: 8, border: "1px solid rgba(56,189,248,0.16)", background: "linear-gradient(135deg, rgba(8,47,73,0.28), rgba(15,23,42,0.78))" };
+const recoveryHeader: CSSProperties = { display: "grid", gap: 12 };
 const recoveryIntro: CSSProperties = { display: "grid", alignContent: "start", gap: 8 };
 const recoveryTitle: CSSProperties = { margin: 0, color: "#f8fafc", fontSize: 22, lineHeight: 1.2 };
 const recoveryText: CSSProperties = { margin: 0, color: "#94a3b8", lineHeight: 1.55 };
-const recoveryGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 170px), 1fr))", gap: 10 };
-const recoveryStep: CSSProperties = { minHeight: 112, padding: 14, borderRadius: 8, border: "1px solid rgba(148,163,184,0.14)", background: "rgba(2,6,23,0.34)" };
+const recoveryChipRow: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 8 };
+const recoveryChip: CSSProperties = { display: "inline-flex", alignItems: "center", minHeight: 26, padding: "5px 9px", borderRadius: 999, border: "1px solid rgba(56,189,248,0.16)", color: "#bae6fd", background: "rgba(8,47,73,0.22)", fontSize: 12, fontWeight: 850 };
+const recoveryGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 12 };
+const recoveryStep: CSSProperties = { padding: 14, borderRadius: 8, border: "1px solid rgba(148,163,184,0.14)", background: "rgba(2,6,23,0.34)" };
+const stepTopline: CSSProperties = { display: "flex", alignItems: "center", gap: 8 };
+const stepIcon: CSSProperties = { display: "inline-grid", placeItems: "center", width: 20, height: 20, borderRadius: 999, color: "#022c22", background: "linear-gradient(135deg, #34d399, #22d3ee)", fontSize: 12, fontWeight: 950 };
 const stepKicker: CSSProperties = { color: "#7dd3fc", fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: "0.06em" };
 const stepText: CSSProperties = { margin: "8px 0 0", color: "#dbeafe", lineHeight: 1.45, fontWeight: 720 };
 const grid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 };
