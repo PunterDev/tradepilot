@@ -2,8 +2,11 @@ package com.tradepilot;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradepilot.billing.PlanType;
 import com.tradepilot.coach.dto.CoachDeterministicSummary;
 import com.tradepilot.dto.session.SessionReplayInsightsResponse;
+import com.tradepilot.retention.dto.RetentionStatus;
+import com.tradepilot.retention.dto.RetentionUserResponse;
 import com.tradepilot.tradingdna.dto.TradingDnaContext;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +27,7 @@ class LombokBuilderIndependenceTests {
         assertThat(hasBuilderMethod(CoachDeterministicSummary.class)).isFalse();
         assertThat(hasBuilderMethod(TradingDnaContext.class)).isFalse();
         assertThat(hasBuilderMethod(SessionReplayInsightsResponse.class)).isFalse();
+        assertThat(hasBuilderMethod(RetentionUserResponse.class)).isFalse();
     }
 
     @Test
@@ -103,6 +107,29 @@ class LombokBuilderIndependenceTests {
         assertThat(response.getBestTradingHour()).isEqualTo(10);
         assertThat(json.get("bestTradingHour").asInt()).isEqualTo(10);
         assertThat(json.get("worstTradingHourPnl").decimalValue()).isEqualByComparingTo(BigDecimal.valueOf(-80));
+    }
+
+    @Test
+    void retentionUserFactoryPreservesJsonContract() {
+        RetentionUserResponse response = RetentionUserResponse.of(
+                42L,
+                "retention@example.com",
+                "Retention User",
+                PlanType.PRO,
+                null,
+                12,
+                3,
+                RetentionStatus.POWER_USER
+        );
+
+        JsonNode json = objectMapper.valueToTree(response);
+
+        assertThat(response.getUserId()).isEqualTo(42L);
+        assertThat(json.get("userId").asLong()).isEqualTo(42L);
+        assertThat(json.get("email").asText()).isEqualTo("retention@example.com");
+        assertThat(json.get("plan").asText()).isEqualTo("PRO");
+        assertThat(json.get("activityCount30d").asLong()).isEqualTo(12);
+        assertThat(json.get("status").asText()).isEqualTo("POWER_USER");
     }
 
     private boolean hasBuilderMethod(Class<?> type) {

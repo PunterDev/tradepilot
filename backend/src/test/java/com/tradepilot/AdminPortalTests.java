@@ -37,7 +37,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -62,6 +64,7 @@ class AdminPortalTests {
     @Autowired SystemAlertRepository systemAlertRepository;
     @Autowired ObservabilityAlertService observabilityAlertService;
     @Autowired ObservabilityCleanupService observabilityCleanupService;
+    @Autowired com.tradepilot.service.AggregateCacheService aggregateCacheService;
     @Autowired PasswordEncoder passwordEncoder;
 
     @Test
@@ -115,6 +118,15 @@ class AdminPortalTests {
     void adminCanViewBillingSummaryAndUserCannot() throws Exception {
         User admin = createUser("admin-billing@example.com", UserRole.ADMIN, PlanType.PRO);
         User normal = createUser("normal-billing@example.com", UserRole.USER, PlanType.FREE);
+        aggregateCacheService.evict("admin-billing-summary");
+
+        long expectedTotalUsers = userRepository.count();
+        long expectedProUsers = userRepository.countByPlan(PlanType.PRO);
+        long expectedStripeSubscribers = userRepository.countByPlanAndSubscriptionStatusInAndStripeSubscriptionIdIsNotNull(
+                PlanType.PRO,
+                List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING)
+        );
+        long expectedManualProUsers = Math.max(0, expectedProUsers - expectedStripeSubscribers);
 
         String response = mockMvc.perform(get("/api/admin/billing/summary")
                         .header("Authorization", "Bearer " + tokenFor(admin)))
@@ -124,12 +136,14 @@ class AdminPortalTests {
                 .getContentAsString();
 
         JsonNode json = objectMapper.readTree(response);
-        assertThat(json.get("totalUsers").asLong()).isGreaterThanOrEqualTo(2);
-        assertThat(json.get("proUsers").asLong()).isGreaterThanOrEqualTo(1);
-        assertThat(json.get("stripePayingSubscribers").asLong()).isEqualTo(0);
-        assertThat(json.get("manualProUsers").asLong()).isGreaterThanOrEqualTo(1);
-        assertThat(json.get("estimatedMrr").asDouble()).isEqualTo(0);
-        assertThat(json.get("potentialMrr").asDouble()).isGreaterThanOrEqualTo(29.99);
+        assertThat(json.get("totalUsers").asLong()).isEqualTo(expectedTotalUsers);
+        assertThat(json.get("proUsers").asLong()).isEqualTo(expectedProUsers);
+        assertThat(json.get("stripePayingSubscribers").asLong()).isEqualTo(expectedStripeSubscribers);
+        assertThat(json.get("manualProUsers").asLong()).isEqualTo(expectedManualProUsers);
+        assertThat(json.get("estimatedMrr").decimalValue())
+                .isEqualByComparingTo(BigDecimal.valueOf(expectedStripeSubscribers).multiply(new BigDecimal("29.99")));
+        assertThat(json.get("potentialMrr").decimalValue())
+                .isEqualByComparingTo(BigDecimal.valueOf(expectedProUsers).multiply(new BigDecimal("29.99")));
         assertThat(json.get("recentPlanChanges").isArray()).isTrue();
 
         mockMvc.perform(get("/api/admin/billing/summary")
@@ -213,9 +227,25 @@ class AdminPortalTests {
         mockMvc.perform(get("/api/admin/retention/cohorts")
                         .header("Authorization", "Bearer " + tokenFor(admin)))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/api/admin/retention/users")
+        String usersResponse = mockMvc.perform(get("/api/admin/retention/users")
                         .header("Authorization", "Bearer " + tokenFor(admin)))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode usersJson = objectMapper.readTree(usersResponse);
+        assertThat(usersJson.isArray()).isTrue();
+        boolean activeUserPresent = false;
+        for (JsonNode userNode : usersJson) {
+            if (activePro.getId().equals(userNode.get("userId").asLong())) {
+                activeUserPresent = true;
+                assertThat(userNode.get("email").asText()).isEqualTo("active-retention@example.com");
+                assertThat(userNode.get("plan").asText()).isEqualTo("PRO");
+                assertThat(userNode.get("activityCount30d").asLong()).isEqualTo(10);
+                assertThat(userNode.get("status").asText()).isEqualTo("POWER_USER");
+            }
+        }
+        assertThat(activeUserPresent).isTrue();
     }
 
     @Test

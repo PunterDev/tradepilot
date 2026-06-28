@@ -138,16 +138,16 @@ public class AdminRetentionAnalyticsService {
                             .count();
                     long daysSinceActivity = daysSince(lastActive == null ? user.getCreatedAt() : lastActive, now);
                     RetentionStatus status = status(activityCount30d, lastActive, user.getCreatedAt(), now);
-                    return RetentionUserResponse.builder()
-                            .userId(user.getId())
-                            .email(user.getEmail())
-                            .name(user.getName())
-                            .plan(user.getPlan())
-                            .lastActive(lastActive)
-                            .activityCount30d(activityCount30d)
-                            .daysSinceActivity(daysSinceActivity)
-                            .status(status)
-                            .build();
+                    return RetentionUserResponse.of(
+                            user.getId(),
+                            user.getEmail(),
+                            user.getName(),
+                            user.getPlan(),
+                            lastActive,
+                            activityCount30d,
+                            daysSinceActivity,
+                            status
+                    );
                 })
                 .sorted(Comparator
                         .comparing((RetentionUserResponse user) -> user.getStatus() == RetentionStatus.POWER_USER ? 0 : user.getStatus() == RetentionStatus.ACTIVE ? 1 : user.getStatus() == RetentionStatus.AT_RISK ? 2 : 3)

@@ -1,6 +1,7 @@
 package com.tradepilot.service;
 
 import com.tradepilot.billing.*;
+import com.tradepilot.dto.account.TradingAccountResponse;
 import com.tradepilot.dto.admin.AdminPlanChangeRequest;
 import com.tradepilot.dto.admin.AdminContactMessageResponse;
 import com.tradepilot.dto.admin.AdminRecentUpgradeResponse;
@@ -10,6 +11,7 @@ import com.tradepilot.dto.common.PageRequestParams;
 import com.tradepilot.dto.common.PagedResponse;
 import com.tradepilot.entity.AdminAuditLog;
 import com.tradepilot.entity.ContactMessage;
+import com.tradepilot.entity.TradingAccount;
 import com.tradepilot.entity.User;
 import com.tradepilot.enums.AdminAuditAction;
 import com.tradepilot.enums.UserRole;
@@ -82,6 +84,10 @@ public class AdminUserService {
         log.info("Admin user detail requested. targetUserId={}", userId);
         return AdminUserDetailResponse.builder()
                 .user(mapUser(target))
+                .accounts(tradingAccountRepository.findByUserOrderByCreatedAtDesc(target)
+                        .stream()
+                        .map(this::mapTradingAccount)
+                        .toList())
                 .contactMessages(contactMessageRepository.findTop10ByEmailIgnoreCaseOrderByCreatedAtDesc(target.getEmail())
                         .stream()
                         .map(this::mapContactMessage)
@@ -94,6 +100,20 @@ public class AdminUserService {
                         .map(this::mapAuditLog)
                         .toList())
                 .build();
+    }
+
+    private TradingAccountResponse mapTradingAccount(TradingAccount account) {
+        return TradingAccountResponse.of(
+                account.getId(),
+                account.getName(),
+                account.getPropFirm(),
+                account.getAccountNumber(),
+                account.getAccountType(),
+                account.getStartingBalance(),
+                account.getDefaultRiskAmount(),
+                account.getStatus(),
+                account.getCreatedAt()
+        );
     }
 
     @PreAuthorize("hasRole('ADMIN')")
