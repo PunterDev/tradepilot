@@ -37,7 +37,7 @@ public class SecurityConfig {
     @Order(1)
     public SecurityFilterChain stripeWebhookSecurityFilterChain(HttpSecurity http) throws Exception {
         log.info("Registering SecurityFilterChain bean=stripeWebhookSecurityFilterChain order=1 matcher=/api/stripe/webhook");
-        return http.securityMatcher("/api/stripe/webhook").csrf(csrf -> csrf.disable()).authorizeHttpRequests(auth -> auth.requestMatchers(HttpMethod.POST, "/api/stripe/webhook").permitAll().anyRequest().denyAll()).sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).build();
+        return http.securityMatcher("/api/stripe/webhook", "/api/v1/stripe/webhook").csrf(csrf -> csrf.disable()).authorizeHttpRequests(auth -> auth.requestMatchers(HttpMethod.POST, "/api/stripe/webhook", "/api/v1/stripe/webhook").permitAll().anyRequest().denyAll()).sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).build();
     }
 
     @Bean
@@ -56,16 +56,16 @@ public class SecurityConfig {
             }
         }).sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).exceptionHandling(exceptions -> exceptions.authenticationEntryPoint((request, response, authException) -> response.sendError(401, "Authentication required"))).authorizeHttpRequests(auth -> {
             auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
-            auth.requestMatchers("/api/auth/**").permitAll();
-            auth.requestMatchers(HttpMethod.POST, "/api/contact").permitAll();
-            auth.requestMatchers(HttpMethod.POST, "/api/stripe/webhook").permitAll();
+            auth.requestMatchers("/api/auth/**", "/api/v1/auth/**").permitAll();
+            auth.requestMatchers(HttpMethod.POST, "/api/contact", "/api/v1/contact").permitAll();
+            auth.requestMatchers(HttpMethod.POST, "/api/stripe/webhook", "/api/v1/stripe/webhook").permitAll();
             auth.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll();
-            auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
+            auth.requestMatchers("/api/admin/**", "/api/v1/admin/**").hasRole("ADMIN");
             if (h2ConsoleAllowed()) {
                 auth.requestMatchers("/h2-console/**").permitAll();
             }
             if (devAuthEnabled) {
-                auth.requestMatchers(HttpMethod.GET, "/api/dev/token").permitAll();
+                auth.requestMatchers(HttpMethod.GET, "/api/dev/token", "/api/v1/dev/token").permitAll();
             }
             auth.anyRequest().authenticated();
         }).authenticationProvider(authenticationProvider()).addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

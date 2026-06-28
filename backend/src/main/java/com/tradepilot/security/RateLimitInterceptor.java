@@ -63,7 +63,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
     private RateLimitRule ruleFor(HttpServletRequest request) {
         String method = request.getMethod();
-        String path = request.getRequestURI();
+        String path = normalizedApiPath(request.getRequestURI());
         if (HttpMethod.POST.matches(method) && "/api/auth/login".equals(path)) {
             return new RateLimitRule("auth-login", authLoginMax, authLoginWindowSeconds, false);
         }
@@ -84,6 +84,13 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
     private boolean isAiGenerationRequest(String method, String path) {
         return (HttpMethod.POST.matches(method) && ("/api/ai/trade-review".equals(path) || "/api/ai/trade-review/async".equals(path) || "/api/ai/weekly-review".equals(path) || "/api/ai/chart-review".equals(path) || "/api/ai/trade-analysis/async".equals(path) || "/api/coach/daily/generate".equals(path) || "/api/coach/weekly/generate".equals(path) || "/api/sessions/review/generate".equals(path) || "/api/ai/leak-detector/regenerate".equals(path))) || (HttpMethod.GET.matches(method) && ("/api/ai/trading-dna".equals(path) || "/api/ai/leak-detector".equals(path)));
+    }
+
+    private String normalizedApiPath(String path) {
+        if (path != null && (path.equals("/api/v1") || path.startsWith("/api/v1/"))) {
+            return "/api" + path.substring("/api/v1".length());
+        }
+        return path;
     }
 
     private String aiFeature(String path) {

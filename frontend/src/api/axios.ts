@@ -2,17 +2,23 @@ import axios from "axios";
 
 export const TOKEN_STORAGE_KEY = "tradepilot_token";
 
-const DEFAULT_API_BASE_URL = "http://localhost:8080/api";
+export const API_PREFIX = "/api/v1";
+
+const DEFAULT_API_ORIGIN = "http://localhost:8080";
 
 function normalizeApiBaseUrl(rawBaseUrl: string | undefined) {
-  const value = rawBaseUrl?.trim() || DEFAULT_API_BASE_URL;
+  const value = rawBaseUrl?.trim() || DEFAULT_API_ORIGIN;
   const withoutTrailingSlash = value.replace(/\/+$/, "");
 
-  if (withoutTrailingSlash.endsWith("/api")) {
+  if (withoutTrailingSlash.endsWith(API_PREFIX)) {
     return withoutTrailingSlash;
   }
 
-  return `${withoutTrailingSlash}/api`;
+  if (withoutTrailingSlash.endsWith("/api")) {
+    return `${withoutTrailingSlash}/v1`;
+  }
+
+  return `${withoutTrailingSlash}${API_PREFIX}`;
 }
 
 export const api = axios.create({
