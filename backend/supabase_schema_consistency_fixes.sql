@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS trading_accounts (
     account_number varchar(255),
     account_type varchar(255),
     starting_balance numeric(19, 2),
+    default_risk_amount numeric(18, 2),
     status varchar(255) NOT NULL,
     created_at timestamp NOT NULL DEFAULT now()
 );
@@ -61,6 +62,7 @@ ALTER TABLE trading_accounts
     ADD COLUMN IF NOT EXISTS account_number varchar(255),
     ADD COLUMN IF NOT EXISTS account_type varchar(255),
     ADD COLUMN IF NOT EXISTS starting_balance numeric(19, 2),
+    ADD COLUMN IF NOT EXISTS default_risk_amount numeric(18, 2),
     ADD COLUMN IF NOT EXISTS status varchar(255),
     ADD COLUMN IF NOT EXISTS created_at timestamp NOT NULL DEFAULT now();
 
