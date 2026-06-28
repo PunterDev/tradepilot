@@ -5,6 +5,7 @@ import com.tradepilot.billing.PlanType;
 import com.tradepilot.billing.SubscriptionStatus;
 import com.tradepilot.billing.UsageType;
 import com.tradepilot.dto.session.SessionReviewResponse;
+import com.tradepilot.dto.trade.TradeImportRequest;
 import com.tradepilot.dto.trade.TradeResponse;
 import com.tradepilot.entity.Trade;
 import com.tradepilot.entity.TradingAccount;
@@ -12,6 +13,7 @@ import com.tradepilot.entity.User;
 import com.tradepilot.enums.OutcomeType;
 import com.tradepilot.enums.PropFirmType;
 import com.tradepilot.enums.SessionType;
+import com.tradepilot.enums.Side;
 import com.tradepilot.enums.SetupType;
 import com.tradepilot.enums.TradingAccountStatus;
 import com.tradepilot.enums.TradingAccountType;
@@ -21,6 +23,7 @@ import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.repository.TradingAccountRepository;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.service.SessionReviewService;
+import com.tradepilot.service.TradeService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,6 +32,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,6 +49,7 @@ class SessionReviewServiceTests {
     @Autowired TradeRepository tradeRepository;
     @Autowired AiUsageEventRepository aiUsageEventRepository;
     @Autowired CacheMetricRepository cacheMetricRepository;
+    @Autowired TradeService tradeService;
 
     @Test
     void oneLosingTradeHasNoBestTradeAndKeepsWorstTrade() {
@@ -184,6 +189,177 @@ class SessionReviewServiceTests {
     }
 
     @Test
+    void sessionReviewPreservesLongDirectionForLosingTrade() {
+        Fixture fixture = fixture("long-loser-direction");
+        trade(fixture, "MNQU6", "LONG", "-200.50", 9);
+
+        SessionReviewResponse review = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), SESSION_DATE);
+
+        assertThat(review.getTimelineTrades()).first()
+                .satisfies(trade -> {
+                    assertThat(trade.getSymbol()).isEqualTo("MNQU6");
+                    assertThat(trade.getSide()).isEqualTo("LONG");
+                });
+        assertThat(review.getWorstTrade()).isNotNull();
+        assertThat(review.getWorstTrade().getSymbol()).isEqualTo("MNQU6");
+        assertThat(review.getWorstTrade().getSide()).isEqualTo(Side.LONG);
+        assertThat(review.getReplayInsights().getLargestLoser()).isNotNull();
+        assertThat(review.getReplayInsights().getLargestLoser().getSide()).isEqualTo("LONG");
+        assertThat(review.getSessionStory()).contains("MNQU6 LONG");
+        assertThat(review.getSessionStory()).doesNotContain("MNQU6 SHORT");
+    }
+
+    @Test
+    void sessionReviewPreservesShortDirectionForLosingTrade() {
+        Fixture fixture = fixture("short-loser-direction");
+        trade(fixture, "MESU6", "SHORT", "-161.25", 9);
+
+        SessionReviewResponse review = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), SESSION_DATE);
+
+        assertThat(review.getTimelineTrades()).first()
+                .satisfies(trade -> {
+                    assertThat(trade.getSymbol()).isEqualTo("MESU6");
+                    assertThat(trade.getSide()).isEqualTo("SHORT");
+                });
+        assertThat(review.getWorstTrade()).isNotNull();
+        assertThat(review.getWorstTrade().getSide()).isEqualTo(Side.SHORT);
+        assertThat(review.getReplayInsights().getLargestLoser()).isNotNull();
+        assertThat(review.getReplayInsights().getLargestLoser().getSide()).isEqualTo("SHORT");
+    }
+
+    @Test
+    void sessionReviewUsesUnknownForInvalidDirection() {
+        Fixture fixture = fixture("unknown-direction");
+        trade(fixture, "MNQU6", "SIDEWAYS", "-200.50", 9);
+
+        SessionReviewResponse review = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), SESSION_DATE);
+
+        assertThat(review.getTimelineTrades()).first()
+                .satisfies(trade -> {
+                    assertThat(trade.getSymbol()).isEqualTo("MNQU6");
+                    assertThat(trade.getSide()).isEqualTo("UNKNOWN");
+                });
+        assertThat(review.getWorstTrade()).isNotNull();
+        assertThat(review.getWorstTrade().getSide()).isEqualTo(Side.UNKNOWN);
+        assertThat(review.getSessionStory()).contains("MNQU6 UNKNOWN");
+        assertThat(review.getSessionStory()).doesNotContain("MNQU6 SHORT");
+    }
+
+    @Test
+    void tradovateDirectionRepairFixesStaleLongLoserAndInvalidatesSessionReviewCache() {
+        Fixture fixture = fixture("repair-long-loser");
+        staleImportedTrade(
+                fixture,
+                "MNQU6",
+                "SHORT",
+                "-200.50",
+                "6/16/2026 9:30:00 AM",
+                "6/16/2026 9:42:00 AM",
+                "19450.25",
+                "19440.25"
+        );
+
+        SessionReviewResponse stale = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), LocalDate.of(2026, 6, 16));
+        assertThat(stale.getTimelineTrades()).first().extracting("side").isEqualTo("SHORT");
+
+        var repairResult = tradeService.repairTradovateDirections(fixture.user(), fixture.account().getId(), LocalDate.of(2026, 6, 16));
+        assertThat(repairResult.get("updated")).isEqualTo(1);
+
+        SessionReviewResponse repaired = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), LocalDate.of(2026, 6, 16));
+        assertThat(repaired.getTimelineTrades()).first()
+                .satisfies(trade -> {
+                    assertThat(trade.getSymbol()).isEqualTo("MNQU6");
+                    assertThat(trade.getSide()).isEqualTo("LONG");
+                });
+        assertThat(repaired.getWorstTrade()).isNotNull();
+        assertThat(repaired.getWorstTrade().getSide()).isEqualTo(Side.LONG);
+        assertThat(repaired.getReplayInsights().getLargestLoser()).isNotNull();
+        assertThat(repaired.getReplayInsights().getLargestLoser().getSide()).isEqualTo("LONG");
+        assertThat(repaired.getSessionStory()).contains("MNQU6 LONG");
+        assertThat(repaired.getSessionStory()).doesNotContain("MNQU6 SHORT");
+    }
+
+    @Test
+    void tradovateImportInfersLongLoserFromNoSecondsBuySellTimestampsWhenRequestSideUnknown() {
+        Fixture fixture = fixture("import-long-loser-no-seconds");
+        String boughtTimestamp = "6/22/2026 9:30 AM";
+        String soldTimestamp = "6/22/2026 9:44 AM";
+        String externalKey = String.join("|",
+                String.valueOf(fixture.account().getId()),
+                "MESU6",
+                boughtTimestamp,
+                soldTimestamp,
+                "1",
+                "5485.00",
+                "5477.50",
+                "-76.25"
+        );
+
+        List<TradeResponse> imported = tradeService.importTrades(fixture.user(), List.of(new TradeImportRequest(
+                fixture.account().getId(),
+                "tradovate.csv",
+                externalKey,
+                "MESU6",
+                "FUTURES",
+                LocalDate.of(2026, 6, 22),
+                LocalDateTime.of(2026, 6, 22, 9, 30),
+                LocalDateTime.of(2026, 6, 22, 9, 44),
+                "UNKNOWN",
+                SetupType.OTHER,
+                SessionType.NY_AM,
+                new BigDecimal("5485.00"),
+                new BigDecimal("5477.50"),
+                1,
+                new BigDecimal("-76.25"),
+                new BigDecimal("-0.76"),
+                OutcomeType.LOSS
+        )));
+
+        assertThat(imported).hasSize(1);
+        assertThat(imported.get(0).getSide()).isEqualTo(Side.LONG);
+
+        SessionReviewResponse review = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), LocalDate.of(2026, 6, 22));
+        assertThat(review.getTimelineTrades()).first()
+                .satisfies(trade -> {
+                    assertThat(trade.getSymbol()).isEqualTo("MESU6");
+                    assertThat(trade.getSide()).isEqualTo("LONG");
+                });
+        assertThat(review.getWorstTrade()).isNotNull();
+        assertThat(review.getWorstTrade().getSide()).isEqualTo(Side.LONG);
+        assertThat(review.getReplayInsights().getLargestLoser()).isNotNull();
+        assertThat(review.getReplayInsights().getLargestLoser().getSide()).isEqualTo("LONG");
+        assertThat(review.getSessionStory()).contains("MESU6 LONG");
+        assertThat(review.getSessionStory()).doesNotContain("MESU6 UNKNOWN");
+        assertThat(review.getSessionStory()).doesNotContain("MESU6 SHORT");
+    }
+
+    @Test
+    void tradovateDirectionRepairKeepsShortLoserFromOpeningSellExecution() {
+        Fixture fixture = fixture("repair-short-loser");
+        staleImportedTrade(
+                fixture,
+                "MESU6",
+                "SHORT",
+                "-161.25",
+                "6/16/2026 10:14:00 AM",
+                "6/16/2026 10:02:00 AM",
+                "5480.25",
+                "5477.00"
+        );
+
+        var repairResult = tradeService.repairTradovateDirections(fixture.user(), fixture.account().getId(), LocalDate.of(2026, 6, 16));
+        assertThat(repairResult.get("updated")).isEqualTo(1);
+
+        SessionReviewResponse review = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), LocalDate.of(2026, 6, 16));
+        assertThat(review.getTimelineTrades()).first()
+                .satisfies(trade -> {
+                    assertThat(trade.getSymbol()).isEqualTo("MESU6");
+                    assertThat(trade.getSide()).isEqualTo("SHORT");
+                    assertThat(trade.getEntryTime()).isBefore(trade.getExitTime());
+                });
+    }
+
+    @Test
     void allWinningTradesHaveBestTradeAndNoWorstTradeOrWorstHour() {
         Fixture fixture = fixture("all-winning");
         trade(fixture, "MESH6", "LONG", "125.00", 9);
@@ -219,6 +395,27 @@ class SessionReviewServiceTests {
         )).isEqualTo(1);
         waitForCacheMetric("session-review-cache-hit", true, 1);
         waitForCacheMetric("session-review-cache-miss", false, 1);
+    }
+
+    @Test
+    void generateSessionReviewWithNoTradesSkipsAiAndCredits() {
+        Fixture fixture = fixture("generate-no-trades");
+
+        SessionReviewResponse review = sessionReviewService.generateSessionReview(fixture.user(), fixture.account().getId(), SESSION_DATE, true);
+        SessionReviewResponse cachedRead = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), SESSION_DATE);
+
+        assertThat(review.getNoTrades()).isTrue();
+        assertThat(review.getAiGenerated()).isFalse();
+        assertThat(review.getCreditsConsumed()).isZero();
+        assertThat(review.getAiSessionReview()).isNull();
+        assertThat(cachedRead.getNoTrades()).isTrue();
+        assertThat(cachedRead.getAiGenerated()).isFalse();
+        assertThat(aiUsageEventRepository.countByUserIdAndUsageTypeAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                fixture.user().getId(),
+                UsageType.SESSION_REVIEW,
+                LocalDateTime.now().minusMinutes(5),
+                LocalDateTime.now().plusMinutes(5)
+        )).isZero();
     }
 
     private void waitForCacheMetric(String cacheName, boolean hit, long minimumCount) {
@@ -282,6 +479,68 @@ class SessionReviewServiceTests {
                 .followedPlan(true)
                 .externalTradeKey(fixture.user().getId() + "-" + symbol + "-" + entryHour + "-" + pnl)
                 .build());
+    }
+
+    private void staleImportedTrade(
+            Fixture fixture,
+            String symbol,
+            String storedSide,
+            String pnl,
+            String boughtTimestamp,
+            String soldTimestamp,
+            String buyPrice,
+            String sellPrice
+    ) {
+        BigDecimal pnlAmount = new BigDecimal(pnl);
+        LocalDateTime boughtAt = parseFixtureTimestamp(boughtTimestamp);
+        LocalDateTime soldAt = parseFixtureTimestamp(soldTimestamp);
+        tradeRepository.save(Trade.builder()
+                .user(fixture.user())
+                .account(fixture.account())
+                .symbol(symbol)
+                .market("FUTURES")
+                .tradeDate(soldAt.toLocalDate())
+                .entryTime(boughtAt)
+                .exitTime(soldAt)
+                .side(storedSide)
+                .setup(SetupType.OTHER)
+                .session(SessionType.NY_PM)
+                .entryPrice(new BigDecimal(buyPrice))
+                .exitPrice(new BigDecimal(sellPrice))
+                .quantity(1)
+                .riskAmount(BigDecimal.valueOf(100))
+                .pnlAmount(pnlAmount)
+                .pnlR(pnlAmount.divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP))
+                .outcome(outcome(pnlAmount))
+                .followedPlan(true)
+                .externalTradeKey(String.join("|",
+                        String.valueOf(fixture.account().getId()),
+                        symbol,
+                        boughtTimestamp,
+                        soldTimestamp,
+                        "1",
+                        buyPrice,
+                        sellPrice,
+                        pnl
+                ))
+                .build());
+    }
+
+    private LocalDateTime parseFixtureTimestamp(String timestamp) {
+        for (String pattern : List.of("M/d/yyyy h:mm:ss a", "M/d/yyyy h:mm a")) {
+            try {
+                return LocalDateTime.parse(
+                        timestamp,
+                        new java.time.format.DateTimeFormatterBuilder()
+                                .parseCaseInsensitive()
+                                .appendPattern(pattern)
+                                .toFormatter(java.util.Locale.US)
+                );
+            } catch (Exception ignored) {
+                // Try the next fixture shape.
+            }
+        }
+        throw new IllegalArgumentException("Unsupported fixture timestamp: " + timestamp);
     }
 
     private OutcomeType outcome(BigDecimal pnl) {

@@ -17,6 +17,7 @@ import com.tradepilot.entity.TradeRuleViolation;
 import com.tradepilot.entity.TradingAccount;
 import com.tradepilot.entity.User;
 import com.tradepilot.enums.OutcomeType;
+import com.tradepilot.enums.Side;
 import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.repository.AiSessionReviewRepository;
 import com.tradepilot.repository.TradeRepository;
@@ -66,18 +67,21 @@ public class SessionReviewService {
     public SessionReviewResponse getSessionReview(User user, Long accountId, LocalDate date) {
         featureAccessService.requireFeature(user, Feature.SESSION_REVIEW);
         log.info("Session review requested. userId={}, accountId={}, date={}", user.getId(), accountId, date);
+        SessionData data = loadSessionData(user, accountId, date);
+        String inputHash = reviewHash(data);
         return aggregateCacheService.get(
-                sessionReviewCacheKey(user.getId(), accountId, date),
+                sessionReviewCacheKey(user.getId(), accountId, date, inputHash),
                 SESSION_REVIEW_TTL,
                 () -> {
-                    SessionData data = loadSessionData(user, accountId, date);
-                    AiSessionReviewResponse cachedReview = aiSessionReviewRepository
-                            .findTopByUserIdAndAccountIdAndSessionDateOrderByCreatedAtDesc(user.getId(), accountId, date)
-                            .map(this::mapReview)
-                            .orElse(null);
+                    AiSessionReviewResponse cachedReview = data.totalTrades() == 0
+                            ? null
+                            : aiSessionReviewRepository
+                                    .findTopByUserIdAndAccountIdAndSessionDateOrderByCreatedAtDesc(user.getId(), accountId, date)
+                                    .map(this::mapReview)
+                                    .orElse(null);
 
-                    log.trace("Session review loaded. userId={}, accountId={}, date={}, tradeCount={}, cachedAiReview={}",
-                            user.getId(), accountId, date, data.totalTrades(), cachedReview != null);
+                    log.trace("Session review loaded. userId={}, accountId={}, date={}, tradeCount={}, cachedAiReview={}, inputHash={}",
+                            user.getId(), accountId, date, data.totalTrades(), cachedReview != null, inputHash);
                     return buildResponse(data, cachedReview, cachedReview != null);
                 }
         );
@@ -96,6 +100,13 @@ public class SessionReviewService {
         long hashStartedAt = System.nanoTime();
         String inputHash = reviewHash(data);
         long hashElapsedMs = elapsedMs(hashStartedAt);
+        if (data.totalTrades() == 0) {
+            observabilityService.recordCacheEvent("Session Review", false);
+            log.info("AI skipped for Session Review: no trades. userId={}, accountId={}, date={}",
+                    user.getId(), accountId, date);
+            return buildResponse(data, null, false);
+        }
+
         long cacheLookupStartedAt = System.nanoTime();
         log.debug("Session review AI cache lookup start. userId={}, accountId={}, date={}, inputHash={}, loadSessionMs={}, hashMs={}",
                 user.getId(), accountId, date, inputHash, loadElapsedMs, hashElapsedMs);
@@ -303,6 +314,9 @@ public class SessionReviewService {
         response.setSessionDisciplineScore(data.disciplineScore());
         response.setAiSessionReview(review);
         response.setAiReviewCached(cached);
+        response.setAiGenerated(review != null);
+        response.setNoTrades(data.totalTrades() == 0);
+        response.setCreditsConsumed(review == null || cached ? 0 : 2);
         response.setPreviousTradingDay(data.previousTradingDay());
         response.setNextTradingDay(data.nextTradingDay());
         return response;
@@ -337,7 +351,7 @@ public class SessionReviewService {
         SessionTimelineTradeResponse response = new SessionTimelineTradeResponse();
         response.setTradeId(trade.getId());
         response.setSymbol(trade.getSymbol());
-        response.setSide(trade.getSide());
+        response.setSide(parseSideLabel(trade.getSide()));
         response.setEntryTime(trade.getEntryTime());
         response.setExitTime(trade.getExitTime());
         response.setQuantity(trade.getQuantity());
@@ -352,6 +366,17 @@ public class SessionReviewService {
 
     private BigDecimal pnl(Trade trade) {
         return trade.getPnlAmount() == null ? BigDecimal.ZERO : trade.getPnlAmount();
+    }
+
+    private String parseSideLabel(String side) {
+        if (side == null || side.isBlank()) {
+            return Side.UNKNOWN.name();
+        }
+        try {
+            return Side.valueOf(side.trim().toUpperCase()).name();
+        } catch (IllegalArgumentException ignored) {
+            return Side.UNKNOWN.name();
+        }
     }
 
     private BigDecimal averagePnl(List<BigDecimal> values) {
@@ -535,7 +560,7 @@ public class SessionReviewService {
             Trade scratchWinner = largestScratchWinner(trades);
             if (scratchWinner != null) {
                 best = " The only positive trade was essentially a scratch winner on "
-                        + scratchWinner.getSymbol() + " " + scratchWinner.getSide()
+                        + scratchWinner.getSymbol() + " " + parseSideLabel(scratchWinner.getSide())
                         + " for " + pnl(scratchWinner) + " and did not materially affect the session.";
             } else {
                 best = trades.size() == 1 && pnl(trades.get(0)).compareTo(BigDecimal.ZERO) < 0
@@ -599,8 +624,8 @@ public class SessionReviewService {
         }
     }
 
-    private String sessionReviewCacheKey(Long userId, Long accountId, LocalDate date) {
-        return "session-review:" + userId + ":" + accountId + ":" + date;
+    private String sessionReviewCacheKey(Long userId, Long accountId, LocalDate date, String inputHash) {
+        return "session-review:" + userId + ":" + accountId + ":" + date + ":" + inputHash;
     }
 
     private long elapsedMs(long startedAtNanos) {

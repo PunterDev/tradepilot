@@ -26,6 +26,24 @@ export type CoachSnapshot = {
   aiResponseJson?: string;
   errorMessage?: string;
   topLeakToWatch?: LeakResult;
+  selectedDaySummary?: string;
+  primaryIssueToday?: string;
+  setupDirectionReview?: string;
+  longTradeCount?: number;
+  shortTradeCount?: number;
+  unknownTradeCount?: number;
+  longPnl?: number;
+  shortPnl?: number;
+  worstTradeSide?: string;
+  historicalPatternToWatch?: string;
+  historicalPatternAppliesToday?: boolean;
+  dataQuality?: string;
+  dataQualityReason?: string;
+  nextSessionRule?: string;
+  aiGenerated?: boolean;
+  noTradeDay?: boolean;
+  noTradeWeek?: boolean;
+  creditsConsumed?: number;
 
   createdAt: string;
   updatedAt: string;

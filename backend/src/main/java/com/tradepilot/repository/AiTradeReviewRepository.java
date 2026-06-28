@@ -53,5 +53,9 @@ public interface AiTradeReviewRepository extends JpaRepository<AiTradeReview, Lo
 
     List<AiTradeReview> findByUserId(Long userId);
 
+    long countByUserIdAndTradeIdIn(Long userId, List<Long> tradeIds);
+
+    long deleteByUserIdAndTradeIdIn(Long userId, List<Long> tradeIds);
+
     void deleteByUserId(Long userId);
 }

@@ -183,9 +183,13 @@ public class CoachAiGeneratorService {
     ) {
 
         return CoachAiResponse.builder()
-                .headline("Trading performance reviewed.")
+                .headline(summary.getSelectedDaySummary() == null
+                        ? "Trading performance reviewed."
+                        : summary.getSelectedDaySummary())
                 .emotionalPattern(
-                        "Possible emotional trading patterns detected."
+                        summary.getDataQualityReason() == null
+                                ? "No emotion or setup metadata was recorded, so coaching is based only on execution data."
+                                : summary.getDataQualityReason()
                 )
                 .bestBehavior(
                         "Best setup: " + summary.getBestSetup()
@@ -197,10 +201,14 @@ public class CoachAiGeneratorService {
                         summary.getBestSetup()
                 )
                 .avoidNextSession(
-                        "Avoid repeating weak setups and emotional entries."
+                        summary.getPrimaryIssueToday() == null
+                                ? "Avoid repeating weak setups and emotional entries."
+                                : summary.getPrimaryIssueToday()
                 )
                 .nextSessionFocus(
-                        "Focus on your highest quality setup only."
+                        summary.getSetupDirectionReview() == null
+                                ? "Focus on your highest quality setup only."
+                                : summary.getSetupDirectionReview()
                 )
                 .riskNote(
                         "Respect risk limits and avoid overtrading."
@@ -209,7 +217,9 @@ public class CoachAiGeneratorService {
                         "Wait for confirmation before entering."
                 )
                 .oneRuleForNextSession(
-                        "After a loss, pause before the next trade."
+                        summary.getNextSessionRule() == null
+                                ? "After a loss, pause before the next trade."
+                                : summary.getNextSessionRule()
                 )
                 .build();
     }

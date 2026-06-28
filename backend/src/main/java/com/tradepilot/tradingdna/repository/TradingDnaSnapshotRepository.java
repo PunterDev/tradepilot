@@ -3,6 +3,7 @@ package com.tradepilot.tradingdna.repository;
 import com.tradepilot.tradingdna.entity.TradingDnaSnapshot;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -37,6 +38,28 @@ public interface TradingDnaSnapshotRepository extends JpaRepository<TradingDnaSn
     );
 
     List<TradingDnaSnapshot> findByUserId(Long userId);
+
+    @Query("""
+            select count(s)
+            from TradingDnaSnapshot s
+            where s.userId = :userId
+              and (s.accountId = :accountId or s.accountId is null or s.includeAllAccounts = true)
+            """)
+    long countAffectedByAccountHistory(
+            @Param("userId") Long userId,
+            @Param("accountId") Long accountId
+    );
+
+    @Modifying
+    @Query("""
+            delete from TradingDnaSnapshot s
+            where s.userId = :userId
+              and (s.accountId = :accountId or s.accountId is null or s.includeAllAccounts = true)
+            """)
+    int deleteAffectedByAccountHistory(
+            @Param("userId") Long userId,
+            @Param("accountId") Long accountId
+    );
 
     void deleteByUserId(Long userId);
 }

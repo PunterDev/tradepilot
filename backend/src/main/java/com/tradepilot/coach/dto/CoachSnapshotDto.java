@@ -50,6 +50,42 @@ public class CoachSnapshotDto {
 
     private LeakResultDto topLeakToWatch;
 
+    private String selectedDaySummary;
+
+    private String primaryIssueToday;
+
+    private String setupDirectionReview;
+
+    private Integer longTradeCount;
+
+    private Integer shortTradeCount;
+
+    private Integer unknownTradeCount;
+
+    private BigDecimal longPnl;
+
+    private BigDecimal shortPnl;
+
+    private String worstTradeSide;
+
+    private String historicalPatternToWatch;
+
+    private Boolean historicalPatternAppliesToday;
+
+    private String dataQuality;
+
+    private String dataQualityReason;
+
+    private String nextSessionRule;
+
+    private Boolean aiGenerated;
+
+    private Boolean noTradeDay;
+
+    private Boolean noTradeWeek;
+
+    private Integer creditsConsumed;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

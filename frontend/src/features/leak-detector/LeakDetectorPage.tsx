@@ -70,6 +70,7 @@ export default function LeakDetectorPage({
   }, [accountId]);
 
   const remaining = usage?.remaining?.AI_CREDITS ?? 0;
+  const skippedForData = Boolean(data?.noTrades || data?.limitedData);
 
   return (
     <>
@@ -98,12 +99,21 @@ export default function LeakDetectorPage({
             </select>
           </div>
           <div style={creditBadge}>3 AI credits</div>
-          <button type="button" onClick={regenerate} disabled={!accountId || regenerating} style={{ ...button, width: 150, borderRadius: 8 }}>
-            {regenerating ? "Regenerating..." : "Regenerate"}
+          <button type="button" onClick={regenerate} disabled={!accountId || regenerating || skippedForData} style={{ ...button, width: 150, borderRadius: 8 }}>
+            {regenerating ? "Regenerating..." : skippedForData ? "More trades needed" : "Regenerate"}
           </button>
         </div>
 
-        {remaining < 3 && (
+        {skippedForData && (
+          <div style={notice}>
+            {data?.noTrades
+              ? "Import trades for this account to generate AI Leak Detector."
+              : "Import more trades to detect statistically meaningful leaks."}
+            {" "}No AI credits were used.
+          </div>
+        )}
+
+        {!skippedForData && remaining < 3 && (
           <div style={notice}>You have {remaining} AI credits remaining. Cached leak results remain viewable.</div>
         )}
 
@@ -113,7 +123,7 @@ export default function LeakDetectorPage({
         {!loading && data && data.leaks.length === 0 && (
           <div style={emptyState}>
             <h2 style={emptyTitle}>Not enough trade history for high-confidence leak detection yet.</h2>
-            <p style={muted}>Import more trades or journal at least 20 trades for stronger leak detection.</p>
+            <p style={muted}>{data.message ?? "Import more trades to detect statistically meaningful leaks."}</p>
           </div>
         )}
 

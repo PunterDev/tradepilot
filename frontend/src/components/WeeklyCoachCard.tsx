@@ -20,6 +20,9 @@ type Props = {
     error?: string | null;
     onRegenerate: () => void;
     remaining?: number;
+    limitReached?: boolean;
+    limitMessage?: string;
+    hasCachedSnapshot?: boolean;
     onUsageChanged?: () => void;
     onLimitClick?: () => void;
 };
@@ -41,12 +44,19 @@ export function WeeklyCoachCard({
     error,
     onRegenerate,
     remaining = 1,
+    limitReached = false,
+    limitMessage,
+    hasCachedSnapshot = false,
     onUsageChanged,
     onLimitClick,
 }: Props) {
     const ai = parseAi(snapshot?.aiResponseJson);
     const isRunning =
         snapshot?.status === "PENDING" || snapshot?.status === "PROCESSING";
+    const isNoTradeWeek = Boolean(snapshot?.noTradeWeek);
+    const isLimitReached = !isNoTradeWeek && (remaining === 0 || limitReached);
+    const canShowCachedSnapshot = limitReached ? hasCachedSnapshot : Boolean(snapshot);
+    const displaySnapshot = snapshot && (!limitReached || hasCachedSnapshot);
 
     return (
         <section className={coachCardClass} style={coachCardStyle}>
@@ -60,24 +70,36 @@ export function WeeklyCoachCard({
 
                 <button
                     onClick={async () => {
-                        if (remaining === 0) {
+                        if (isNoTradeWeek) {
+                            return;
+                        }
+                        if (isLimitReached) {
                             onLimitClick?.();
                             return;
                         }
                         await onRegenerate();
                         onUsageChanged?.();
                     }}
-                    disabled={generating || isRunning}
+                    disabled={generating || isRunning || isLimitReached || isNoTradeWeek}
                     className={coachButtonClass}
                     style={coachButtonStyle}
                 >
-                    {generating || isRunning ? "Generating..." : remaining === 0 ? "Limit reached" : "Regenerate"}
+                    {generating || isRunning ? "Generating..." : isNoTradeWeek ? "No trades to review" : isLimitReached ? "Limit reached" : "Regenerate"}
                 </button>
             </div>
 
-            {remaining === 0 && (
+            {isNoTradeWeek && (
                 <p className="mt-4 rounded-xl border p-3 text-sm" style={coachNoticeStyle}>
-                    You have reached this month’s Weekly Coach generation limit. Cached snapshots remain viewable.
+                    No trades for this week. Import trades before regenerating weekly coach feedback.
+                </p>
+            )}
+
+            {isLimitReached && (
+                <p className="mt-4 rounded-xl border p-3 text-sm" style={coachNoticeStyle}>
+                    {limitMessage
+                        ?? (canShowCachedSnapshot
+                            ? "Limit reached. Showing cached Weekly Coach snapshot."
+                            : "You have reached this month’s Weekly Coach generation limit. No cached snapshot is available for this week.")}
                 </p>
             )}
 
@@ -89,13 +111,13 @@ export function WeeklyCoachCard({
                 </p>
             )}
 
-            {isRunning && (
+            {displaySnapshot && isRunning && (
                 <p className="mt-4 rounded-xl border p-3 text-sm" style={coachNoticeStyle}>
                     Weekly Coach is being generated. This page will update automatically.
                 </p>
             )}
 
-            {!loading && !snapshot && !error && !isRunning && (
+            {!loading && !snapshot && !error && !isRunning && !isLimitReached && (
                 <div className={`mt-5 ${coachInnerClass}`} style={coachInnerStyle}>
                     <h3 className={coachSectionTitleClass}>
                         No AI coach snapshots yet
@@ -107,7 +129,16 @@ export function WeeklyCoachCard({
                 </div>
             )}
 
-            {snapshot && (
+            {!loading && isLimitReached && !hasCachedSnapshot && !displaySnapshot && (
+                <div className={`mt-5 ${coachInnerClass}`} style={coachInnerStyle}>
+                    <h3 className={coachSectionTitleClass}>Weekly Coach limit reached</h3>
+                    <p className={`mt-2 leading-6 ${coachMutedClass}`}>
+                        No cached coach snapshot is available for this week. Try another week with an existing snapshot or wait until your limit resets.
+                    </p>
+                </div>
+            )}
+
+            {displaySnapshot && (
                 <div className="mt-5 grid gap-4 md:grid-cols-4">
                     <CoachInsightCard title="Trades" value={snapshot.totalTrades} />
                     <CoachInsightCard title="Net P&L" value={`$${snapshot.netPnl ?? 0}`} />
@@ -116,7 +147,7 @@ export function WeeklyCoachCard({
                 </div>
             )}
 
-            {snapshot && (
+            {displaySnapshot && (
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <CoachInsightCard title="Best Session" value={snapshot.bestSession} />
                     <CoachInsightCard title="Worst Session" value={snapshot.worstSession} />
@@ -125,7 +156,35 @@ export function WeeklyCoachCard({
                 </div>
             )}
 
-            {ai && (
+            {displaySnapshot && isNoTradeWeek && (
+                <div className={`mt-5 ${coachInnerClass}`} style={coachInnerStyle}>
+                    <h3 className={coachSectionTitleClass}>No weekly trade data yet</h3>
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <CoachInsightCard
+                            title="Weekly Summary"
+                            value={snapshot.selectedDaySummary || "No trades found for this week."}
+                            eyebrow="No trades"
+                        />
+                        <CoachInsightCard
+                            title="Setup Review"
+                            value={snapshot.setupDirectionReview || "No setup review available because there were no trades this week."}
+                            eyebrow="No setup data"
+                        />
+                        <CoachInsightCard
+                            title="Behavior Review"
+                            value={snapshot.dataQualityReason || "No emotional or behavioral pattern can be assessed without trades."}
+                            eyebrow={snapshot.dataQuality || "No trades"}
+                        />
+                        <CoachInsightCard
+                            title="Next Step"
+                            value={snapshot.nextSessionRule || "Import trades for this week to generate AI coaching."}
+                            eyebrow="Action"
+                        />
+                    </div>
+                </div>
+            )}
+
+            {displaySnapshot && !isNoTradeWeek && ai && (
                 <div className={`mt-5 ${coachInnerClass}`} style={coachInnerStyle}>
                     <h3 className={coachSectionTitleClass}>{ai.headline}</h3>
 

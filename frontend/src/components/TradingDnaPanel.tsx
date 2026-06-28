@@ -13,6 +13,7 @@ import UpgradeModal from "./UpgradeModal";
 import type { TradingAccount } from "../api/accountApi";
 import type { SelectedAccountId } from "../types/dashboard";
 import type { BillingUsage } from "../types/billing";
+import { creditsRemaining } from "../utils/featureAccess";
 import {
   button,
   card,
@@ -48,8 +49,13 @@ export default function TradingDnaPanel({
   });
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const data = dna.data;
-  const remaining = usage?.remaining.AI_CREDITS ?? 1;
-  const limitReached = remaining === 0;
+  const remaining = usage ? creditsRemaining(usage) : 1;
+  const limitReached = remaining === 0 || dna.limitReached || Boolean(data?.limitReached);
+  const hasCachedAnalysis = Boolean(data && (data.cached || data.hasCachedAnalysis));
+  const skippedForData = Boolean(data?.noTrades || data?.limitedData || data?.status === "NO_TRADES" || data?.status === "LIMITED_DATA" || data?.status === "INSUFFICIENT_DATA");
+  const hasDisplayableAnalysis =
+    Boolean(data) && !skippedForData && data?.status !== "LIMIT_REACHED";
+  const limitReachedWithoutCache = limitReached && !hasCachedAnalysis;
 
   return (
     <section
@@ -61,7 +67,7 @@ export default function TradingDnaPanel({
           "linear-gradient(135deg, rgba(8,47,73,0.34), rgba(15,23,42,0.94) 42%, rgba(2,6,23,0.96))",
       }}
     >
-      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} plan={usage?.plan} />
       <div
         style={{
           display: "flex",
@@ -106,13 +112,16 @@ export default function TradingDnaPanel({
                 setUpgradeOpen(true);
                 return;
               }
+              if (skippedForData) {
+                return;
+              }
               await dna.generate();
               onUsageChanged?.();
             }}
-            disabled={dna.loading || dna.refreshing || !dna.canLoad}
+            disabled={dna.loading || dna.refreshing || !dna.canLoad || skippedForData}
             style={{ ...button, width: 150 }}
           >
-            {dna.loading ? "Loading..." : limitReached ? "Limit reached" : "Generate DNA"}
+            {dna.loading ? "Loading..." : skippedForData ? "More trades needed" : limitReached ? "Limit reached" : "Generate DNA"}
           </button>
           <button
             type="button"
@@ -121,10 +130,13 @@ export default function TradingDnaPanel({
                 setUpgradeOpen(true);
                 return;
               }
+              if (skippedForData) {
+                return;
+              }
               await dna.refresh();
               onUsageChanged?.();
             }}
-            disabled={dna.loading || dna.refreshing || !data}
+            disabled={dna.loading || dna.refreshing || !data || limitReachedWithoutCache || skippedForData}
             style={{
               ...button,
               width: 160,
@@ -155,7 +167,7 @@ export default function TradingDnaPanel({
         </div>
       )}
 
-      {limitReached && (
+      {limitReached && !data?.limitReached && (
         <div
           style={{
             marginTop: 18,
@@ -200,7 +212,26 @@ export default function TradingDnaPanel({
         </div>
       )}
 
-      {data && (data.status === "INSUFFICIENT_DATA" || data.status === "LIMIT_REACHED") && (
+      {data && data.status === "LIMIT_REACHED" && (
+        <div
+          style={{
+            marginTop: 22,
+            padding: 22,
+            borderRadius: 20,
+            border: "1px solid rgba(250,204,21,0.28)",
+            background: "rgba(113,63,18,0.22)",
+          }}
+        >
+          <h3 style={{ color: "#f8fafc", margin: "0 0 8px" }}>
+            Trading DNA limit reached
+          </h3>
+          <p style={{ ...mutedText, margin: 0 }}>
+            {data.message ?? "No cached analysis is available for your current trade data."}
+          </p>
+        </div>
+      )}
+
+      {data && skippedForData && (
         <div
           style={{
             marginTop: 22,
@@ -214,13 +245,17 @@ export default function TradingDnaPanel({
             Not enough trades yet
           </h3>
           <p style={{ ...mutedText, margin: 0 }}>
-            {data.message ??
-              `Import at least 5 trades for this scope to generate reliable Trading DNA. Current sample: ${data.totalTrades} trades.`}
+            {data.noTrades
+              ? "No trades found for this Trading DNA period. Import trades before generating analysis."
+              : data.message ?? `Import more trades to unlock a meaningful Trading DNA analysis. Current sample: ${data.totalTrades} trades.`}
+          </p>
+          <p style={{ ...mutedText, margin: "10px 0 0" }}>
+            No AI credits were used for this result.
           </p>
         </div>
       )}
 
-      {data && data.status !== "INSUFFICIENT_DATA" && data.status !== "LIMIT_REACHED" && (
+      {data && hasDisplayableAnalysis && (
         <>
           <div
             style={{

@@ -47,5 +47,21 @@ public interface AiCoachSnapshotRepository extends JpaRepository<AiCoachSnapshot
 
     List<AiCoachSnapshot> findByUserId(Long userId);
 
+    long countByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartLessThanEqualAndPeriodEndGreaterThanEqual(
+            Long userId,
+            Long accountId,
+            CoachSnapshotType snapshotType,
+            LocalDate endDate,
+            LocalDate startDate
+    );
+
+    long deleteByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartLessThanEqualAndPeriodEndGreaterThanEqual(
+            Long userId,
+            Long accountId,
+            CoachSnapshotType snapshotType,
+            LocalDate endDate,
+            LocalDate startDate
+    );
+
     void deleteByUserId(Long userId);
 }

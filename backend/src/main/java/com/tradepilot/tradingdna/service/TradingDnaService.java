@@ -172,6 +172,25 @@ public class TradingDnaService {
         TradingDnaContext context = buildContext(user, scopedAccountId, allAccounts, timeframeDays, startDate, endDate, trades);
         long contextElapsedMs = elapsedMs(contextStartedAt);
 
+        if (context.getTotalTrades() < MIN_TRADES_FOR_AI) {
+            observabilityService.recordCacheEvent("Trading DNA", false);
+            String reason = context.getTotalTrades() == 0 ? "NO_TRADES" : "LIMITED_DATA";
+            log.info("AI skipped for Trading DNA: insufficient data. userId={}, accountId={}, tradeCount={}, minRequired={}, reason={}",
+                    user.getId(), scopedAccountId, context.getTotalTrades(), MIN_TRADES_FOR_AI, reason);
+            TradingDnaSnapshot saved = saveSkippedSnapshot(
+                    user,
+                    scopedAccountId,
+                    timeframeDays,
+                    allAccounts,
+                    dataHash,
+                    context,
+                    context.getTotalTrades() == 0 ? "NO_TRADES" : "LIMITED_DATA"
+            );
+            log.info("Trading DNA deterministic skip completed. userId={}, accountId={}, includeAllAccounts={}, days={}, snapshotId={}, totalTrades={}, tradesQueryMs={}, contextBuildMs={}, totalMs={}",
+                    user.getId(), scopedAccountId, allAccounts, timeframeDays, saved.getId(), context.getTotalTrades(), tradesElapsedMs, contextElapsedMs, elapsedMs(requestStartedAt));
+            return toResponse(saved, false);
+        }
+
         long usageStartedAt = System.nanoTime();
         try {
             usageLimitService.enforceAiUsage(user, UsageType.TRADING_DNA);
@@ -203,9 +222,7 @@ public class TradingDnaService {
         long aiStartedAt = System.nanoTime();
         log.debug("Trading DNA OpenAI generation start. userId={}, accountId={}, includeAllAccounts={}, days={}, totalTrades={}",
                 user.getId(), scopedAccountId, allAccounts, timeframeDays, context.getTotalTrades());
-        TradingDnaAiResult aiResult = context.getTotalTrades() < MIN_TRADES_FOR_AI
-                ? insufficientDataResult(context)
-                : generate(context);
+        TradingDnaAiResult aiResult = generate(context);
         long aiElapsedMs = elapsedMs(aiStartedAt);
         log.debug("Trading DNA OpenAI generation end. userId={}, accountId={}, includeAllAccounts={}, days={}, totalTrades={}, elapsedMs={}",
                 user.getId(), scopedAccountId, allAccounts, timeframeDays, context.getTotalTrades(), aiElapsedMs);
@@ -225,7 +242,7 @@ public class TradingDnaService {
         snapshot.setDays(timeframeDays);
         snapshot.setIncludeAllAccounts(allAccounts);
         snapshot.setDataHash(dataHash);
-        snapshot.setStatus(context.getTotalTrades() < MIN_TRADES_FOR_AI ? "INSUFFICIENT_DATA" : "COMPLETED");
+        snapshot.setStatus("COMPLETED");
         snapshot.setTotalTrades(context.getTotalTrades());
         snapshot.setContextJson(writeJson(context));
         snapshot.setTimelineJson(writeJson(context.getTimeline()));
@@ -243,6 +260,39 @@ public class TradingDnaService {
         log.info("Trading DNA generation completed. userId={}, accountId={}, includeAllAccounts={}, days={}, snapshotId={}, totalTrades={}, snapshotLookupMs={}, tradesQueryMs={}, contextBuildMs={}, usageCheckMs={}, aiMs={}, existingSnapshotLookupMs={}, saveMs={}, responseBuildMs={}, totalMs={}",
                 user.getId(), scopedAccountId, allAccounts, timeframeDays, saved.getId(), context.getTotalTrades(), snapshotLookupElapsedMs, tradesElapsedMs, contextElapsedMs, usageElapsedMs, aiElapsedMs, existingSnapshotElapsedMs, saveElapsedMs, responseElapsedMs, elapsedMs(requestStartedAt));
         return response;
+    }
+
+    private TradingDnaSnapshot saveSkippedSnapshot(
+            User user,
+            Long scopedAccountId,
+            int timeframeDays,
+            boolean allAccounts,
+            String dataHash,
+            TradingDnaContext context,
+            String status
+    ) {
+        TradingDnaSnapshot snapshot = snapshotRepository
+                .findTopByUserIdAndAccountIdAndDaysAndIncludeAllAccountsOrderByUpdatedAtDesc(
+                        user.getId(),
+                        scopedAccountId,
+                        timeframeDays,
+                        allAccounts
+                )
+                .orElseGet(TradingDnaSnapshot::new);
+        snapshot.setUserId(user.getId());
+        snapshot.setAccountId(scopedAccountId);
+        snapshot.setDays(timeframeDays);
+        snapshot.setIncludeAllAccounts(allAccounts);
+        snapshot.setDataHash(dataHash);
+        snapshot.setStatus(status);
+        snapshot.setTotalTrades(context.getTotalTrades());
+        snapshot.setContextJson(writeJson(context));
+        snapshot.setTimelineJson(writeJson(context.getTimeline()));
+        snapshot.setAiResponseJson(writeJson(insufficientDataResult(context)));
+        snapshot.setModel("deterministic-skip");
+        TradingDnaSnapshot saved = snapshotRepository.save(snapshot);
+        cacheInvalidationService.invalidateTradingDna(user.getId());
+        return saved;
     }
 
     private String tradingDnaCacheKey(Long userId, Long accountId, boolean includeAllAccounts, int days, String dataHash) {
@@ -436,7 +486,16 @@ public class TradingDnaService {
         response.setStatus(snapshot.getStatus());
         response.setCached(cached);
         response.setLimitReached(false);
+        response.setAiGenerated("COMPLETED".equals(snapshot.getStatus()));
+        response.setNoTrades("NO_TRADES".equals(snapshot.getStatus()));
+        response.setLimitedData("LIMITED_DATA".equals(snapshot.getStatus()) || "INSUFFICIENT_DATA".equals(snapshot.getStatus()));
+        response.setCreditsConsumed(Boolean.TRUE.equals(response.getAiGenerated()) && !cached ? 3 : 0);
         response.setMessage(null);
+        if (Boolean.TRUE.equals(response.getNoTrades())) {
+            response.setMessage("No trades found for this Trading DNA period. Import trades before generating analysis.");
+        } else if (Boolean.TRUE.equals(response.getLimitedData())) {
+            response.setMessage("Import more trades to unlock a meaningful Trading DNA analysis.");
+        }
         response.setTotalTrades(snapshot.getTotalTrades());
         response.setLastGeneratedAt(snapshot.getUpdatedAt());
         response.setStrengths(nonNull(ai.getStrengths()));
@@ -467,6 +526,10 @@ public class TradingDnaService {
         response.setStatus("INSUFFICIENT_DATA");
         response.setCached(false);
         response.setLimitReached(false);
+        response.setAiGenerated(false);
+        response.setNoTrades(true);
+        response.setLimitedData(true);
+        response.setCreditsConsumed(0);
         response.setMessage(message);
         response.setTotalTrades(0);
         response.setLastGeneratedAt(null);

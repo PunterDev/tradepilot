@@ -107,6 +107,11 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
 
         {error && <div style={errorBox}>{error}</div>}
         {loading && <div style={loadingBox}>Loading session film...</div>}
+        {review?.noTrades && (
+          <div style={loadingBox}>
+            Import trades for this session to generate AI review. No AI credits were used.
+          </div>
+        )}
 
         {review && (
           <>
@@ -238,7 +243,7 @@ function TimelineTrade({ trade, index, onTradeSelect }: { trade: SessionTimeline
   return (
     <button type="button" onClick={() => onTradeSelect(trade.tradeId)} style={timelineCard(pnl)}>
       <div style={timeBlock}>{formatTime(trade.entryTime)}</div>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, display: "grid", gap: 5 }}>
         <strong>{index + 1}. {trade.symbol} {trade.side}</strong>
         <span>{humanize(trade.setup)} · {humanize(trade.outcome)}</span>
       </div>
@@ -294,7 +299,7 @@ function timelineOutcome(pnl: number) {
 }
 function humanize(value?: string | null) { return value ? value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (m) => m.toUpperCase()) : "Untagged"; }
 function formatTime(value?: string) { if (!value) return "-"; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
-function tradeLabel(trade?: SessionTimelineTrade | null, fallback = "-") { return trade ? `${trade.symbol} ${formatCurrency(toNumber(trade.pnl))}` : fallback; }
+function tradeLabel(trade?: SessionTimelineTrade | null, fallback = "-") { return trade ? `${trade.symbol} ${trade.side ?? "UNKNOWN"} · ${formatCurrency(toNumber(trade.pnl))}` : fallback; }
 function holdLabel(trade?: SessionTimelineTrade | null, minutes?: number | null) { return trade ? `${trade.symbol} · ${minutes ?? 0}m` : "-"; }
 function hourLabel(hour?: number | null, pnl?: number | string | null, fallback = "-") { return hour == null ? fallback : `${String(hour).padStart(2, "0")}:00 · ${formatCurrency(toNumber(pnl))}`; }
 

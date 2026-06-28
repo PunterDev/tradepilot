@@ -40,6 +40,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class LeakDetectorService {
     private static final int MIN_STRONG_SAMPLE = 20;
+    private static final int MIN_TRADES_FOR_LEAK_DETECTION = 10;
     private static final BigDecimal LARGE_DOLLAR_LOSS_FLOOR = new BigDecimal("-500.00");
 
     private final FeatureAccessService featureAccessService;
@@ -79,6 +80,27 @@ public class LeakDetectorService {
         }
 
         observabilityService.recordCacheEvent("AI Leak Detector", false);
+
+        if (trades.size() < MIN_TRADES_FOR_LEAK_DETECTION) {
+            String reason = trades.isEmpty() ? "NO_TRADES" : "LIMITED_DATA";
+            log.info("AI skipped for AI Leak Detector: insufficient data. userId={}, accountId={}, tradeCount={}, minRequired={}, reason={}",
+                    user.getId(), accountId, trades.size(), MIN_TRADES_FOR_LEAK_DETECTION, reason);
+            LeakDetectorResponse skipped = analyze(accountId, trades, dataHash);
+            AiLeakDetectorSnapshot snapshot = AiLeakDetectorSnapshot.builder()
+                    .userId(user.getId())
+                    .accountId(accountId)
+                    .dataHash(dataHash)
+                    .totalTrades(trades.size())
+                    .resultJson(writeLeaks(skipped.getLeaks()))
+                    .model("deterministic-skip")
+                    .build();
+            AiLeakDetectorSnapshot saved = snapshotRepository.save(snapshot);
+            skipped.setId(saved.getId());
+            skipped.setCached(false);
+            skipped.setGeneratedAt(saved.getCreatedAt());
+            return skipped;
+        }
+
         usageLimitService.enforceAiUsage(user, UsageType.AI_LEAK_DETECTOR);
 
         LeakDetectorResponse generated = analyze(accountId, trades, dataHash);
@@ -102,17 +124,29 @@ public class LeakDetectorService {
 
     LeakDetectorResponse analyze(Long accountId, List<Trade> trades, String dataHash) {
         LocalDateTime generatedAt = LocalDateTime.now();
-        if (trades.size() < MIN_STRONG_SAMPLE) {
-            return LeakDetectorResponse.builder()
-                    .accountId(accountId)
-                    .cached(false)
-                    .totalTrades(trades.size())
-                    .sampleTradeCount(trades.size())
-                    .dataHash(dataHash)
-                    .leaks(List.of())
-                    .message("Not enough trade history for high-confidence leak detection yet.")
-                    .generatedAt(generatedAt)
-                    .build();
+        if (trades.size() < MIN_TRADES_FOR_LEAK_DETECTION) {
+            return LeakDetectorResponse.of(
+                    null,
+                    accountId,
+                    false,
+                    false,
+                    trades.isEmpty(),
+                    true,
+                    0,
+                    trades.size(),
+                    trades.size(),
+                    dataHash,
+                    List.of(),
+                    trades.isEmpty()
+                            ? "No trades found for AI Leak Detector. Import trades before generating leak analysis."
+                            : "Import more trades to detect statistically meaningful leaks.",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    generatedAt
+            );
         }
 
         LeakContext context = new LeakContext(trades);
@@ -131,30 +165,35 @@ public class LeakDetectorService {
         ranked.sort(leakPriorityComparator());
         List<LeakResultDto> topLeaks = ranked.stream().limit(8).toList();
 
-        return LeakDetectorResponse.builder()
-                .accountId(accountId)
-                .cached(false)
-                .totalTrades(trades.size())
-                .sampleTradeCount(trades.size())
-                .dataHash(dataHash)
-                .leaks(topLeaks)
-                .message(topLeaks.isEmpty()
+        return LeakDetectorResponse.of(
+                null,
+                accountId,
+                false,
+                true,
+                false,
+                false,
+                3,
+                trades.size(),
+                trades.size(),
+                dataHash,
+                topLeaks,
+                topLeaks.isEmpty()
                         ? "No statistically meaningful negative leak is visible yet. Keep journaling to strengthen the signal."
-                        : "Leak detector found " + topLeaks.size() + " behavior pattern(s) worth reviewing.")
-                .biggestLeakTitle(topLeaks.isEmpty() ? null : topLeaks.get(0).getTitle())
-                .biggestLeakImpact(topLeaks.isEmpty() ? null : topLeaks.get(0).getEstimatedMonthlyImpact())
-                .biggestLeakFix(topLeaks.isEmpty() ? null : topLeaks.get(0).getRecommendedFix())
-                .totalEstimatedMonthlyImpact(round(topLeaks.stream()
+                        : "Leak detector found " + topLeaks.size() + " behavior pattern(s) worth reviewing.",
+                topLeaks.isEmpty() ? null : topLeaks.get(0).getTitle(),
+                topLeaks.isEmpty() ? null : topLeaks.get(0).getEstimatedMonthlyImpact(),
+                topLeaks.isEmpty() ? null : topLeaks.get(0).getRecommendedFix(),
+                round(topLeaks.stream()
                         .map(LeakResultDto::getEstimatedMonthlyImpact)
                         .filter(Objects::nonNull)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add)))
-                .highestConfidence(topLeaks.stream()
+                        .reduce(BigDecimal.ZERO, BigDecimal::add)),
+                topLeaks.stream()
                         .map(LeakResultDto::getConfidenceScore)
                         .filter(Objects::nonNull)
                         .max(Integer::compareTo)
-                        .orElse(null))
-                .generatedAt(generatedAt)
-                .build();
+                        .orElse(null),
+                generatedAt
+        );
     }
 
     private void addWorstGroup(List<LeakResultDto> leaks, LeakContext context, LeakType type, String baseTitle, Function<Trade, String> classifier) {
@@ -263,27 +302,27 @@ public class LeakDetectorService {
         int confidence = confidenceScore(leakTrades.size(), confidenceExpectancy(avgPnl, avgR), lossRate(leakTrades), confidenceTotal(totalPnl, totalR));
         LeakSeverity severity = severity(confidence, leakTrades.size(), monthlyImpact, monthlyImpactR, avgPnl, avgR);
 
-        return LeakResultDto.builder()
-                .leakType(type)
-                .title(title)
-                .summary(label + " is dragging performance by " + formatDollarImpact(totalPnl) + " across " + leakTrades.size() + " trades.")
-                .description(descriptionFor(type, label, leakTrades.size(), totalPnl, avgPnl, totalR, avgR))
-                .tradeCount(leakTrades.size())
-                .winRate(winRate)
-                .totalPnl(totalPnl)
-                .avgPnl(avgPnl)
-                .estimatedMonthlyImpact(monthlyImpact)
-                .totalR(totalR)
-                .avgR(avgR)
-                .estimatedMonthlyImpactR(monthlyImpactR)
-                .hasValidRMultiple(hasValidRMultiple)
-                .confidenceScore(confidence)
-                .severity(severity)
-                .recommendedFix(recommendationFor(type, label))
-                .relatedTradeCount(leakTrades.size())
-                .relatedTradeIds(leakTrades.stream().map(Trade::getId).filter(Objects::nonNull).limit(12).toList())
-                .generatedAt(LocalDateTime.now())
-                .build();
+        return LeakResultDto.of(
+                type,
+                title,
+                label + " is dragging performance by " + formatDollarImpact(totalPnl) + " across " + leakTrades.size() + " trades.",
+                descriptionFor(type, label, leakTrades.size(), totalPnl, avgPnl, totalR, avgR),
+                leakTrades.size(),
+                winRate,
+                totalPnl,
+                avgPnl,
+                monthlyImpact,
+                totalR,
+                avgR,
+                monthlyImpactR,
+                hasValidRMultiple,
+                confidence,
+                severity,
+                recommendationFor(type, label),
+                leakTrades.size(),
+                leakTrades.stream().map(Trade::getId).filter(Objects::nonNull).limit(12).toList(),
+                LocalDateTime.now()
+        );
     }
 
     /**
@@ -362,13 +401,21 @@ public class LeakDetectorService {
     }
 
     private BigDecimal calculateRMultiple(Trade trade) {
-        if (trade.getPnlR() != null) {
-            return trade.getPnlR();
+        BigDecimal effectiveRisk = effectiveRiskAmount(trade);
+        if (trade.getPnlAmount() != null && effectiveRisk != null) {
+            return trade.getPnlAmount().divide(effectiveRisk, 4, RoundingMode.HALF_UP);
         }
-        if (trade.getPnlAmount() != null
-                && trade.getRiskAmount() != null
-                && trade.getRiskAmount().compareTo(BigDecimal.ZERO) > 0) {
-            return trade.getPnlAmount().divide(trade.getRiskAmount(), 4, RoundingMode.HALF_UP);
+        return null;
+    }
+
+    private BigDecimal effectiveRiskAmount(Trade trade) {
+        if (trade.getRiskAmount() != null && trade.getRiskAmount().compareTo(BigDecimal.ZERO) > 0) {
+            return trade.getRiskAmount();
+        }
+        if (trade.getAccount() != null
+                && trade.getAccount().getDefaultRiskAmount() != null
+                && trade.getAccount().getDefaultRiskAmount().compareTo(BigDecimal.ZERO) > 0) {
+            return trade.getAccount().getDefaultRiskAmount();
         }
         return null;
     }
@@ -658,34 +705,47 @@ public class LeakDetectorService {
                     .constructCollectionType(List.class, LeakResultDto.class);
             List<LeakResultDto> leaks = objectMapper.readValue(snapshot.getResultJson(), leakListType);
             normalizeRelatedTradeCounts(leaks);
-            return LeakDetectorResponse.builder()
-                    .id(snapshot.getId())
-                    .accountId(snapshot.getAccountId())
-                    .cached(cached)
-                    .totalTrades(snapshot.getTotalTrades())
-                    .sampleTradeCount(snapshot.getTotalTrades())
-                    .dataHash(snapshot.getDataHash())
-                    .leaks(leaks)
-                    .message(leaks.isEmpty()
-                            ? "Not enough trade history yet. Import more trades or journal at least 20 trades for stronger leak detection."
-                            : "Leak detector found " + leaks.size() + " behavior pattern(s) worth reviewing.")
-                    .biggestLeakTitle(leaks.isEmpty() ? null : leaks.get(0).getTitle())
-                    .biggestLeakImpact(leaks.isEmpty() ? null : leaks.get(0).getEstimatedMonthlyImpact())
-                    .biggestLeakFix(leaks.isEmpty() ? null : leaks.get(0).getRecommendedFix())
-                    .totalEstimatedMonthlyImpact(round(leaks.stream()
+            boolean skipped = "deterministic-skip".equals(snapshot.getModel());
+            return LeakDetectorResponse.of(
+                    snapshot.getId(),
+                    snapshot.getAccountId(),
+                    cached,
+                    !skipped,
+                    snapshot.getTotalTrades() != null && snapshot.getTotalTrades() == 0,
+                    skipped && (snapshot.getTotalTrades() == null || snapshot.getTotalTrades() < MIN_TRADES_FOR_LEAK_DETECTION),
+                    0,
+                    snapshot.getTotalTrades(),
+                    snapshot.getTotalTrades(),
+                    snapshot.getDataHash(),
+                    leaks,
+                    leaks.isEmpty()
+                            ? skippedMessage(snapshot.getTotalTrades())
+                            : "Leak detector found " + leaks.size() + " behavior pattern(s) worth reviewing.",
+                    leaks.isEmpty() ? null : leaks.get(0).getTitle(),
+                    leaks.isEmpty() ? null : leaks.get(0).getEstimatedMonthlyImpact(),
+                    leaks.isEmpty() ? null : leaks.get(0).getRecommendedFix(),
+                    round(leaks.stream()
                             .map(LeakResultDto::getEstimatedMonthlyImpact)
                             .filter(Objects::nonNull)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add)))
-                    .highestConfidence(leaks.stream()
+                            .reduce(BigDecimal.ZERO, BigDecimal::add)),
+                    leaks.stream()
                             .map(LeakResultDto::getConfidenceScore)
                             .filter(Objects::nonNull)
                             .max(Integer::compareTo)
-                            .orElse(null))
-                    .generatedAt(snapshot.getUpdatedAt())
-                    .build();
+                            .orElse(null),
+                    snapshot.getUpdatedAt()
+            );
         } catch (Exception e) {
             throw new IllegalStateException("Unable to read leak detector cache", e);
         }
+    }
+
+    private String skippedMessage(Integer tradeCount) {
+        int count = tradeCount == null ? 0 : tradeCount;
+        if (count == 0) {
+            return "No trades found for AI Leak Detector. Import trades before generating leak analysis.";
+        }
+        return "Import more trades to detect statistically meaningful leaks.";
     }
 
     private void normalizeRelatedTradeCounts(List<LeakResultDto> leaks) {

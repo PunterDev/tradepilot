@@ -334,10 +334,25 @@ public class AiTradeReviewService {
 
     private Trade resolveOwnedTrade(User user, Long tradeId) {
         if (tradeId == null) {
-            return null;
+            throw new IllegalArgumentException("tradeId is required for AI Trade Review.");
         }
 
-        return tradeService.getOwnedTrade(user, tradeId);
+        Trade trade = tradeService.getOwnedTrade(user, tradeId);
+        validateReviewableTrade(trade);
+        return trade;
+    }
+
+    private void validateReviewableTrade(Trade trade) {
+        if (trade == null) {
+            throw new ResourceNotFoundException("Trade not found");
+        }
+        if (trade.getSymbol() == null || trade.getSymbol().isBlank()
+                || trade.getTradeDate() == null
+                || trade.getPnlAmount() == null) {
+            log.info("AI skipped for Trade Review: insufficient trade data. tradeId={}, symbol={}, tradeDate={}, pnlPresent={}",
+                    trade.getId(), trade.getSymbol(), trade.getTradeDate(), trade.getPnlAmount() != null);
+            throw new IllegalArgumentException("Trade has insufficient data for AI review.");
+        }
     }
 
     private String buildReviewHash(AiTradeReviewRequest request) {

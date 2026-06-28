@@ -20,6 +20,9 @@ type Props = {
     error?: string | null;
     onRegenerate: () => void;
     remaining?: number;
+    limitReached?: boolean;
+    limitMessage?: string;
+    hasCachedSnapshot?: boolean;
     onUsageChanged?: () => void;
     onLimitClick?: () => void;
 };
@@ -41,6 +44,9 @@ export function DailyCoachCard({
     error,
     onRegenerate,
     remaining = 1,
+    limitReached = false,
+    limitMessage,
+    hasCachedSnapshot = false,
     onUsageChanged,
     onLimitClick,
 }: Props) {
@@ -48,8 +54,22 @@ export function DailyCoachCard({
     const isRunning =
         snapshot?.status === "PENDING" || snapshot?.status === "PROCESSING";
     const topLeak = snapshot?.topLeakToWatch;
-    const readiness = readinessLabel(snapshot?.netPnl ?? 0, snapshot?.profitFactor ?? 0);
-    const mainRisk = topLeak?.recommendedFix || ai?.avoidNextSession || snapshot?.biggestMistake || "Wait for clean confirmation before adding risk.";
+    const todaySummary = snapshot?.selectedDaySummary || ai?.headline || readinessLabel(snapshot?.netPnl ?? 0, snapshot?.profitFactor ?? 0);
+    const mainIssueToday = snapshot?.primaryIssueToday || ai?.avoidNextSession || snapshot?.biggestMistake || "Wait for clean confirmation before adding risk.";
+    const directionReview = snapshot?.setupDirectionReview || ai?.nextSessionFocus || "Review whether direction, setup, and execution quality aligned.";
+    const historicalPattern = snapshot?.historicalPatternToWatch
+        || (topLeak
+            ? `Account-level pattern: ${topLeak.summary || topLeak.title}.`
+            : "No cached account-level leak result yet.");
+    const nextRule = snapshot?.nextSessionRule || ai?.oneRuleForNextSession || "Trade the plan, cap losses, and pause after any rule break.";
+    const dataQuality = [
+        snapshot?.dataQuality || "Data Quality",
+        snapshot?.dataQualityReason,
+    ].filter(Boolean).join(": ");
+    const isNoTradeDay = Boolean(snapshot?.noTradeDay);
+    const isLimitReached = !isNoTradeDay && (remaining === 0 || limitReached);
+    const canShowCachedSnapshot = limitReached ? hasCachedSnapshot : Boolean(snapshot);
+    const displaySnapshot = snapshot && (!limitReached || hasCachedSnapshot);
 
     return (
         <section className={coachCardClass} style={coachCardStyle}>
@@ -63,24 +83,36 @@ export function DailyCoachCard({
 
                 <button
                     onClick={async () => {
-                        if (remaining === 0) {
+                        if (isNoTradeDay) {
+                            return;
+                        }
+                        if (isLimitReached) {
                             onLimitClick?.();
                             return;
                         }
                         await onRegenerate();
                         onUsageChanged?.();
                     }}
-                    disabled={generating || isRunning}
+                    disabled={generating || isRunning || isLimitReached || isNoTradeDay}
                     className={coachButtonClass}
                     style={coachButtonStyle}
                 >
-                    {generating || isRunning ? "Generating..." : remaining === 0 ? "Limit reached" : "Regenerate"}
+                    {generating || isRunning ? "Generating..." : isNoTradeDay ? "No trades to review" : isLimitReached ? "Limit reached" : "Regenerate"}
                 </button>
             </div>
 
-            {remaining === 0 && (
+            {isNoTradeDay && (
                 <p className="mt-4 rounded-xl border p-3 text-sm" style={coachNoticeStyle}>
-                    You have reached this month’s Daily Coach generation limit. Cached snapshots remain viewable.
+                    No trades for this date. Import trades before regenerating coach feedback.
+                </p>
+            )}
+
+            {isLimitReached && (
+                <p className="mt-4 rounded-xl border p-3 text-sm" style={coachNoticeStyle}>
+                    {limitMessage
+                        ?? (canShowCachedSnapshot
+                            ? "Limit reached. Showing cached Daily Coach snapshot."
+                            : "You have reached this month’s Daily Coach generation limit. No cached snapshot is available for this date.")}
                 </p>
             )}
 
@@ -92,19 +124,19 @@ export function DailyCoachCard({
                 </p>
             )}
 
-            {snapshot?.status === "FAILED" && (
+            {displaySnapshot && snapshot?.status === "FAILED" && (
                 <p className="mt-4 rounded-xl border p-3 text-sm" style={coachErrorStyle}>
                     {snapshot.errorMessage ?? "Coach generation failed."}
                 </p>
             )}
 
-            {isRunning && (
+            {displaySnapshot && isRunning && (
                 <p className="mt-4 rounded-xl border p-3 text-sm" style={coachNoticeStyle}>
                     AI Coach is analyzing your trades. This page will update automatically.
                 </p>
             )}
 
-            {!loading && !snapshot && !error && !isRunning && (
+            {!loading && !snapshot && !error && !isRunning && !isLimitReached && (
                 <div className={`mt-5 ${coachInnerClass}`} style={coachInnerStyle}>
                     <h3 className={coachSectionTitleClass}>
                         No AI coach snapshots yet
@@ -116,26 +148,36 @@ export function DailyCoachCard({
                 </div>
             )}
 
-            {snapshot && (
+            {!loading && isLimitReached && !hasCachedSnapshot && !displaySnapshot && (
+                <div className={`mt-5 ${coachInnerClass}`} style={coachInnerStyle}>
+                    <h3 className={coachSectionTitleClass}>Daily Coach limit reached</h3>
+                    <p className={`mt-2 leading-6 ${coachMutedClass}`}>
+                        No cached coach snapshot is available for this date. Try another date with an existing snapshot or wait until your limit resets.
+                    </p>
+                </div>
+            )}
+
+            {displaySnapshot && (
                 <div className="mt-5 grid gap-4 md:grid-cols-3">
-                    <CoachInsightCard title="Today’s Readiness" value={readiness} />
-                    <CoachInsightCard title="Main Risk Today" value={mainRisk} />
-                    <CoachInsightCard
-                        title="Top Leak to Watch"
-                        value={topLeak ? `${topLeak.title} (${topLeak.confidenceScore}% confidence)` : "No cached leak result yet"}
-                    />
+                    <CoachInsightCard title="Today’s Session" value={todaySummary} eyebrow="Today" />
+                    <CoachInsightCard title="Main Issue Today" value={mainIssueToday} eyebrow="Today" />
+                    <CoachInsightCard title="Setup / Direction Review" value={directionReview} eyebrow="Today" />
                 </div>
             )}
 
-            {snapshot && (
+            {displaySnapshot && (
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
-                    <CoachInsightCard title="Rules for Today" value={ai?.oneRuleForNextSession || "Trade the plan, cap losses, and pause after any rule break."} />
-                    <CoachInsightCard title="Recent Pattern" value={topLeak?.summary || ai?.emotionalPattern || snapshot.biggestMistake} />
-                    <CoachInsightCard title="Coach Message" value={ai?.headline || "Use today’s data to protect your strongest setup and avoid forcing trades."} />
+                    <CoachInsightCard
+                        title="Account-Level Pattern"
+                        value={historicalPattern}
+                        eyebrow={snapshot.historicalPatternAppliesToday === false ? "Not today's issue" : "Account-level"}
+                    />
+                    <CoachInsightCard title="Rule for Next Session" value={nextRule} eyebrow="Action rule" />
+                    <CoachInsightCard title="Data Quality" value={dataQuality} eyebrow={snapshot?.dataQuality || "Data"} />
                 </div>
             )}
 
-            {ai && (
+            {displaySnapshot && ai && (
                 <div className={`mt-5 ${coachInnerClass}`} style={coachInnerStyle}>
                     <h3 className={coachSectionTitleClass}>Coach Details</h3>
 

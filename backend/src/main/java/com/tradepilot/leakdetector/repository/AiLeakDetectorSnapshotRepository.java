@@ -29,5 +29,9 @@ public interface AiLeakDetectorSnapshotRepository extends JpaRepository<AiLeakDe
 
     List<AiLeakDetectorSnapshot> findByUserId(Long userId);
 
+    long countByUserIdAndAccountId(Long userId, Long accountId);
+
+    long deleteByUserIdAndAccountId(Long userId, Long accountId);
+
     void deleteByUserId(Long userId);
 }

@@ -47,8 +47,21 @@ public class CoachAnalyticsAggregator {
                 .map(this::getPnl)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        long longTradeCount = trades.stream().filter(t -> "LONG".equals(normalizeSide(t.getSide()))).count();
+        long shortTradeCount = trades.stream().filter(t -> "SHORT".equals(normalizeSide(t.getSide()))).count();
+        long unknownTradeCount = trades.stream().filter(t -> "UNKNOWN".equals(normalizeSide(t.getSide()))).count();
+        BigDecimal longPnl = pnlForSide(trades, "LONG");
+        BigDecimal shortPnl = pnlForSide(trades, "SHORT");
+        String worstTradeSide = trades.stream()
+                .min(Comparator.comparing(this::getPnl))
+                .map(trade -> normalizeSide(trade.getSide()))
+                .orElse("UNKNOWN");
+
         long wins = trades.stream()
                 .filter(t -> getPnl(t).compareTo(BigDecimal.ZERO) > 0)
+                .count();
+        long losses = trades.stream()
+                .filter(t -> getPnl(t).compareTo(BigDecimal.ZERO) < 0)
                 .count();
 
         BigDecimal winRate = BigDecimal.valueOf(wins)
@@ -110,10 +123,27 @@ public class CoachAnalyticsAggregator {
         );
 
         return CoachDeterministicSummary.of(
+                type == CoachSnapshotType.DAILY ? periodStart : null,
                 totalTrades,
                 netPnl,
                 winRate,
                 profitFactor,
+                Math.toIntExact(longTradeCount),
+                Math.toIntExact(shortTradeCount),
+                Math.toIntExact(unknownTradeCount),
+                Math.toIntExact(wins),
+                Math.toIntExact(losses),
+                dominantDirection(longTradeCount, shortTradeCount, unknownTradeCount, longPnl, shortPnl),
+                instruments(trades),
+                longPnl,
+                shortPnl,
+                worstTradeSide,
+                selectedDaySummary(type, trades, netPnl, longTradeCount, shortTradeCount, unknownTradeCount),
+                primaryIssueToday(type, trades, netPnl),
+                setupDirectionReview(type, trades),
+                dataQualityLabel(trades),
+                dataQualityReason(trades),
+                nextSessionRule(type, trades),
                 bestSetup,
                 worstSetup,
                 bestSession,
@@ -133,11 +163,10 @@ public class CoachAnalyticsAggregator {
     }
 
     private CoachDeterministicSummary emptySummary(CoachSnapshotType type) {
-        String warning = type == CoachSnapshotType.DAILY
-                ? "Import trades first to generate a meaningful daily coach."
-                : "Import more trades to generate a meaningful weekly coach.";
-
-        return CoachDeterministicSummary.empty(warning);
+        if (type == CoachSnapshotType.DAILY) {
+            return CoachDeterministicSummary.emptyDaily("Import trades first to generate a meaningful daily coach.");
+        }
+        return CoachDeterministicSummary.emptyWeekly("Import trades for this week before generating weekly coaching.");
     }
 
     private String bestByPnl(List<Trade> trades, Function<Trade, String> classifier) {
@@ -202,6 +231,190 @@ public class CoachAnalyticsAggregator {
                 .map(e -> e.getKey() + " generated " + e.getValue())
                 .orElse("not enough data");
         return label + ": best " + best + "; weakest " + worst + ".";
+    }
+
+    private String selectedDaySummary(
+            CoachSnapshotType type,
+            List<Trade> trades,
+            BigDecimal netPnl,
+            long longTradeCount,
+            long shortTradeCount,
+            long unknownTradeCount
+    ) {
+        if (type != CoachSnapshotType.DAILY) {
+            return trades.size() + " trades, " + money(netPnl) + " net.";
+        }
+        if (trades.size() == 1) {
+            Trade trade = trades.get(0);
+            String side = normalizeSide(trade.getSide());
+            return "One trade, " + money(netPnl) + " net. The session "
+                    + (netPnl.compareTo(BigDecimal.ZERO) < 0 ? "loss" : "result")
+                    + " came from a single " + trade.getSymbol() + " " + side + " trade.";
+        }
+        return trades.size() + " trades, " + money(netPnl) + " net. Long trades: "
+                + longTradeCount + ", short trades: " + shortTradeCount + ", unknown: "
+                + unknownTradeCount + ".";
+    }
+
+    private String primaryIssueToday(CoachSnapshotType type, List<Trade> trades, BigDecimal netPnl) {
+        if (type != CoachSnapshotType.DAILY) {
+            return netPnl.compareTo(BigDecimal.ZERO) < 0
+                    ? "The week was negative. Review the largest loss clusters and reduce risk on weak patterns."
+                    : "The week was stable. Protect the behaviors that produced positive expectancy.";
+        }
+        if (trades.size() == 1) {
+            return "This was not an overtrading day. The key review is whether the entry had enough confirmation, a predefined stop, and a realistic target before execution.";
+        }
+        if (trades.size() >= 5 && netPnl.compareTo(BigDecimal.ZERO) < 0) {
+            return "Multiple trades with negative P&L. Check whether trade frequency increased after the first loss.";
+        }
+        return netPnl.compareTo(BigDecimal.ZERO) < 0
+                ? "The session was negative. Review entry quality, invalidation, and whether risk was reduced after the loss."
+                : "The session was controlled. Keep the same selection standards next session.";
+    }
+
+    private String setupDirectionReview(CoachSnapshotType type, List<Trade> trades) {
+        if (trades.stream().anyMatch(trade -> "UNKNOWN".equals(normalizeSide(trade.getSide())))) {
+            return "Direction was unknown, so review the original execution data before judging directional performance.";
+        }
+        if (type == CoachSnapshotType.DAILY && trades.size() == 1) {
+            Trade trade = trades.get(0);
+            String side = normalizeSide(trade.getSide());
+            BigDecimal pnl = getPnl(trade);
+            if (pnl.compareTo(BigDecimal.ZERO) > 0) {
+                return "The " + side
+                        + " trade was profitable. Review whether the entry had a clear thesis, invalidation point, predefined stop, and realistic target before taking a similar setup.";
+            }
+            if (pnl.compareTo(BigDecimal.ZERO) < 0) {
+                return "The " + side
+                        + " idea failed. Review whether the entry had valid bias, clean location, predefined stop, and realistic target before taking a similar setup.";
+            }
+            return "The " + side
+                    + " trade was essentially breakeven. Review whether the entry had a clear thesis, invalidation point, predefined stop, and realistic target before taking a similar setup.";
+        }
+        Map<String, BigDecimal> pnlBySide = trades.stream()
+                .collect(Collectors.groupingBy(
+                        trade -> normalizeSide(trade.getSide()),
+                        Collectors.reducing(BigDecimal.ZERO, this::getPnl, BigDecimal::add)
+                ));
+        return "Direction review: LONG " + money(pnlBySide.getOrDefault("LONG", BigDecimal.ZERO))
+                + ", SHORT " + money(pnlBySide.getOrDefault("SHORT", BigDecimal.ZERO))
+                + ", UNKNOWN " + money(pnlBySide.getOrDefault("UNKNOWN", BigDecimal.ZERO)) + ".";
+    }
+
+    private String dataQualityLabel(List<Trade> trades) {
+        if (trades.size() < 3) {
+            return "Limited Data";
+        }
+        if (trades.stream().anyMatch(trade -> "UNKNOWN".equals(normalizeSide(trade.getSide())))) {
+            return "Direction Data Warning";
+        }
+        if (!hasJournalMetadata(trades)) {
+            return "Execution Data Only";
+        }
+        return "Good Data";
+    }
+
+    private String dominantDirection(
+            long longTradeCount,
+            long shortTradeCount,
+            long unknownTradeCount,
+            BigDecimal longPnl,
+            BigDecimal shortPnl
+    ) {
+        if (longTradeCount > 0 && shortTradeCount == 0 && unknownTradeCount == 0) {
+            return "LONG";
+        }
+        if (shortTradeCount > 0 && longTradeCount == 0 && unknownTradeCount == 0) {
+            return "SHORT";
+        }
+        if (longTradeCount > shortTradeCount && longPnl.compareTo(shortPnl) >= 0) {
+            return "LONG";
+        }
+        if (shortTradeCount > longTradeCount && shortPnl.compareTo(longPnl) >= 0) {
+            return "SHORT";
+        }
+        if (longTradeCount > 0 && shortTradeCount > 0) {
+            return "MIXED";
+        }
+        return "UNKNOWN";
+    }
+
+    private List<String> instruments(List<Trade> trades) {
+        return trades.stream()
+                .map(Trade::getSymbol)
+                .map(this::clean)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    private String dataQualityReason(List<Trade> trades) {
+        long unknownSides = trades.stream().filter(trade -> "UNKNOWN".equals(normalizeSide(trade.getSide()))).count();
+        if (trades.size() == 1 && !hasJournalMetadata(trades)) {
+            if (unknownSides > 0) {
+                return "Limited confidence: only one trade was taken, direction was UNKNOWN, and setup/emotion notes were not available. Coaching is based mainly on execution data.";
+            }
+            return "Limited confidence: only one trade was taken, and setup/emotion notes were not available. Coaching is based mainly on execution data.";
+        }
+        List<String> reasons = new ArrayList<>();
+        if (trades.size() == 1) {
+            reasons.add("Limited confidence: only one trade was taken.");
+        } else if (trades.size() < 3) {
+            reasons.add("Limited confidence: only " + trades.size() + " trades were in this sample.");
+        }
+        if (unknownSides > 0) {
+            reasons.add(unknownSides + " trade(s) have UNKNOWN direction, so direction-specific coaching is limited.");
+        }
+        if (!hasJournalMetadata(trades)) {
+            reasons.add("Setup/emotion notes were not available. Coaching is based mainly on execution data.");
+        }
+        if (reasons.isEmpty()) {
+            reasons.add("Trade direction and journal metadata are available for this sample.");
+        }
+        return String.join(" ", reasons);
+    }
+
+    private String nextSessionRule(CoachSnapshotType type, List<Trade> trades) {
+        if (type == CoachSnapshotType.DAILY && trades.size() == 1) {
+            return "Before entering, define direction thesis, invalidation, and target. Skip the trade if any are unclear.";
+        }
+        if (trades.size() >= 5) {
+            return "Set a trade cap before the session starts and pause after two rule breaks.";
+        }
+        return "Trade only when bias, confirmation, invalidation, and target are all clear before entry.";
+    }
+
+    private boolean hasJournalMetadata(List<Trade> trades) {
+        return trades.stream().anyMatch(trade ->
+                trade.getSetup() != null
+                        || trade.getConfidence() != null
+                        || clean(trade.getEmotion()) != null
+                        || clean(trade.getNotes()) != null
+        );
+    }
+
+    private BigDecimal pnlForSide(List<Trade> trades, String side) {
+        return trades.stream()
+                .filter(trade -> side.equals(normalizeSide(trade.getSide())))
+                .map(this::getPnl)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private String normalizeSide(String side) {
+        if (side == null || side.isBlank()) {
+            return "UNKNOWN";
+        }
+        String normalized = side.trim().toUpperCase(Locale.ROOT);
+        if ("LONG".equals(normalized) || "SHORT".equals(normalized)) {
+            return normalized;
+        }
+        return "UNKNOWN";
+    }
+
+    private String money(BigDecimal value) {
+        BigDecimal amount = value == null ? BigDecimal.ZERO : value.setScale(2, RoundingMode.HALF_UP);
+        return (amount.compareTo(BigDecimal.ZERO) < 0 ? "-$" : "$") + amount.abs();
     }
 
     private List<String> journalMetadataExamples(List<Trade> trades) {

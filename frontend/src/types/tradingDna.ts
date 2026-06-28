@@ -15,6 +15,13 @@ export type TradingDnaResponse = {
   status: "COMPLETED" | "INSUFFICIENT_DATA" | string;
   cached: boolean;
   limitReached?: boolean;
+  aiGenerated?: boolean;
+  noTrades?: boolean;
+  limitedData?: boolean;
+  creditsConsumed?: number;
+  code?: string;
+  resetDate?: string;
+  hasCachedAnalysis?: boolean;
   message?: string;
   totalTrades: number;
   lastGeneratedAt?: string;

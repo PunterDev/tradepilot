@@ -31,5 +31,9 @@ public interface AiTradeAnalysisRepository extends JpaRepository<AiTradeAnalysis
             Instant end
     );
 
+    long countByUserIdAndTradeIdIn(Long userId, List<Long> tradeIds);
+
+    long deleteByUserIdAndTradeIdIn(Long userId, List<Long> tradeIds);
+
     void deleteByUserId(Long userId);
 }

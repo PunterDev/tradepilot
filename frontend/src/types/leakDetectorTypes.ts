@@ -37,6 +37,10 @@ export type LeakDetectorResponse = {
   id?: number;
   accountId: number;
   cached: boolean;
+  aiGenerated?: boolean;
+  noTrades?: boolean;
+  limitedData?: boolean;
+  creditsConsumed?: number;
   totalTrades: number;
   sampleTradeCount?: number;
   dataHash: string;

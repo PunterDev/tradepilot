@@ -29,5 +29,9 @@ public interface AiSessionReviewRepository extends JpaRepository<AiSessionReview
 
     List<AiSessionReview> findByUserId(Long userId);
 
+    long countByUserIdAndAccountIdAndSessionDateBetween(Long userId, Long accountId, LocalDate startDate, LocalDate endDate);
+
+    long deleteByUserIdAndAccountIdAndSessionDateBetween(Long userId, Long accountId, LocalDate startDate, LocalDate endDate);
+
     void deleteByUserId(Long userId);
 }

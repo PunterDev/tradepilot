@@ -19,6 +19,7 @@ public class AiCoachAsyncWorker {
     private final CoachAnalyticsAggregator analyticsAggregator;
     private final CoachAiGeneratorService aiGeneratorService;
     private final CoachHashService hashService;
+    private final CoachOutputConsistencyService consistencyService;
 
     @Async("aiTaskExecutor")
     public void generateAsync(Long snapshotId) {
@@ -49,6 +50,14 @@ public class AiCoachAsyncWorker {
                     snapshot.getSnapshotType(),
                     summary,
                     snapshot.getUserId()
+            );
+            aiResponse = consistencyService.enforce(
+                    snapshot.getSnapshotType(),
+                    summary,
+                    aiResponse,
+                    snapshot.getUserId(),
+                    snapshot.getAccountId(),
+                    snapshot.getPeriodStart()
             );
 
             snapshot.setTotalTrades(summary.getTotalTrades());

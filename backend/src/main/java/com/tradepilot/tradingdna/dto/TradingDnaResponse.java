@@ -14,6 +14,10 @@ public class TradingDnaResponse {
     private String status;
     private Boolean cached;
     private Boolean limitReached;
+    private Boolean aiGenerated;
+    private Boolean noTrades;
+    private Boolean limitedData;
+    private Integer creditsConsumed;
     private String message;
     private Integer totalTrades;
     private LocalDateTime lastGeneratedAt;
