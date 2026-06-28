@@ -1,6 +1,7 @@
 import { api } from "./axios";
 import type { AdminContactMessage } from "./adminContactApi";
 import type { AdminRecentUpgrade } from "./adminDashboardApi";
+import type { TradingAccount } from "./accountApi";
 import type { PagedResponse, PageParams } from "./pagination";
 
 export type AdminUserRecord = {
@@ -29,8 +30,37 @@ export type AdminUserRecord = {
 
 export type AdminUserDetail = {
   user: AdminUserRecord;
+  accounts: TradingAccount[];
   contactMessages: AdminContactMessage[];
   auditLogs: AdminRecentUpgrade[];
+};
+
+export type AdminTradeCleanupRequest = {
+  userId: number;
+  accountId: number;
+  startDate: string;
+  endDate: string;
+  dryRun: boolean;
+};
+
+export type AdminTradeCleanupResponse = {
+  userId: number;
+  accountId: number;
+  startDate: string;
+  endDate: string;
+  dryRun: boolean;
+  tradesMatched: number;
+  tradesDeleted: number;
+  tradeReviewsDeleted: number;
+  tradeAnalysesDeleted: number;
+  tradeRuleViolationsDeleted: number;
+  dailyDisciplineScoresDeleted: number;
+  sessionReviewsDeleted: number;
+  sessionCachesInvalidated: number;
+  leakSnapshotsDeleted: number;
+  tradingDnaSnapshotsDeleted: number;
+  dailyCoachSnapshotsDeleted: number;
+  weeklyCoachSnapshotsDeleted: number;
 };
 
 export async function getAdminUsers(params: PageParams = {}): Promise<PagedResponse<AdminUserRecord>> {
@@ -68,5 +98,14 @@ export async function makeUserAdmin(userId: number, reason: string): Promise<Adm
 
 export async function removeUserAdmin(userId: number, reason: string): Promise<AdminUserRecord> {
   const res = await api.post<AdminUserRecord>(`/admin/users/${userId}/remove-admin`, { reason });
+  return res.data;
+}
+
+export async function cleanupTradesRange(
+  payload: AdminTradeCleanupRequest
+): Promise<AdminTradeCleanupResponse> {
+  const res = await api.delete<AdminTradeCleanupResponse>("/admin/trades/cleanup-range", {
+    params: payload,
+  });
   return res.data;
 }

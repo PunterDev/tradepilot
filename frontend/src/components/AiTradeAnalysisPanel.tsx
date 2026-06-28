@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Trade } from "../types/trade";
 import { useAiTradeAnalysisPolling } from "../hooks/useAiTradeAnalysisPolling";
 import { useBillingUsage } from "../hooks/useBillingUsage";
+import { creditsRemaining } from "../utils/featureAccess";
 import DisciplinePanel from "./DisciplinePanel";
 import UpgradeModal from "./UpgradeModal";
 import {
@@ -42,7 +43,7 @@ export default function AiTradeAnalysisPanel({ trade, journalText }: Props) {
     retry,
   } = useAiTradeAnalysisPolling();
   const billing = useBillingUsage(true);
-  const aiReviewsRemaining = billing.usage?.remaining.AI_CREDITS ?? 1;
+  const aiReviewsRemaining = billing.usage ? creditsRemaining(billing.usage) : 1;
   const reviewLimitReached = aiReviewsRemaining === 0;
 
   const hasAnalysisContent = Boolean(
@@ -95,7 +96,7 @@ export default function AiTradeAnalysisPanel({ trade, journalText }: Props) {
 
   return (
     <div style={aiReviewCardStyle}>
-      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} plan={billing.usage?.plan} />
       <div style={aiReviewHeaderStyle}>
         <div>
           <h3>AI Trade Analysis</h3>

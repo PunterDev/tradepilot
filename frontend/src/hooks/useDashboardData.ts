@@ -215,7 +215,7 @@ export function useDashboardData({
       winningTrades: summary?.wins ?? 0,
       losingTrades: summary?.losses ?? 0,
       breakevenTrades: summary?.breakevens ?? 0,
-      averageR: toNumber(summary?.averageR),
+      averageR: toNullableNumber(summary?.averageR),
       overallWinRate: toNumber(summary?.winRate),
       winningDays,
       losingDays,
@@ -248,6 +248,12 @@ function toNumber(value: number | string | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function toNullableNumber(value: number | string | null | undefined): number | null {
+  if (value === undefined || value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function buildDailyPnlFromCalendarSummary(summary: CalendarSummaryItem[]): DailyPnl[] {
   let cumulativePnl = 0;
   return summary
@@ -266,6 +272,7 @@ function buildDailyPnlFromCalendarSummary(summary: CalendarSummaryItem[]): Daily
         winningTrades,
         losingTrades: Number(day.losingTrades ?? 0),
         breakevenTrades: Number(day.breakevenTrades ?? 0),
+        totalR: toNullableNumber(day.totalR),
         winRate: tradeCount > 0 ? Number(((winningTrades / tradeCount) * 100).toFixed(2)) : 0,
       };
     });

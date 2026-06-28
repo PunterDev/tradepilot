@@ -8,6 +8,11 @@ export type AuthUser = {
   email: string;
   plan?: "FREE" | "PRO";
   role?: "USER" | "ADMIN";
+  monthlyAiCredits?: number;
+  monthlyAiCreditsUsed?: number;
+  monthlyAiCreditsRemaining?: number;
+  purchasedAiCreditsBalance?: number;
+  totalAiCreditsAvailable?: number;
 };
 
 export type AuthResponse = {
@@ -17,6 +22,11 @@ export type AuthResponse = {
   email: string;
   plan?: "FREE" | "PRO";
   role?: "USER" | "ADMIN";
+  monthlyAiCredits?: number;
+  monthlyAiCreditsUsed?: number;
+  monthlyAiCreditsRemaining?: number;
+  purchasedAiCreditsBalance?: number;
+  totalAiCreditsAvailable?: number;
 };
 
 export type AuthSession = {
@@ -46,6 +56,11 @@ function toSession(auth: AuthResponse): AuthSession {
       email: auth.email,
       plan: auth.plan ?? "FREE",
       role: auth.role ?? "USER",
+      monthlyAiCredits: auth.monthlyAiCredits,
+      monthlyAiCreditsUsed: auth.monthlyAiCreditsUsed,
+      monthlyAiCreditsRemaining: auth.monthlyAiCreditsRemaining,
+      purchasedAiCreditsBalance: auth.purchasedAiCreditsBalance,
+      totalAiCreditsAvailable: auth.totalAiCreditsAvailable,
     },
   };
 }

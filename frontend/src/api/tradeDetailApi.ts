@@ -11,7 +11,7 @@ export type TradeDetailTrade = {
   tradeDate?: string;
   entryTime?: string;
   exitTime?: string;
-  side?: "LONG" | "SHORT";
+  side?: "LONG" | "SHORT" | "UNKNOWN";
   setup?: string;
   session?: string;
   entryPrice?: number | string | null;

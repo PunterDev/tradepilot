@@ -5,6 +5,7 @@ type StatCardProps = {
   value: string;
   positive?: boolean;
   negative?: boolean;
+  hint?: string;
 };
 
 export default function StatCard({
@@ -12,6 +13,7 @@ export default function StatCard({
   value,
   positive,
   negative,
+  hint,
 }: StatCardProps) {
   return (
     <div style={{ ...card, padding: 20, minHeight: 105 }}>
@@ -36,6 +38,11 @@ export default function StatCard({
       >
         {value}
       </div>
+      {hint && (
+        <div style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.4, marginTop: 6 }}>
+          {hint}
+        </div>
+      )}
     </div>
   );
 }

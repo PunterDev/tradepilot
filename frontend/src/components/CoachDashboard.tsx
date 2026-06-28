@@ -6,6 +6,7 @@ import { WeeklyCoachCard } from "./WeeklyCoachCard";
 import UpgradeModal from "./UpgradeModal";
 import type { SelectedAccountId } from "../types/dashboard";
 import type { BillingUsage } from "../types/billing";
+import { creditsRemaining } from "../utils/featureAccess";
 
 type Props = {
   selectedAccountId: SelectedAccountId;
@@ -36,8 +37,8 @@ export function CoachDashboard({ selectedAccountId, usage, onUsageChanged }: Pro
 
   const daily = useDailyCoach(accountId, dailyDate);
   const weekly = useWeeklyCoach(accountId, weeklyStartDate);
-  const dailyRemaining = usage?.remaining.AI_CREDITS ?? 1;
-  const weeklyRemaining = usage?.remaining.AI_CREDITS ?? 1;
+  const dailyRemaining = usage ? creditsRemaining(usage) : 1;
+  const weeklyRemaining = usage ? creditsRemaining(usage) : 1;
 
   if (allAccountsSelected) {
     return (
@@ -106,7 +107,7 @@ export function CoachDashboard({ selectedAccountId, usage, onUsageChanged }: Pro
         boxShadow: "0 24px 80px rgba(0,0,0,0.35)",
       }}
     >
-      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} plan={usage?.plan} />
       <div style={{ marginBottom: 28 }}>
         <div
           style={{
@@ -305,6 +306,9 @@ export function CoachDashboard({ selectedAccountId, usage, onUsageChanged }: Pro
           error={daily.error}
           onRegenerate={daily.regenerate}
           remaining={dailyRemaining}
+          limitReached={daily.limitReached}
+          limitMessage={daily.limitMessage}
+          hasCachedSnapshot={daily.hasCachedSnapshot}
           onUsageChanged={onUsageChanged}
           onLimitClick={() => setUpgradeOpen(true)}
         />
@@ -316,6 +320,9 @@ export function CoachDashboard({ selectedAccountId, usage, onUsageChanged }: Pro
           error={weekly.error}
           onRegenerate={weekly.regenerate}
           remaining={weeklyRemaining}
+          limitReached={weekly.limitReached}
+          limitMessage={weekly.limitMessage}
+          hasCachedSnapshot={weekly.hasCachedSnapshot}
           onUsageChanged={onUsageChanged}
           onLimitClick={() => setUpgradeOpen(true)}
         />

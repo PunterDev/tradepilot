@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
+  cleanupTradesRange,
   downgradeUserToFree,
   getAdminUser,
   getAdminUsers,
@@ -7,6 +8,7 @@ import {
   removeUserAdmin,
   searchAdminUsers,
   upgradeUserToPro,
+  type AdminTradeCleanupResponse,
   type AdminUserDetail,
   type AdminUserRecord,
 } from "../../../api/adminUsersApi";
@@ -20,6 +22,10 @@ type ActionType = "upgrade" | "downgrade" | "make-admin" | "remove-admin";
 type PendingAction = {
   type: ActionType;
   user: AdminUserRecord;
+};
+
+type CleanupModalState = {
+  detail: AdminUserDetail;
 };
 
 export default function AdminUsersPage() {
@@ -37,6 +43,7 @@ export default function AdminUsersPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [cleanupModal, setCleanupModal] = useState<CleanupModalState | null>(null);
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -265,6 +272,11 @@ export default function AdminUsersPage() {
             <UserDetail
               detail={selected}
               onAction={(type) => openAction(type, selected.user)}
+              onCleanup={() => {
+                setCleanupModal({ detail: selected });
+                setError("");
+                setNotice("");
+              }}
             />
           ) : (
             <div style={emptyState}>Select a user to inspect profile, billing, trading, and audit history.</div>
@@ -300,6 +312,19 @@ export default function AdminUsersPage() {
           </section>
         </div>
       )}
+
+      {cleanupModal && (
+        <TradeCleanupModal
+          detail={cleanupModal.detail}
+          onClose={() => setCleanupModal(null)}
+          onCompleted={async (summary) => {
+            setNotice(`Trade cleanup completed for ${cleanupModal.detail.user.email}. ${summary.tradesDeleted} trades deleted.`);
+            await openUser(cleanupModal.detail.user);
+            await loadUsers(page);
+          }}
+          onError={setError}
+        />
+      )}
     </div>
   );
 }
@@ -328,7 +353,15 @@ function PaginationControls({
   );
 }
 
-function UserDetail({ detail, onAction }: { detail: AdminUserDetail; onAction: (type: ActionType) => void }) {
+function UserDetail({
+  detail,
+  onAction,
+  onCleanup,
+}: {
+  detail: AdminUserDetail;
+  onAction: (type: ActionType) => void;
+  onCleanup: () => void;
+}) {
   const user = detail.user;
   return (
     <div style={detailStack}>
@@ -366,6 +399,7 @@ function UserDetail({ detail, onAction }: { detail: AdminUserDetail; onAction: (
           <button type="button" onClick={() => onAction("downgrade")} disabled={user.plan === "FREE"} style={dangerActionButton(user.plan === "FREE")}>Downgrade</button>
           <button type="button" onClick={() => onAction("make-admin")} disabled={user.role === "ADMIN"} style={actionButton(user.role === "ADMIN")}>Make Admin</button>
           <button type="button" onClick={() => onAction("remove-admin")} disabled={user.role === "USER"} style={dangerActionButton(user.role === "USER")}>Remove Admin</button>
+          <button type="button" onClick={onCleanup} style={dangerActionButton(false)}>Cleanup Trades</button>
         </div>
       </section>
 
@@ -393,6 +427,252 @@ function UserDetail({ detail, onAction }: { detail: AdminUserDetail; onAction: (
         ))}
       </section>
     </div>
+  );
+}
+
+function TradeCleanupModal({
+  detail,
+  onClose,
+  onCompleted,
+  onError,
+}: {
+  detail: AdminUserDetail;
+  onClose: () => void;
+  onCompleted: (summary: AdminTradeCleanupResponse) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const user = detail.user;
+  const [accountId, setAccountId] = useState<number | "">(detail.accounts[0]?.id ?? "");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [dryRunSummary, setDryRunSummary] = useState<AdminTradeCleanupResponse | null>(null);
+  const [finalSummary, setFinalSummary] = useState<AdminTradeCleanupResponse | null>(null);
+  const [localError, setLocalError] = useState("");
+  const [loadingDryRun, setLoadingDryRun] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    setDryRunSummary(null);
+    setFinalSummary(null);
+    setConfirmation("");
+    setLocalError("");
+  }, [accountId, startDate, endDate]);
+
+  const formReady = Boolean(accountId && startDate && endDate);
+  const dryRunHasTrades = Boolean(dryRunSummary && dryRunSummary.tradesMatched > 0);
+  const deleteReady = formReady && dryRunHasTrades && confirmation === "DELETE" && !loadingDryRun && !deleting;
+
+  async function runCleanup(dryRun: boolean) {
+    if (!accountId || !startDate || !endDate) {
+      setLocalError("Select an account and date range first.");
+      return;
+    }
+
+    if (endDate < startDate) {
+      setLocalError("End date must be on or after start date.");
+      return;
+    }
+
+    if (!dryRun && !deleteReady) return;
+
+    setLocalError("");
+    onError("");
+    if (dryRun) {
+      setLoadingDryRun(true);
+    } else {
+      setDeleting(true);
+    }
+
+    try {
+      const summary = await cleanupTradesRange({
+        userId: user.id,
+        accountId: Number(accountId),
+        startDate,
+        endDate,
+        dryRun,
+      });
+
+      if (dryRun) {
+        setDryRunSummary(summary);
+        if (summary.tradesMatched === 0) {
+          setLocalError("Dry run found zero matching trades. Delete remains disabled.");
+        }
+      } else {
+        setFinalSummary(summary);
+        await onCompleted(summary);
+      }
+    } catch (error) {
+      const message = extractApiError(error, dryRun ? "Dry run failed." : "Trade cleanup failed.");
+      setLocalError(message);
+      onError(message);
+    } finally {
+      setLoadingDryRun(false);
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div style={modalOverlay}>
+      <section style={{ ...modalCard, width: "min(760px,100%)" }}>
+        <div style={modalHeaderRow}>
+          <div>
+            <h2 style={sectionTitle}>Cleanup Trades</h2>
+            <p style={mutedText}>
+              Delete imported trades and generated trade-derived data for a scoped user, account, and date range.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} disabled={loadingDryRun || deleting} style={secondaryButton}>Close</button>
+        </div>
+
+        <div style={warningBox}>
+          This will permanently delete selected trades and generated AI/cache data for this user/account/date range.
+          This cannot be undone. Billing, Stripe, user, and account records will not be deleted.
+        </div>
+
+        <div style={cleanupUserCard}>
+          <Detail label="User ID" value={user.id} />
+          <Detail label="User" value={`${user.name} · ${user.email}`} />
+        </div>
+
+        <div style={cleanupFormGrid}>
+          <div>
+            <label style={label}>Account</label>
+            <select
+              style={input}
+              value={accountId}
+              onChange={(event) => setAccountId(event.target.value ? Number(event.target.value) : "")}
+              disabled={loadingDryRun || deleting}
+            >
+              <option value="">Select account</option>
+              {detail.accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name} · {account.propFirm}
+                  {account.accountNumber ? ` · ${account.accountNumber}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={label}>Start date</label>
+            <input
+              type="date"
+              style={input}
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+              disabled={loadingDryRun || deleting}
+            />
+          </div>
+          <div>
+            <label style={label}>End date</label>
+            <input
+              type="date"
+              style={input}
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              disabled={loadingDryRun || deleting}
+            />
+          </div>
+        </div>
+
+        {detail.accounts.length === 0 && (
+          <div style={errorBox}>This user has no trading accounts. Cleanup is unavailable.</div>
+        )}
+
+        {localError && <div style={errorBox}>{localError}</div>}
+
+        <div style={modalActions}>
+          <button
+            type="button"
+            onClick={() => void runCleanup(true)}
+            disabled={!formReady || loadingDryRun || deleting}
+            style={{ ...secondaryButton, opacity: !formReady || loadingDryRun || deleting ? 0.55 : 1 }}
+          >
+            {loadingDryRun ? "Checking..." : "Dry Run"}
+          </button>
+        </div>
+
+        {dryRunSummary && (
+          <CleanupSummary
+            title={dryRunSummary.tradesMatched > 0 ? "Dry Run Summary" : "Dry Run Found No Trades"}
+            summary={dryRunSummary}
+            dryRun
+          />
+        )}
+
+        {dryRunSummary && dryRunSummary.tradesMatched > 0 && !finalSummary && (
+          <section style={confirmationCard}>
+            <h3 style={smallTitle}>Confirm permanent delete</h3>
+            <p style={mutedText}>Type <strong style={{ color: "#fecaca" }}>DELETE</strong> exactly to enable the final delete.</p>
+            <input
+              style={input}
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              placeholder="DELETE"
+              disabled={deleting}
+            />
+            <div style={modalActions}>
+              <button
+                type="button"
+                onClick={() => void runCleanup(false)}
+                disabled={!deleteReady}
+                style={{ ...dangerButton, opacity: deleteReady ? 1 : 0.5, cursor: deleteReady ? "pointer" : "not-allowed" }}
+              >
+                {deleting ? "Deleting..." : "Delete Selected Trades"}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {finalSummary && (
+          <CleanupSummary title="Final Cleanup Summary" summary={finalSummary} />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function CleanupSummary({
+  title,
+  summary,
+  dryRun = false,
+}: {
+  title: string;
+  summary: AdminTradeCleanupResponse;
+  dryRun?: boolean;
+}) {
+  const rows = [
+    ["Trades matched", summary.tradesMatched],
+    [dryRun ? "Trades that would be deleted" : "Trades deleted", dryRun ? summary.tradesMatched : summary.tradesDeleted],
+    ["AI trade reviews", summary.tradeReviewsDeleted],
+    ["AI trade analyses", summary.tradeAnalysesDeleted],
+    ["Rule violations", summary.tradeRuleViolationsDeleted],
+    ["Discipline scores", summary.dailyDisciplineScoresDeleted],
+    ["Session reviews", summary.sessionReviewsDeleted],
+    ["Session caches invalidated", summary.sessionCachesInvalidated],
+    ["Leak snapshots", summary.leakSnapshotsDeleted],
+    ["Trading DNA snapshots", summary.tradingDnaSnapshotsDeleted],
+    ["Daily Coach snapshots", summary.dailyCoachSnapshotsDeleted],
+    ["Weekly Coach snapshots", summary.weeklyCoachSnapshotsDeleted],
+  ] as const;
+
+  return (
+    <section style={summaryCard}>
+      <div>
+        <h3 style={smallTitle}>{title}</h3>
+        <p style={mutedText}>
+          User {summary.userId} · Account {summary.accountId} · {summary.startDate} through {summary.endDate}
+        </p>
+      </div>
+      <div style={summaryGrid}>
+        {rows.map(([name, value]) => (
+          <div key={name} style={summaryItem}>
+            <span>{name}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -441,6 +721,26 @@ function actionTitle(type: ActionType) {
   }[type];
 }
 
+function extractApiError(error: unknown, fallback: string) {
+  if (typeof error === "object" && error !== null && "response" in error) {
+    const response = (error as { response?: { data?: unknown } }).response;
+    const data = response?.data;
+    if (typeof data === "string" && data.trim()) {
+      return data;
+    }
+    if (typeof data === "object" && data !== null) {
+      const { message, error: apiError } = data as { message?: unknown; error?: unknown };
+      if (typeof message === "string" && message.trim()) {
+        return message;
+      }
+      if (typeof apiError === "string" && apiError.trim()) {
+        return apiError;
+      }
+    }
+  }
+  return fallback;
+}
+
 const pageWrap: CSSProperties = { display: "grid", gap: 22 };
 const kpiGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 };
 const kpiCard: CSSProperties = { ...card, minHeight: 96, display: "grid", gap: 7, alignContent: "center" };
@@ -479,7 +779,15 @@ const emptyState: CSSProperties = { color: "#94a3b8", padding: 16 };
 const successBox: CSSProperties = { padding: 14, borderRadius: 14, color: "#bbf7d0", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.28)" };
 const errorBox: CSSProperties = { padding: 14, borderRadius: 14, color: "#fecaca", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.28)" };
 const modalOverlay: CSSProperties = { position: "fixed", inset: 0, zIndex: 70, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,0.78)", backdropFilter: "blur(10px)" };
-const modalCard: CSSProperties = { ...card, width: "min(620px,100%)" };
+const modalCard: CSSProperties = { ...card, width: "min(760px,100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto" };
+const modalHeaderRow: CSSProperties = { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, marginBottom: 14, flexWrap: "wrap" };
 const modalActions: CSSProperties = { display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 18, flexWrap: "wrap" };
+const warningBox: CSSProperties = { padding: 14, borderRadius: 14, color: "#fecaca", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.28)", lineHeight: 1.5 };
+const cleanupUserCard: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginTop: 14 };
+const cleanupFormGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 14 };
+const confirmationCard: CSSProperties = { padding: 16, borderRadius: 18, background: "rgba(127,29,29,0.16)", border: "1px solid rgba(248,113,113,0.22)", display: "grid", gap: 10, marginTop: 14 };
+const summaryCard: CSSProperties = { padding: 16, borderRadius: 18, background: "rgba(15,23,42,0.7)", border: "1px solid rgba(45,212,191,0.18)", display: "grid", gap: 12, marginTop: 14 };
+const summaryGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 };
+const summaryItem: CSSProperties = { padding: 12, borderRadius: 14, background: "rgba(2,6,23,0.48)", border: "1px solid rgba(148,163,184,0.12)", color: "#94a3b8", display: "grid", gap: 4 };
 const paginationRow: CSSProperties = { minWidth: 1160, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "14px", color: "#94a3b8" };
 const pagerButton = (disabled: boolean): CSSProperties => ({ ...secondaryButton, opacity: disabled ? 0.45 : 1, cursor: disabled ? "not-allowed" : "pointer" });

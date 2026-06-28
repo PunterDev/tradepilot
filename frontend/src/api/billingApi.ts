@@ -7,6 +7,7 @@ export async function getBillingUsage(): Promise<BillingUsage> {
 }
 
 export type BillingCycle = "monthly" | "yearly";
+export type CreditPackId = "STARTER_25" | "POWER_75" | "ELITE_200";
 
 export async function createCheckoutSession(billingCycle: BillingCycle = "monthly"): Promise<{ checkoutUrl: string }> {
   const response = await api.post<{ checkoutUrl: string }>("/billing/create-checkout-session", null, {
@@ -17,5 +18,10 @@ export async function createCheckoutSession(billingCycle: BillingCycle = "monthl
 
 export async function createPortalSession(): Promise<{ portalUrl: string }> {
   const response = await api.post<{ portalUrl: string }>("/billing/create-portal-session");
+  return response.data;
+}
+
+export async function createCreditPackCheckoutSession(packId: CreditPackId): Promise<{ checkoutUrl: string }> {
+  const response = await api.post<{ checkoutUrl: string }>("/billing/create-credit-pack-checkout-session", { packId });
   return response.data;
 }

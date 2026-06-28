@@ -123,7 +123,7 @@ export default function TradeDetailModal({
       accountId: trade.accountId,
       accountName: trade.accountName,
       symbol: trade.symbol,
-      side: trade.side ?? "LONG",
+      side: trade.side ?? "UNKNOWN",
       pnl: toNumber(trade.pnlAmount),
       quantity: trade.quantity ?? undefined,
       entryPrice: toNumber(trade.entryPrice),

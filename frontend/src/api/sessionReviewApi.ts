@@ -8,7 +8,7 @@ export type SessionReviewTrade = {
   tradeDate?: string;
   entryTime?: string;
   exitTime?: string;
-  side?: "LONG" | "SHORT";
+  side?: "LONG" | "SHORT" | "UNKNOWN";
   setup?: string;
   session?: string;
   entryPrice?: number | string | null;
@@ -25,7 +25,7 @@ export type SessionReviewTrade = {
 export type SessionTimelineTrade = {
   tradeId: number;
   symbol: string;
-  side?: "LONG" | "SHORT";
+  side?: "LONG" | "SHORT" | "UNKNOWN";
   entryTime?: string;
   exitTime?: string;
   quantity?: number | null;
@@ -113,6 +113,9 @@ export type SessionReview = {
   sessionDisciplineScore: number;
   aiSessionReview?: AiSessionReview | null;
   aiReviewCached?: boolean;
+  aiGenerated?: boolean;
+  noTrades?: boolean;
+  creditsConsumed?: number;
   previousTradingDay?: string | null;
   nextTradingDay?: string | null;
 };

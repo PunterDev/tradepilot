@@ -7,6 +7,7 @@ export type TradingAccount = {
   accountNumber?: string;
   accountType?: string;
   startingBalance?: number;
+  defaultRiskAmount?: number | null;
   status: string;
 };
 
@@ -16,6 +17,7 @@ export type CreateTradingAccountRequest = {
   accountNumber?: string;
   accountType?: string;
   startingBalance?: number;
+  defaultRiskAmount?: number;
   status: string;
 };
 
@@ -33,4 +35,14 @@ export async function createAccount(
 
 export async function deleteAccount(accountId: number): Promise<void> {
   await api.delete(`/accounts/${accountId}`);
+}
+
+export async function updateAccountRiskAmount(
+  accountId: number,
+  defaultRiskAmount: number
+): Promise<TradingAccount> {
+  const res = await api.patch(`/accounts/${accountId}/risk`, {
+    defaultRiskAmount,
+  });
+  return res.data;
 }

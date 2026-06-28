@@ -43,14 +43,24 @@ export default function BreakdownSection({
             ) : (
               items.map((item) => {
                 const pnl = toNumber(item.totalPnl);
-                const avgR = toNumber(item.averageR);
+                const avgR = toNullableNumber(item.averageR);
 
                 return (
                   <tr key={item.label}>
                     <td style={td}>{formatLabel ? formatLabel(item.label) : formatMetricLabel(item.label)}</td>
                     <td style={td}>{item.totalTrades}</td>
                     <td style={td}>{toNumber(item.winRate).toFixed(2)}%</td>
-                    <td style={td}>{avgR.toFixed(2)}R</td>
+                    <td
+                      style={td}
+                      title={avgR == null ? "Set your account 1R amount to calculate R-multiple." : undefined}
+                    >
+                      {avgR == null ? "—" : `${avgR.toFixed(2)}R`}
+                      {avgR == null && (
+                        <span style={{ display: "block", color: "#64748b", fontSize: 11 }}>
+                          Set 1R
+                        </span>
+                      )}
+                    </td>
                     <td
                       style={{
                         ...td,
@@ -75,6 +85,12 @@ function toNumber(value: number | string | undefined): number {
   if (value === undefined || value === null) return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toNullableNumber(value: number | string | null | undefined): number | null {
+  if (value === undefined || value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatMetricLabel(value: string): string {

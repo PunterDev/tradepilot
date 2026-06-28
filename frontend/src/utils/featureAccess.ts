@@ -29,7 +29,7 @@ export function hasFeature(feature: Feature, user?: AuthUser | null, usage?: Bil
 }
 
 export function creditsRemaining(usage?: BillingUsage | null) {
-  return usage?.remaining?.AI_CREDITS ?? 0;
+  return usage?.totalAiCreditsAvailable ?? usage?.remaining?.AI_CREDITS ?? 0;
 }
 
 export function featureLabel(feature: Feature) {

@@ -38,6 +38,7 @@ export type CalendarSummaryItem = {
   date: string;
   tradeCount: number;
   netPnl: number | string;
+  totalR?: number | string | null;
   winningTrades: number;
   losingTrades: number;
   breakevenTrades: number;

@@ -10,6 +10,7 @@ import {
 import {
   createAccount,
   getAccounts,
+  updateAccountRiskAmount,
   type TradingAccount,
 } from "./api/accountApi";
 import {
@@ -252,9 +253,10 @@ function envMinutes(name: string, fallback: number) {
 type DashboardAppProps = {
   user: AuthUser;
   onLogout: () => void;
+  onUserRefresh: () => Promise<void>;
 };
 
-function DashboardApp({ user, onLogout }: DashboardAppProps) {
+function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const isAdmin = user.role === "ADMIN";
@@ -270,6 +272,7 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
   const [newAccountNumber, setNewAccountNumber] = useState("");
   const [newAccountType, setNewAccountType] = useState("FUNDED");
   const [newStartingBalance, setNewStartingBalance] = useState("50000");
+  const [newDefaultRiskAmount, setNewDefaultRiskAmount] = useState("");
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [journalDate, setJournalDate] = useState("");
@@ -281,6 +284,7 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const billing = useBillingUsage(true);
   const billingResult = new URLSearchParams(location.search).get("billing");
+  const creditCheckoutResult = new URLSearchParams(location.search).get("credits");
   const canAccess = (feature: Feature) => hasFeature(feature, user, billing.usage);
 
   function renderLockedFeature(feature: keyof typeof lockedFeatureContent) {
@@ -357,6 +361,21 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
       setSelectedAccountId(next);
     }
   }, [loadingAccounts, accounts, selectedAccountId]);
+
+  useEffect(() => {
+    if (location.pathname !== "/billing" || !creditCheckoutResult) return;
+
+    if (creditCheckoutResult === "success") {
+      void Promise.all([billing.reload(), onUserRefresh()]).finally(() => {
+        navigate("/billing", { replace: true, state: { creditCheckoutResult: "success" } });
+      });
+      return;
+    }
+
+    if (creditCheckoutResult === "cancelled") {
+      navigate("/billing", { replace: true, state: { creditCheckoutResult: "cancelled" } });
+    }
+  }, [location.pathname, creditCheckoutResult, navigate, onUserRefresh]);
 
   const {
     fileName,
@@ -440,6 +459,7 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
         accountNumber: newAccountNumber.trim() || undefined,
         accountType: newAccountType || undefined,
         startingBalance: newStartingBalance ? Number(newStartingBalance) : undefined,
+        defaultRiskAmount: newDefaultRiskAmount ? Number(newDefaultRiskAmount) : undefined,
         status: "ACTIVE",
       });
 
@@ -450,6 +470,7 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
       setNewAccountNumber("");
       setNewAccountType("FUNDED");
       setNewStartingBalance("50000");
+      setNewDefaultRiskAmount("");
       setShowAccountForm(false);
       void billing.reload();
     } catch (error) {
@@ -487,6 +508,16 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
     } catch (error) {
       console.error(error);
       alert("Failed to delete account");
+    }
+  }
+
+  async function handleUpdateAccountRisk(accountId: number, defaultRiskAmount: number) {
+    try {
+      const updated = await updateAccountRiskAmount(accountId, defaultRiskAmount);
+      setAccounts((prev) => prev.map((account) => account.id === accountId ? updated : account));
+    } catch (error) {
+      console.error(error);
+      throw error;
     }
   }
 
@@ -612,6 +643,7 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
             newAccountNumber={newAccountNumber}
             newAccountType={newAccountType}
             newStartingBalance={newStartingBalance}
+            newDefaultRiskAmount={newDefaultRiskAmount}
             onCreateAccount={handleCreateAccount}
             onClose={() => setShowAccountForm(false)}
             onAccountNameChange={setNewAccountName}
@@ -619,6 +651,7 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
             onAccountNumberChange={setNewAccountNumber}
             onAccountTypeChange={setNewAccountType}
             onStartingBalanceChange={setNewStartingBalance}
+            onDefaultRiskAmountChange={setNewDefaultRiskAmount}
           />
         )}
       </div>
@@ -787,15 +820,18 @@ function DashboardApp({ user, onLogout }: DashboardAppProps) {
                     newAccountNumber={newAccountNumber}
                     newAccountType={newAccountType}
                     newStartingBalance={newStartingBalance}
+                    newDefaultRiskAmount={newDefaultRiskAmount}
                     onToggleAccountForm={() => setShowAccountForm((prev) => !prev)}
                     onCreateAccount={handleCreateAccount}
                     onDeleteAccount={handleDeleteAccount}
+                    onUpdateAccountRisk={handleUpdateAccountRisk}
                     onSelectAccount={setSelectedAccountId}
                     onAccountNameChange={setNewAccountName}
                     onPropFirmChange={setNewPropFirm}
                     onAccountNumberChange={setNewAccountNumber}
                     onAccountTypeChange={setNewAccountType}
                     onStartingBalanceChange={setNewStartingBalance}
+                    onDefaultRiskAmountChange={setNewDefaultRiskAmount}
                   />
                 </div>
               )}
@@ -922,6 +958,7 @@ type AccountCreationModalProps = {
   newAccountNumber: string;
   newAccountType: string;
   newStartingBalance: string;
+  newDefaultRiskAmount: string;
   onCreateAccount: () => void;
   onClose: () => void;
   onAccountNameChange: (value: string) => void;
@@ -929,6 +966,7 @@ type AccountCreationModalProps = {
   onAccountNumberChange: (value: string) => void;
   onAccountTypeChange: (value: string) => void;
   onStartingBalanceChange: (value: string) => void;
+  onDefaultRiskAmountChange: (value: string) => void;
 };
 
 function FirstUserOnboarding({ onCreateClick }: { onCreateClick: () => void }) {
@@ -963,6 +1001,7 @@ function AccountCreationModal({
   newAccountNumber,
   newAccountType,
   newStartingBalance,
+  newDefaultRiskAmount,
   onCreateAccount,
   onClose,
   onAccountNameChange,
@@ -970,6 +1009,7 @@ function AccountCreationModal({
   onAccountNumberChange,
   onAccountTypeChange,
   onStartingBalanceChange,
+  onDefaultRiskAmountChange,
 }: AccountCreationModalProps) {
   return (
     <div style={modalOverlay}>
@@ -1050,6 +1090,22 @@ function AccountCreationModal({
               value={newStartingBalance}
               onChange={(event) => onStartingBalanceChange(event.target.value)}
             />
+          </div>
+
+          <div>
+            <label style={modalLabel}>Default Risk Per Trade / 1R optional</label>
+            <input
+              style={modalInput}
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="200"
+              value={newDefaultRiskAmount}
+              onChange={(event) => onDefaultRiskAmountChange(event.target.value)}
+            />
+            <p style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.5, margin: "6px 0 0" }}>
+              TradePilot uses this to calculate R-multiple analytics. If 1R = $200 and a trade makes $400, that trade is +2R.
+            </p>
           </div>
         </div>
 
@@ -1519,6 +1575,11 @@ function AuthRoutes() {
     navigate("/login", { replace: true });
   }
 
+  async function refreshCurrentUser() {
+    const user = await getCurrentUser();
+    setSession((current) => current ? { ...current, user } : current);
+  }
+
   if (checkingAuth) {
     return (
       <div style={{ ...page, display: "grid", placeItems: "center" }}>
@@ -1585,7 +1646,7 @@ function AuthRoutes() {
         element={
           session ? (
             <>
-              <DashboardApp user={session.user} onLogout={handleLogout} />
+              <DashboardApp user={session.user} onLogout={handleLogout} onUserRefresh={refreshCurrentUser} />
       {showIdleWarning && (
                 <IdleWarningModal
                   countdownSeconds={idleCountdownSeconds}

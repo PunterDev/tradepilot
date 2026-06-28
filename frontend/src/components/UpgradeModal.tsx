@@ -1,10 +1,12 @@
 import { useState, type CSSProperties } from "react";
-import { createCheckoutSession } from "../api/billingApi";
+import { createCheckoutSession, createCreditPackCheckoutSession, type CreditPackId } from "../api/billingApi";
+import { creditPacks, formatCreditPackPrice } from "../config/creditPacks";
 import { button, mutedText, sectionTitle } from "../styles/dashboardStyles";
 
 type Props = {
   open: boolean;
   onClose: () => void;
+  plan?: "FREE" | "PRO";
 };
 
 const proBenefits = [
@@ -16,8 +18,9 @@ const proBenefits = [
   "Unlimited imports",
 ];
 
-export default function UpgradeModal({ open, onClose }: Props) {
+export default function UpgradeModal({ open, onClose, plan = "FREE" }: Props) {
   const [loading, setLoading] = useState(false);
+  const [packLoading, setPackLoading] = useState<CreditPackId | null>(null);
   const [checkoutNotice, setCheckoutNotice] = useState<null | {
     title: string;
     message: string;
@@ -52,6 +55,32 @@ export default function UpgradeModal({ open, onClose }: Props) {
     }
   }
 
+  async function handleBuyCredits(packId: CreditPackId) {
+    setPackLoading(packId);
+    setCheckoutNotice(null);
+    try {
+      const { checkoutUrl } = await createCreditPackCheckoutSession(packId);
+      window.location.href = checkoutUrl;
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.response?.data?.message || "";
+      if (message === "Stripe is not configured." || message.includes("not configured")) {
+        setCheckoutNotice({
+          eyebrow: "Local checkout",
+          title: "Billing not configured",
+          message: "Stripe checkout is not configured in this local environment. Add Stripe test keys to enable credit packs.",
+        });
+      } else {
+        setCheckoutNotice({
+          eyebrow: "AI credits",
+          title: "Unable to buy credits",
+          message: message || "Unable to start credit pack checkout. Please try again.",
+        });
+      }
+    } finally {
+      setPackLoading(null);
+    }
+  }
+
   if (checkoutNotice) {
     return (
       <div style={overlay} role="dialog" aria-modal="true" aria-labelledby="billing-notice-title">
@@ -82,29 +111,53 @@ export default function UpgradeModal({ open, onClose }: Props) {
         <button type="button" onClick={onClose} style={closeButton} aria-label="Close upgrade modal">
           ×
         </button>
-        <div style={badge}>TradePilot Pro</div>
+        <div style={badge}>{plan === "PRO" ? "AI credits" : "TradePilot Pro"}</div>
         <h2 id="upgrade-title" style={{ ...sectionTitle, color: "#f8fafc", fontSize: 32, marginTop: 14 }}>
-          Upgrade to TradePilot Pro
+          {plan === "PRO" ? "Buy more AI credits" : "Upgrade to TradePilot Pro"}
         </h2>
         <p style={{ ...mutedText, lineHeight: 1.65, marginTop: 8 }}>
-          Keep your AI workflow moving with higher monthly generation limits and room to scale every account.
+          {plan === "PRO"
+            ? "You have used your available AI credits. Add a one-time credit pack to keep generating new analysis."
+            : "Keep your AI workflow moving with higher monthly generation limits and room to scale every account."}
         </p>
 
-        <div style={benefitGrid}>
-          {proBenefits.map((benefit) => (
-            <div key={benefit} style={benefitItem}>
-              <span style={check}>✓</span>
-              {benefit}
-            </div>
-          ))}
-        </div>
+        {plan === "PRO" ? (
+          <div style={packGrid}>
+            {creditPacks.map((pack) => (
+            <button
+                key={pack.id}
+                type="button"
+                onClick={() => handleBuyCredits(pack.id)}
+                disabled={!!packLoading}
+                style={{ ...packButton, opacity: packLoading ? 0.72 : 1 }}
+              >
+                <span style={{ color: "#6ee7b7", fontSize: 12, fontWeight: 950 }}>{pack.name}</span>
+                <strong style={{ color: "#f8fafc", fontSize: 22 }}>{pack.credits} credits</strong>
+                <span style={{ color: "#cbd5e1", fontSize: 13, fontWeight: 850 }}>
+                  {formatCreditPackPrice(pack.amountCents)}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={benefitGrid}>
+            {proBenefits.map((benefit) => (
+              <div key={benefit} style={benefitItem}>
+                <span style={check}>✓</span>
+                {benefit}
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 24, flexWrap: "wrap" }}>
           <button type="button" onClick={onClose} style={secondaryButton}>
             Not now
           </button>
-          <button type="button" onClick={handleUpgrade} disabled={loading} style={{ ...button, width: 190, opacity: loading ? 0.72 : 1 }}>
-            {loading ? "Opening..." : "Upgrade to Pro"}
-          </button>
+          {plan !== "PRO" && (
+            <button type="button" onClick={handleUpgrade} disabled={loading} style={{ ...button, width: 190, opacity: loading ? 0.72 : 1 }}>
+              {loading ? "Opening..." : "Upgrade to Pro"}
+            </button>
+          )}
         </div>
       </section>
     </div>
@@ -176,6 +229,24 @@ const benefitItem: CSSProperties = {
   background: "rgba(15,23,42,0.72)",
   color: "#e2e8f0",
   fontWeight: 800,
+};
+
+const packGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 12,
+  marginTop: 22,
+};
+
+const packButton: CSSProperties = {
+  display: "grid",
+  gap: 7,
+  textAlign: "left",
+  padding: 16,
+  borderRadius: 16,
+  border: "1px solid rgba(52,211,153,0.24)",
+  background: "rgba(2,6,23,0.54)",
+  cursor: "pointer",
 };
 
 const check: CSSProperties = {

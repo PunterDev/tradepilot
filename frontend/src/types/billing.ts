@@ -5,4 +5,9 @@ export type BillingUsage = {
   usageThisMonth: Record<string, number>;
   remaining: Record<string, number>;
   resetDate?: string;
+  monthlyAiCredits?: number;
+  monthlyAiCreditsUsed?: number;
+  monthlyAiCreditsRemaining?: number;
+  purchasedAiCreditsBalance?: number;
+  totalAiCreditsAvailable?: number;
 };

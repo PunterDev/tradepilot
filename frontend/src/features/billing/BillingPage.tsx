@@ -15,5 +15,5 @@ export default function BillingPage({ user, usage, loading, error }: Props) {
     return <AdminBillingDashboard />;
   }
 
-  return <UserBillingPage usage={usage} loading={loading} error={error} />;
+  return <UserBillingPage user={user} usage={usage} loading={loading} error={error} />;
 }

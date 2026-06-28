@@ -12,7 +12,7 @@ export type DashboardSummary = {
   losses: number;
   breakevens: number;
   totalPnl: number | string;
-  averageR: number | string;
+  averageR: number | string | null;
   winRate: number | string;
 };
 
@@ -23,7 +23,7 @@ export type MetricItem = {
   losses: number;
   breakevens: number;
   totalPnl: number | string;
-  averageR: number | string;
+  averageR: number | string | null;
   winRate: number | string;
 };
 

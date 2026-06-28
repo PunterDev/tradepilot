@@ -36,7 +36,7 @@ type DashboardMetrics = {
   winningTrades: number;
   losingTrades: number;
   breakevenTrades: number;
-  averageR: number;
+  averageR: number | null;
   overallWinRate: number;
   winningDays: number;
   losingDays: number;
@@ -123,9 +123,10 @@ export default function DashboardCharts({
 
         <StatCard
           title="Average R"
-          value={`${metrics.averageR.toFixed(2)}R`}
-          positive={metrics.averageR > 0}
-          negative={metrics.averageR < 0}
+          value={metrics.averageR == null ? "—" : `${metrics.averageR.toFixed(2)}R`}
+          positive={metrics.averageR != null && metrics.averageR > 0}
+          negative={metrics.averageR != null && metrics.averageR < 0}
+          hint={metrics.averageR == null ? "Set your account 1R amount to calculate R-multiple." : undefined}
         />
       </div>
 

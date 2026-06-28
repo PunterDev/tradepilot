@@ -147,11 +147,38 @@ export default function BillingUsageCard({ usage, loading, error }: Props) {
               key={key}
               label={label}
               used={usage.usageThisMonth[key] ?? 0}
-              remaining={usage.remaining[key] ?? 0}
+              remaining={usage.monthlyAiCreditsRemaining ?? usage.remaining[key] ?? 0}
               limit={usage.limits[key] ?? 0}
             />
           ))}
         </div>
+      )}
+
+      {usage && (
+        <div style={creditBreakdownGrid}>
+          <CreditStat
+            label="Monthly remaining"
+            value={`${usage.monthlyAiCreditsRemaining ?? usage.remaining.AI_CREDITS ?? 0}`}
+            detail={`${usage.monthlyAiCreditsUsed ?? usage.usageThisMonth.AI_CREDITS ?? 0}/${usage.monthlyAiCredits ?? usage.limits.AI_CREDITS ?? 0} used this cycle`}
+          />
+          <CreditStat
+            label="Purchased balance"
+            value={`${usage.purchasedAiCreditsBalance ?? 0}`}
+            detail="Never resets"
+          />
+          <CreditStat
+            label="Total available"
+            value={`${usage.totalAiCreditsAvailable ?? usage.remaining.AI_CREDITS ?? 0}`}
+            detail="Controls AI access"
+            accent
+          />
+        </div>
+      )}
+
+      {usage?.plan === "PRO" && (
+        <p style={creditPackNote}>
+          Purchased credits never reset and are used only after monthly Pro credits are exhausted.
+        </p>
       )}
 
       <UsageDetailsDrawer
@@ -197,6 +224,26 @@ function UsageProgress({
       <div style={{ color: reached ? "#fde68a" : "#64748b", fontSize: 12, marginTop: 7 }}>
         {unlimited ? "No monthly cap" : `${remaining} remaining`}
       </div>
+    </div>
+  );
+}
+
+function CreditStat({
+  label,
+  value,
+  detail,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  accent?: boolean;
+}) {
+  return (
+    <div style={{ ...creditStatCard, ...(accent ? creditStatAccent : null) }}>
+      <span style={creditStatLabel}>{label}</span>
+      <strong style={{ ...creditStatValue, color: accent ? "#6ee7b7" : "#f8fafc" }}>{value}</strong>
+      <span style={creditStatDetail}>{detail}</span>
     </div>
   );
 }
@@ -389,6 +436,53 @@ const progressGrid: CSSProperties = {
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: 14,
   marginTop: 18,
+};
+
+const creditBreakdownGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 12,
+  marginTop: 14,
+};
+
+const creditStatCard: CSSProperties = {
+  padding: 14,
+  borderRadius: 16,
+  border: "1px solid rgba(148,163,184,0.16)",
+  background: "rgba(2,6,23,0.34)",
+  display: "grid",
+  gap: 5,
+};
+
+const creditStatAccent: CSSProperties = {
+  borderColor: "rgba(52,211,153,0.42)",
+  background: "linear-gradient(135deg, rgba(16,185,129,0.16), rgba(2,6,23,0.4))",
+  boxShadow: "0 18px 54px rgba(16,185,129,0.1)",
+};
+
+const creditStatLabel: CSSProperties = {
+  color: "#94a3b8",
+  fontSize: 11,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+};
+
+const creditStatValue: CSSProperties = {
+  fontSize: 28,
+  lineHeight: 1.05,
+};
+
+const creditStatDetail: CSSProperties = {
+  color: "#64748b",
+  fontSize: 12,
+};
+
+const creditPackNote: CSSProperties = {
+  margin: "12px 0 0",
+  color: "#94a3b8",
+  fontSize: 12,
+  lineHeight: 1.55,
 };
 
 function progressCard(reached: boolean): CSSProperties {
