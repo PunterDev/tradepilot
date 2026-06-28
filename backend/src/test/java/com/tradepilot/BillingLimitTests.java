@@ -1,12 +1,19 @@
 package com.tradepilot;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradepilot.billing.*;
+import com.tradepilot.coach.dto.CoachDeterministicSummary;
 import com.tradepilot.coach.dto.CoachGenerateRequest;
+import com.tradepilot.coach.dto.CoachSnapshotDto;
+import com.tradepilot.coach.entity.CoachSnapshotStatus;
 import com.tradepilot.coach.service.AiCoachService;
+import com.tradepilot.dto.admin.AdminTradeCleanupResponse;
 import com.tradepilot.dto.account.TradingAccountRequest;
 import com.tradepilot.dto.account.TradingAccountResponse;
 import com.tradepilot.dto.ai.AiTradeReviewRequest;
 import com.tradepilot.dto.ai.TradeSnapshot;
+import com.tradepilot.dto.session.SessionReplayInsightsResponse;
 import com.tradepilot.dto.trade.TradeImportRequest;
 import com.tradepilot.dto.trade.TradeResponse;
 import com.tradepilot.entity.User;
@@ -25,6 +32,7 @@ import com.tradepilot.service.AiTradeReviewService;
 import com.tradepilot.service.SessionReviewService;
 import com.tradepilot.service.TradeService;
 import com.tradepilot.service.TradingAccountService;
+import com.tradepilot.tradingdna.dto.TradingDnaContext;
 import com.tradepilot.tradingdna.dto.TradingDnaResponse;
 import com.tradepilot.tradingdna.service.TradingDnaService;
 import org.junit.jupiter.api.Test;
@@ -35,6 +43,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -44,6 +53,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest
 @ActiveProfiles("test")
 class BillingLimitTests {
+    @Autowired ObjectMapper objectMapper;
     @Autowired UserRepository userRepository;
     @Autowired TradingAccountService tradingAccountService;
     @Autowired TradeService tradeService;
@@ -57,6 +67,74 @@ class BillingLimitTests {
     @Autowired AiCreditUsageRepository creditUsageRepository;
     @Autowired CacheMetricRepository cacheMetricRepository;
     @Autowired AiLeakDetectorSnapshotRepository leakDetectorSnapshotRepository;
+
+    @Test
+    void leakResultDtoSerializesWithoutLombokBuilderRuntimeDependency() throws Exception {
+        LeakResultDto result = LeakResultDto.of(
+                LeakType.LONG_SHORT_BIAS,
+                "Short Side Bias Leak",
+                "Short trades are dragging performance.",
+                "Reduce short-side size until confirmation improves.",
+                33,
+                new BigDecimal("0.00"),
+                new BigDecimal("-2933.75"),
+                new BigDecimal("-88.90"),
+                new BigDecimal("-1257.33"),
+                null,
+                null,
+                null,
+                false,
+                76,
+                LeakSeverity.HIGH,
+                "Reduce size on short trades.",
+                33,
+                List.of(1L, 2L, 3L),
+                LocalDateTime.of(2026, 6, 22, 9, 30)
+        );
+
+        JsonNode json = objectMapper.readTree(objectMapper.writeValueAsString(result));
+
+        assertThat(json.get("leakType").asText()).isEqualTo("LONG_SHORT_BIAS");
+        assertThat(json.get("title").asText()).isEqualTo("Short Side Bias Leak");
+        assertThat(json.get("relatedTradeCount").asInt()).isEqualTo(33);
+        assertThat(json.get("hasValidRMultiple").asBoolean()).isFalse();
+    }
+
+    @Test
+    void leakDetectorResponseSerializesWithoutLombokBuilderRuntimeDependency() throws Exception {
+        User user = createUser("pro-leak-response-runtime@example.com", PlanType.PRO);
+        TradingAccountResponse account = createAccount(user, "Leak Response Runtime");
+        tradeService.importTrades(user, leakTrades(account.getId(), "leak-response-runtime"));
+
+        LeakDetectorResponse fresh = leakDetectorService.getLeakDetector(user, account.getId());
+        LeakDetectorResponse regenerated = leakDetectorService.regenerate(user, account.getId());
+
+        JsonNode freshJson = objectMapper.readTree(objectMapper.writeValueAsString(fresh));
+        JsonNode regeneratedJson = objectMapper.readTree(objectMapper.writeValueAsString(regenerated));
+
+        assertThat(freshJson.get("accountId").asLong()).isEqualTo(account.getId());
+        assertThat(freshJson.get("leaks")).isNotEmpty();
+        assertThat(regeneratedJson.get("accountId").asLong()).isEqualTo(account.getId());
+        assertThat(regeneratedJson.get("leaks")).isNotEmpty();
+    }
+
+    @Test
+    void launchCriticalRuntimeDtosDoNotExposeLombokBuilderMethods() {
+        List<Class<?>> dtoClasses = List.of(
+                LeakDetectorResponse.class,
+                LeakResultDto.class,
+                TradingDnaContext.class,
+                SessionReplayInsightsResponse.class,
+                CoachDeterministicSummary.class,
+                AdminTradeCleanupResponse.class
+        );
+
+        for (Class<?> dtoClass : dtoClasses) {
+            assertThat(Arrays.stream(dtoClass.getDeclaredMethods()).map(method -> method.getName()))
+                    .as(dtoClass.getSimpleName())
+                    .doesNotContain("builder");
+        }
+    }
 
     @Test
     void freeUsersCanCreateOnlyOneAccount() {
@@ -83,6 +161,15 @@ class BillingLimitTests {
         User user = createUser("coach-cache@example.com", PlanType.PRO);
         TradingAccountResponse account = createAccount(user, "Coach");
         LocalDate date = LocalDate.of(2026, 5, 27);
+        tradeService.importTrades(user, List.of(dollarTrade(
+                account.getId(),
+                "coach-cache-trade",
+                date,
+                "LONG",
+                new BigDecimal("125.00"),
+                SessionType.NY_AM,
+                SetupType.ORB
+        )));
 
         aiCoachService.generateDailyCoach(user, coachRequest(account.getId(), date, false));
         aiCoachService.getDailyCoach(user, account.getId(), date);
@@ -92,6 +179,251 @@ class BillingLimitTests {
         aiCoachService.generateDailyCoach(user, coachRequest(account.getId(), date, true));
 
         assertThat(usageLimitService.getUsage(user).getUsageThisMonth().get("DAILY_COACH")).isEqualTo(4);
+    }
+
+    @Test
+    void dailyCoachNoTradeDayReturnsDeterministicSnapshotWithoutCredits() {
+        User user = createUser("daily-coach-no-trades@example.com", PlanType.PRO);
+        user.setPurchasedAiCreditsBalance(75);
+        user = userRepository.save(user);
+        Long userId = user.getId();
+        TradingAccountResponse account = createAccount(user, "No Trades Coach");
+        LocalDate date = LocalDate.of(2026, 6, 24);
+
+        CoachSnapshotDto snapshot = aiCoachService.getDailyCoach(user, account.getId(), date);
+
+        assertThat(snapshot.getStatus()).isEqualTo(CoachSnapshotStatus.COMPLETED);
+        assertThat(snapshot.getNoTradeDay()).isTrue();
+        assertThat(snapshot.getAiGenerated()).isFalse();
+        assertThat(snapshot.getCreditsConsumed()).isZero();
+        assertThat(snapshot.getTotalTrades()).isZero();
+        assertThat(snapshot.getSelectedDaySummary()).isEqualTo("No trades found for this date.");
+        assertThat(snapshot.getPrimaryIssueToday()).isEqualTo("Import trades for this date before drawing conclusions.");
+        assertThat(snapshot.getSetupDirectionReview()).contains("No setup/direction review available");
+        assertThat(snapshot.getDataQuality()).isEqualTo("No Trades");
+        assertThat(snapshot.getDataQualityReason()).contains("Import trades first");
+        assertThat(snapshot.getAiResponseJson()).isNull();
+
+        BillingUsageResponse usage = usageLimitService.getUsage(userRepository.findById(user.getId()).orElseThrow());
+        assertThat(usage.getMonthlyAiCreditsUsed()).isZero();
+        assertThat(usage.getPurchasedAiCreditsBalance()).isEqualTo(75);
+        assertThat(usage.getTotalAiCreditsAvailable()).isEqualTo(175);
+        assertThat(creditUsageRepository.findAll().stream().filter(row -> row.getUserId().equals(userId)).count()).isZero();
+    }
+
+    @Test
+    void dailyCoachRegenerateNoTradeDayDoesNotConsumeCredits() {
+        User user = createUser("daily-coach-no-trades-regenerate@example.com", PlanType.PRO);
+        TradingAccountResponse account = createAccount(user, "No Trades Regenerate");
+        LocalDate date = LocalDate.of(2026, 6, 25);
+
+        CoachSnapshotDto first = aiCoachService.generateDailyCoach(user, coachRequest(account.getId(), date, true));
+        CoachSnapshotDto second = aiCoachService.generateDailyCoach(user, coachRequest(account.getId(), date, true));
+
+        assertThat(first.getStatus()).isEqualTo(CoachSnapshotStatus.COMPLETED);
+        assertThat(second.getStatus()).isEqualTo(CoachSnapshotStatus.COMPLETED);
+        assertThat(second.getNoTradeDay()).isTrue();
+        assertThat(second.getAiGenerated()).isFalse();
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isZero();
+        assertThat(creditUsageRepository.findAll().stream().filter(row -> row.getUserId().equals(user.getId())).count()).isZero();
+    }
+
+    @Test
+    void cachedNoTradeDailyCoachCostsZeroAndTradeImportAllowsPaidGeneration() {
+        User user = createUser("daily-coach-no-trade-cache-then-import@example.com", PlanType.PRO);
+        TradingAccountResponse account = createAccount(user, "No Trade Cache");
+        LocalDate date = LocalDate.of(2026, 6, 26);
+
+        CoachSnapshotDto noTrade = aiCoachService.getDailyCoach(user, account.getId(), date);
+        CoachSnapshotDto cachedNoTrade = aiCoachService.getDailyCoach(user, account.getId(), date);
+
+        assertThat(noTrade.getNoTradeDay()).isTrue();
+        assertThat(cachedNoTrade.getNoTradeDay()).isTrue();
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isZero();
+
+        tradeService.importTrades(user, List.of(dollarTrade(
+                account.getId(),
+                "daily-coach-import-after-no-trade",
+                date,
+                "LONG",
+                new BigDecimal("-76.25"),
+                SessionType.NY_AM,
+                SetupType.ORB
+        )));
+
+        CoachSnapshotDto paidGeneration = aiCoachService.generateDailyCoach(user, coachRequest(account.getId(), date, false));
+
+        assertThat(paidGeneration.getNoTradeDay()).isFalse();
+        assertThat(paidGeneration.getStatus()).isIn(CoachSnapshotStatus.PENDING, CoachSnapshotStatus.PROCESSING, CoachSnapshotStatus.COMPLETED);
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isEqualTo(2);
+    }
+
+    @Test
+    void weeklyCoachNoTradeWeekReturnsDeterministicSnapshotWithoutCredits() {
+        User user = createUser("weekly-coach-no-trades@example.com", PlanType.PRO);
+        user.setPurchasedAiCreditsBalance(75);
+        user = userRepository.save(user);
+        Long userId = user.getId();
+        TradingAccountResponse account = createAccount(user, "No Trades Weekly Coach");
+        LocalDate weekStart = LocalDate.of(2026, 6, 15);
+
+        CoachSnapshotDto snapshot = aiCoachService.getWeeklyCoach(user, account.getId(), weekStart);
+
+        assertThat(snapshot.getStatus()).isEqualTo(CoachSnapshotStatus.COMPLETED);
+        assertThat(snapshot.getNoTradeWeek()).isTrue();
+        assertThat(snapshot.getNoTradeDay()).isFalse();
+        assertThat(snapshot.getAiGenerated()).isFalse();
+        assertThat(snapshot.getCreditsConsumed()).isZero();
+        assertThat(snapshot.getTotalTrades()).isZero();
+        assertThat(snapshot.getSelectedDaySummary()).isEqualTo("No trades found for this week.");
+        assertThat(snapshot.getPrimaryIssueToday()).isEqualTo("Import trades for this week before generating weekly coaching.");
+        assertThat(snapshot.getSetupDirectionReview()).contains("No setup review available");
+        assertThat(snapshot.getDataQuality()).isEqualTo("No Trades");
+        assertThat(snapshot.getDataQualityReason()).contains("Import trades for this week");
+        assertThat(snapshot.getAiResponseJson()).isNull();
+
+        BillingUsageResponse usage = usageLimitService.getUsage(userRepository.findById(user.getId()).orElseThrow());
+        assertThat(usage.getMonthlyAiCreditsUsed()).isZero();
+        assertThat(usage.getPurchasedAiCreditsBalance()).isEqualTo(75);
+        assertThat(usage.getTotalAiCreditsAvailable()).isEqualTo(175);
+        assertThat(creditUsageRepository.findAll().stream().filter(row -> row.getUserId().equals(userId)).count()).isZero();
+    }
+
+    @Test
+    void weeklyCoachRegenerateNoTradeWeekDoesNotConsumeCredits() {
+        User user = createUser("weekly-coach-no-trades-regenerate@example.com", PlanType.PRO);
+        TradingAccountResponse account = createAccount(user, "No Trades Weekly Regenerate");
+        LocalDate weekStart = LocalDate.of(2026, 6, 15);
+
+        CoachSnapshotDto first = aiCoachService.generateWeeklyCoach(user, weeklyCoachRequest(account.getId(), weekStart, true));
+        CoachSnapshotDto second = aiCoachService.generateWeeklyCoach(user, weeklyCoachRequest(account.getId(), weekStart, true));
+
+        assertThat(first.getStatus()).isEqualTo(CoachSnapshotStatus.COMPLETED);
+        assertThat(second.getStatus()).isEqualTo(CoachSnapshotStatus.COMPLETED);
+        assertThat(second.getNoTradeWeek()).isTrue();
+        assertThat(second.getAiGenerated()).isFalse();
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isZero();
+        assertThat(creditUsageRepository.findAll().stream().filter(row -> row.getUserId().equals(user.getId())).count()).isZero();
+    }
+
+    @Test
+    void cachedNoTradeWeeklyCoachCostsZeroAndTradeImportAllowsPaidGeneration() {
+        User user = createUser("weekly-coach-no-trade-cache-then-import@example.com", PlanType.PRO);
+        TradingAccountResponse account = createAccount(user, "No Trade Weekly Cache");
+        LocalDate weekStart = LocalDate.of(2026, 6, 15);
+        LocalDate tradeDate = weekStart.plusDays(2);
+
+        CoachSnapshotDto noTrade = aiCoachService.getWeeklyCoach(user, account.getId(), weekStart);
+        CoachSnapshotDto cachedNoTrade = aiCoachService.getWeeklyCoach(user, account.getId(), weekStart);
+
+        assertThat(noTrade.getNoTradeWeek()).isTrue();
+        assertThat(cachedNoTrade.getNoTradeWeek()).isTrue();
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isZero();
+
+        tradeService.importTrades(user, List.of(dollarTrade(
+                account.getId(),
+                "weekly-coach-import-after-no-trade",
+                tradeDate,
+                "LONG",
+                new BigDecimal("125.00"),
+                SessionType.NY_AM,
+                SetupType.ORB
+        )));
+
+        CoachSnapshotDto paidGeneration = aiCoachService.generateWeeklyCoach(user, weeklyCoachRequest(account.getId(), weekStart, false));
+
+        assertThat(paidGeneration.getNoTradeWeek()).isFalse();
+        assertThat(paidGeneration.getStatus()).isIn(CoachSnapshotStatus.PENDING, CoachSnapshotStatus.PROCESSING, CoachSnapshotStatus.COMPLETED);
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isEqualTo(4);
+    }
+
+    @Test
+    void weeklyCoachWithTradesUsesNormalAiGenerationPath() {
+        User user = createUser("weekly-coach-with-trades@example.com", PlanType.PRO);
+        TradingAccountResponse account = createAccount(user, "Weekly With Trades");
+        LocalDate weekStart = LocalDate.of(2026, 6, 15);
+        tradeService.importTrades(user, List.of(dollarTrade(
+                account.getId(),
+                "weekly-coach-with-trade",
+                weekStart.plusDays(1),
+                "SHORT",
+                new BigDecimal("-80.00"),
+                SessionType.NY_PM,
+                SetupType.FVG
+        )));
+
+        CoachSnapshotDto snapshot = aiCoachService.generateWeeklyCoach(user, weeklyCoachRequest(account.getId(), weekStart, false));
+
+        assertThat(snapshot.getNoTradeWeek()).isFalse();
+        assertThat(snapshot.getStatus()).isIn(CoachSnapshotStatus.PENDING, CoachSnapshotStatus.PROCESSING, CoachSnapshotStatus.COMPLETED);
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isEqualTo(4);
+    }
+
+    @Test
+    void dailyCoachSeparatesSelectedDayLongLossFromHistoricalShortLeak() throws Exception {
+        User user = createUser("daily-coach-historical-leak@example.com", PlanType.PRO);
+        TradingAccountResponse account = createAccount(user, "Coach");
+        LocalDate date = LocalDate.of(2026, 6, 22);
+        tradeService.importTrades(user, List.of(new TradeImportRequest(
+                account.getId(),
+                "tradovate.csv",
+                "daily-long-loss",
+                "MESU6",
+                "FUTURES",
+                date,
+                date.atTime(9, 30),
+                date.atTime(9, 45),
+                "LONG",
+                null,
+                SessionType.NY_AM,
+                new BigDecimal("5485.00"),
+                new BigDecimal("5477.50"),
+                1,
+                new BigDecimal("-76.25"),
+                null,
+                OutcomeType.LOSS
+        )));
+        leakDetectorSnapshotRepository.save(AiLeakDetectorSnapshot.builder()
+                .userId(user.getId())
+                .accountId(account.getId())
+                .dataHash("historical-short-leak")
+                .totalTrades(35)
+                .resultJson(objectMapper.writeValueAsString(List.of(LeakResultDto.of(
+                        LeakType.LONG_SHORT_BIAS,
+                        "Short Side Bias Leak",
+                        "SHORT is dragging performance by -$2533.75 across 35 trades.",
+                        "Short-side trades have underperformed recently.",
+                        35,
+                        BigDecimal.ZERO,
+                        new BigDecimal("-2533.75"),
+                        new BigDecimal("-72.39"),
+                        new BigDecimal("-1085.89"),
+                        null,
+                        null,
+                        null,
+                        false,
+                        82,
+                        LeakSeverity.HIGH,
+                        "Reduce size on short trades.",
+                        35,
+                        List.of(1L, 2L),
+                        LocalDateTime.now()
+                ))))
+                .model("test")
+                .build());
+
+        aiCoachService.generateDailyCoach(user, coachRequest(account.getId(), date, false));
+        CoachSnapshotDto dailyCoach = waitForDailyCoach(user, account.getId(), date);
+
+        assertThat(dailyCoach.getSelectedDaySummary()).contains("MESU6 LONG");
+        assertThat(dailyCoach.getPrimaryIssueToday()).contains("not an overtrading day");
+        assertThat(dailyCoach.getHistoricalPatternToWatch())
+                .contains("Account-level pattern")
+                .contains("Recent account history shows short-side trades have underperformed by -$2,533.75 across 35 trades")
+                .contains("This did not apply today");
+        assertThat(dailyCoach.getHistoricalPatternAppliesToday()).isFalse();
+        assertThat(dailyCoach.getSelectedDaySummary()).doesNotContain("SHORT");
+        assertThat(dailyCoach.getPrimaryIssueToday()).doesNotContain("SHORT");
     }
 
     @Test
@@ -105,6 +437,24 @@ class BillingLimitTests {
         assertThat(usageLimitService.getUsage(user).getUsageThisMonth().get("AI_TRADE_REVIEW")).isEqualTo(1);
         assertThat(usageLimitService.getUsage(user).getUsageThisMonth().get("AI_CREDITS")).isEqualTo(1);
         assertThat(usageLimitService.getUsage(user).getRemaining().get("AI_CREDITS")).isEqualTo(9);
+    }
+
+    @Test
+    void tradeReviewMissingTradeIdDoesNotConsumeCredits() {
+        User user = createUser("ai-review-missing-trade-id@example.com", PlanType.PRO);
+        user.setPurchasedAiCreditsBalance(25);
+        user = userRepository.save(user);
+        Long userId = user.getId();
+        User savedUser = user;
+
+        assertThatThrownBy(() -> aiTradeReviewService.reviewTrade(savedUser, new AiTradeReviewRequest()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tradeId");
+
+        BillingUsageResponse usage = usageLimitService.getUsage(userRepository.findById(userId).orElseThrow());
+        assertThat(usage.getMonthlyAiCreditsUsed()).isZero();
+        assertThat(usage.getPurchasedAiCreditsBalance()).isEqualTo(25);
+        assertThat(creditUsageRepository.findAll().stream().filter(row -> row.getUserId().equals(userId)).count()).isZero();
     }
 
     @Test
@@ -140,7 +490,7 @@ class BillingLimitTests {
     void proTradingDnaConsumesCreditsAndCachedDnaDoesNotCount() {
         User user = createUser("dna-pro-cache@example.com", PlanType.PRO);
         TradingAccountResponse account = createAccount(user, "DNA");
-        tradeService.importTrades(user, importTrades(account.getId(), 1, "dna-pro"));
+        tradeService.importTrades(user, importTrades(account.getId(), 5, "dna-pro"));
         long cacheHitsBefore = cacheMetricRepository.countByCacheNameAndHit("trading-dna-cache-hit", true);
         long cacheMissesBefore = cacheMetricRepository.countByCacheNameAndHit("trading-dna-cache-miss", false);
 
@@ -153,6 +503,50 @@ class BillingLimitTests {
         waitForCacheMetric("trading-dna-cache-hit", true, cacheHitsBefore + 1);
         assertThat(usageLimitService.getUsage(user).getUsageThisMonth().get("TRADING_DNA")).isEqualTo(3);
         assertThat(usageLimitService.getUsage(user).getUsageThisMonth().get("AI_CREDITS")).isEqualTo(3);
+    }
+
+    @Test
+    void tradingDnaNoTradesSkipsAiAndCreditsAndCachesResult() {
+        User user = createUser("dna-no-trades-skip@example.com", PlanType.PRO);
+        user.setPurchasedAiCreditsBalance(25);
+        user = userRepository.save(user);
+        Long userId = user.getId();
+        TradingAccountResponse account = createAccount(user, "DNA No Trades");
+
+        TradingDnaResponse first = tradingDnaService.getTradingDna(user, account.getId(), 30, false, false);
+        TradingDnaResponse cached = tradingDnaService.getTradingDna(user, account.getId(), 30, false, false);
+
+        assertThat(first.getStatus()).isEqualTo("NO_TRADES");
+        assertThat(first.getNoTrades()).isTrue();
+        assertThat(first.getAiGenerated()).isFalse();
+        assertThat(first.getCreditsConsumed()).isZero();
+        assertThat(cached.getCached()).isTrue();
+        assertThat(cached.getNoTrades()).isTrue();
+        BillingUsageResponse usage = usageLimitService.getUsage(userRepository.findById(userId).orElseThrow());
+        assertThat(usage.getMonthlyAiCreditsUsed()).isZero();
+        assertThat(usage.getPurchasedAiCreditsBalance()).isEqualTo(25);
+        assertThat(creditUsageRepository.findAll().stream().filter(row -> row.getUserId().equals(userId)).count()).isZero();
+    }
+
+    @Test
+    void tradingDnaLimitedDataSkipsAiAndImportedTradesLaterAllowGeneration() {
+        User user = createUser("dna-limited-data-skip@example.com", PlanType.PRO);
+        TradingAccountResponse account = createAccount(user, "DNA Limited Data");
+        tradeService.importTrades(user, importTrades(account.getId(), 4, "dna-limited"));
+
+        TradingDnaResponse limited = tradingDnaService.getTradingDna(user, account.getId(), 30, false, true);
+
+        assertThat(limited.getStatus()).isEqualTo("LIMITED_DATA");
+        assertThat(limited.getLimitedData()).isTrue();
+        assertThat(limited.getAiGenerated()).isFalse();
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isZero();
+
+        tradeService.importTrades(user, importTrades(account.getId(), 1, "dna-limited-extra"));
+        TradingDnaResponse generated = tradingDnaService.getTradingDna(user, account.getId(), 30, false, false);
+
+        assertThat(generated.getStatus()).isEqualTo("COMPLETED");
+        assertThat(generated.getAiGenerated()).isTrue();
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isEqualTo(3);
     }
 
     @Test
@@ -178,6 +572,49 @@ class BillingLimitTests {
         assertThat(response.getLeaks()).isNotEmpty();
         assertThat(usageLimitService.getUsage(user).getUsageThisMonth().get("AI_LEAK_DETECTOR")).isEqualTo(3);
         assertThat(usageLimitService.getUsage(user).getUsageThisMonth().get("AI_CREDITS")).isEqualTo(3);
+    }
+
+    @Test
+    void leakDetectorNoTradesSkipsCreditsAndCachesResult() {
+        User user = createUser("leak-no-trades-skip@example.com", PlanType.PRO);
+        user.setPurchasedAiCreditsBalance(40);
+        user = userRepository.save(user);
+        Long userId = user.getId();
+        TradingAccountResponse account = createAccount(user, "Leak No Trades");
+
+        LeakDetectorResponse first = leakDetectorService.getLeakDetector(user, account.getId());
+        LeakDetectorResponse cached = leakDetectorService.getLeakDetector(user, account.getId());
+
+        assertThat(first.getNoTrades()).isTrue();
+        assertThat(first.getAiGenerated()).isFalse();
+        assertThat(first.getCreditsConsumed()).isZero();
+        assertThat(first.getLeaks()).isEmpty();
+        assertThat(cached.getCached()).isTrue();
+        assertThat(cached.getNoTrades()).isTrue();
+        BillingUsageResponse usage = usageLimitService.getUsage(userRepository.findById(userId).orElseThrow());
+        assertThat(usage.getMonthlyAiCreditsUsed()).isZero();
+        assertThat(usage.getPurchasedAiCreditsBalance()).isEqualTo(40);
+        assertThat(creditUsageRepository.findAll().stream().filter(row -> row.getUserId().equals(userId)).count()).isZero();
+    }
+
+    @Test
+    void leakDetectorLimitedDataSkipsCreditsAndTenTradesAllowGeneration() {
+        User user = createUser("leak-limited-data-skip@example.com", PlanType.PRO);
+        TradingAccountResponse account = createAccount(user, "Leak Limited Data");
+        tradeService.importTrades(user, importTrades(account.getId(), 9, "leak-limited"));
+
+        LeakDetectorResponse limited = leakDetectorService.regenerate(user, account.getId());
+
+        assertThat(limited.getLimitedData()).isTrue();
+        assertThat(limited.getAiGenerated()).isFalse();
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isZero();
+
+        tradeService.importTrades(user, importTrades(account.getId(), 1, "leak-limited-extra"));
+        LeakDetectorResponse generated = leakDetectorService.getLeakDetector(user, account.getId());
+
+        assertThat(generated.getAiGenerated()).isTrue();
+        assertThat(generated.getTotalTrades()).isEqualTo(10);
+        assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isEqualTo(3);
     }
 
     @Test
@@ -386,6 +823,25 @@ class BillingLimitTests {
         assertThat(cacheMetricRepository.countByCacheNameAndHit(cacheName, hit)).isGreaterThanOrEqualTo(minimumCount);
     }
 
+    private CoachSnapshotDto waitForDailyCoach(User user, Long accountId, LocalDate date) {
+        CoachSnapshotDto latest = null;
+        for (int i = 0; i < 30; i++) {
+            latest = aiCoachService.getDailyCoach(user, accountId, date);
+            if (latest.getStatus() == CoachSnapshotStatus.COMPLETED) {
+                return latest;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        assertThat(latest).isNotNull();
+        assertThat(latest.getStatus()).isEqualTo(CoachSnapshotStatus.COMPLETED);
+        return latest;
+    }
+
     @Test
     void usageResetsByMonthlyPeriod() {
         User user = createUser("monthly-reset@example.com", PlanType.FREE);
@@ -440,6 +896,80 @@ class BillingLimitTests {
     }
 
     @Test
+    void creditDeductionUsesMonthlyCreditsBeforePurchasedCredits() {
+        User user = createUser("credit-split-monthly-first@example.com", PlanType.PRO);
+        user.setPurchasedAiCreditsBalance(10);
+        userRepository.save(user);
+        creditUsageRepository.save(AiCreditUsage.builder()
+                .userId(user.getId())
+                .feature(Feature.AI_TRADE_REVIEW)
+                .credits(99)
+                .monthlyCredits(99)
+                .purchasedCredits(0)
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        usageLimitService.consumeCredits(user, Feature.TRADING_DNA, 3);
+
+        User updated = userRepository.findById(user.getId()).orElseThrow();
+        AiCreditUsage charge = creditUsageRepository.findAll().stream()
+                .filter(row -> row.getUserId().equals(user.getId()) && row.getFeature() == Feature.TRADING_DNA)
+                .findFirst()
+                .orElseThrow();
+        assertThat(charge.getCredits()).isEqualTo(3);
+        assertThat(charge.getMonthlyCredits()).isEqualTo(1);
+        assertThat(charge.getPurchasedCredits()).isEqualTo(2);
+        assertThat(updated.getPurchasedAiCreditsBalance()).isEqualTo(8);
+        assertThat(usageLimitService.getUsage(updated).getTotalAiCreditsAvailable()).isEqualTo(8);
+    }
+
+    @Test
+    void aiRequestFailsOnlyWhenMonthlyAndPurchasedCreditsAreInsufficient() {
+        User user = createUser("credit-combined-insufficient@example.com", PlanType.PRO);
+        user.setPurchasedAiCreditsBalance(2);
+        userRepository.save(user);
+        creditUsageRepository.save(AiCreditUsage.builder()
+                .userId(user.getId())
+                .feature(Feature.AI_TRADE_REVIEW)
+                .credits(100)
+                .monthlyCredits(100)
+                .purchasedCredits(0)
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        assertThatThrownBy(() -> usageLimitService.consumeCredits(user, Feature.TRADING_DNA, 3))
+                .isInstanceOf(AiCreditLimitExceededException.class)
+                .extracting("creditsRemaining")
+                .isEqualTo(2);
+    }
+
+    @Test
+    void purchasedCreditsAreUsedWhenMonthlyCreditsAreExhausted() {
+        User user = createUser("credit-purchased-after-monthly@example.com", PlanType.PRO);
+        user.setPurchasedAiCreditsBalance(5);
+        userRepository.save(user);
+        creditUsageRepository.save(AiCreditUsage.builder()
+                .userId(user.getId())
+                .feature(Feature.AI_TRADE_REVIEW)
+                .credits(100)
+                .monthlyCredits(100)
+                .purchasedCredits(0)
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        usageLimitService.consumeCredits(user, Feature.SESSION_REVIEW, 2);
+
+        User updated = userRepository.findById(user.getId()).orElseThrow();
+        AiCreditUsage charge = creditUsageRepository.findAll().stream()
+                .filter(row -> row.getUserId().equals(user.getId()) && row.getFeature() == Feature.SESSION_REVIEW)
+                .findFirst()
+                .orElseThrow();
+        assertThat(charge.getMonthlyCredits()).isZero();
+        assertThat(charge.getPurchasedCredits()).isEqualTo(2);
+        assertThat(updated.getPurchasedAiCreditsBalance()).isEqualTo(3);
+    }
+
+    @Test
     void proUsersBypassFreeAccountAndTradeLimits() {
         User user = createUser("pro-bypass@example.com", PlanType.PRO);
         TradingAccountResponse first = createAccount(user, "Pro One");
@@ -470,6 +1000,7 @@ class BillingLimitTests {
                         null,
                         null,
                         BigDecimal.valueOf(50_000),
+                        null,
                         TradingAccountStatus.ACTIVE
                 )
         );
@@ -648,9 +1179,9 @@ class BillingLimitTests {
                 externalTradeKey,
                 "NQ",
                 "FUTURES",
-                LocalDate.of(2026, 5, 15),
-                LocalDateTime.of(2026, 5, 15, 9, 30),
-                LocalDateTime.of(2026, 5, 15, 9, 45),
+                LocalDate.of(2026, 6, 15),
+                LocalDateTime.of(2026, 6, 15, 9, 30),
+                LocalDateTime.of(2026, 6, 15, 9, 45),
                 "LONG",
                 SetupType.ORB,
                 SessionType.NY_AM,
@@ -668,6 +1199,15 @@ class BillingLimitTests {
         request.setAccountId(accountId);
         request.setPeriodStart(date);
         request.setPeriodEnd(date);
+        request.setForceRefresh(forceRefresh);
+        return request;
+    }
+
+    private CoachGenerateRequest weeklyCoachRequest(Long accountId, LocalDate weekStart, boolean forceRefresh) {
+        CoachGenerateRequest request = new CoachGenerateRequest();
+        request.setAccountId(accountId);
+        request.setPeriodStart(weekStart);
+        request.setPeriodEnd(weekStart.plusDays(6));
         request.setForceRefresh(forceRefresh);
         return request;
     }

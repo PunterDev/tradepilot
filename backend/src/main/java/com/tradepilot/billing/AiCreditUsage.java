@@ -35,6 +35,12 @@ public class AiCreditUsage {
     @Column(nullable = false)
     private Integer credits;
 
+    @Column(name = "monthly_credits")
+    private Integer monthlyCredits;
+
+    @Column(name = "purchased_credits")
+    private Integer purchasedCredits;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

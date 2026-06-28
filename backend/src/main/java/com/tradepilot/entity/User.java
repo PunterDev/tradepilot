@@ -69,6 +69,9 @@ public class User implements UserDetails {
     private LocalDateTime stripeCanceledAt;
     @Column(name = "pro_until")
     private LocalDateTime proUntil;
+    @Column(name = "purchased_ai_credits_balance", nullable = false)
+    @Builder.Default
+    private Integer purchasedAiCreditsBalance = 0;
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
     @Column(name = "updated_at", nullable = false)
@@ -89,6 +92,9 @@ public class User implements UserDetails {
         }
         if (this.stripeCancelAtPeriodEnd == null) {
             this.stripeCancelAtPeriodEnd = false;
+        }
+        if (this.purchasedAiCreditsBalance == null) {
+            this.purchasedAiCreditsBalance = 0;
         }
     }
 

@@ -60,6 +60,32 @@ public class DefaultStripeApiClient implements StripeApiClient {
     }
 
     @Override
+    public Session createCreditPackCheckoutSession(User user, String customerId, AiCreditPack pack, String frontendUrl) throws StripeException {
+        SessionCreateParams params = SessionCreateParams.builder()
+                .setMode(SessionCreateParams.Mode.PAYMENT)
+                .setCustomer(customerId)
+                .setSuccessUrl(frontendUrl + "/billing?credits=success")
+                .setCancelUrl(frontendUrl + "/billing?credits=cancelled")
+                .addLineItem(SessionCreateParams.LineItem.builder()
+                        .setQuantity(1L)
+                        .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
+                                .setCurrency("usd")
+                                .setUnitAmount((long) pack.amountCents())
+                                .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
+                                        .setName("TradePilot AI Credit Pack - " + pack.credits() + " credits")
+                                        .build())
+                                .build())
+                        .build())
+                .putMetadata("type", "AI_CREDIT_PACK")
+                .putMetadata("userId", String.valueOf(user.getId()))
+                .putMetadata("userEmail", user.getEmail())
+                .putMetadata("packId", pack.name())
+                .putMetadata("credits", String.valueOf(pack.credits()))
+                .build();
+        return Session.create(params);
+    }
+
+    @Override
     public String createPortalSession(String customerId, String frontendUrl) throws StripeException {
         com.stripe.param.billingportal.SessionCreateParams params =
                 com.stripe.param.billingportal.SessionCreateParams.builder()

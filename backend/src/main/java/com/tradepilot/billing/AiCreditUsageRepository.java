@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 public interface AiCreditUsageRepository extends JpaRepository<AiCreditUsage, Long> {
     @Query("""
-            select coalesce(sum(u.credits), 0)
+            select coalesce(sum(coalesce(u.monthlyCredits, u.credits)), 0)
             from AiCreditUsage u
             where u.userId = :userId and u.createdAt >= :start and u.createdAt < :end
             """)
@@ -19,7 +19,7 @@ public interface AiCreditUsageRepository extends JpaRepository<AiCreditUsage, Lo
     );
 
     @Query("""
-            select coalesce(sum(u.credits), 0)
+            select coalesce(sum(coalesce(u.monthlyCredits, u.credits)), 0)
             from AiCreditUsage u
             where u.userId = :userId and u.feature = :feature and u.createdAt >= :start and u.createdAt < :end
             """)

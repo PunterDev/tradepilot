@@ -12,4 +12,9 @@ public class BillingUsageResponse {
     private Map<String, Integer> usageThisMonth;
     private Map<String, Integer> remaining;
     private String resetDate;
+    private Integer monthlyAiCredits;
+    private Integer monthlyAiCreditsUsed;
+    private Integer monthlyAiCreditsRemaining;
+    private Integer purchasedAiCreditsBalance;
+    private Integer totalAiCreditsAvailable;
 }

@@ -39,6 +39,7 @@ public class StripeBillingService {
     private final TransactionTemplate transactionTemplate;
     private final ObservabilityService observabilityService;
     private final ProcessedStripeEventRepository processedStripeEventRepository;
+    private final AiCreditPurchaseRepository aiCreditPurchaseRepository;
     private final UsageLimitService usageLimitService;
 
     @Value("${app.frontend-url:http://localhost:5173}")
@@ -113,6 +114,42 @@ public class StripeBillingService {
             observabilityService.recordStripeEvent("billing.portal.create", false, System.currentTimeMillis() - start, LogSanitizer.summarizeError(ex.getMessage()));
             log.error("Stripe portal session creation failed. userId={}, durationMs={}",
                     user.getId(), System.currentTimeMillis() - start, ex);
+            throw ex;
+        }
+    }
+
+    public String createCreditPackCheckoutSession(User user, AiCreditPack pack) throws StripeException {
+        long start = System.currentTimeMillis();
+        requireSecretKey();
+        if (user.getPlan() != PlanType.PRO) {
+            throw new PlanLimitExceededException("Upgrade to Pro to buy AI credit packs.");
+        }
+        Stripe.apiKey = stripeProperties.getSecretKey();
+        log.info("Stripe AI credit pack checkout creation started. userId={}, packId={}, credits={}",
+                user.getId(), pack.name(), pack.credits());
+        try {
+            String customerId = ensureStripeCustomer(user);
+            Session session;
+            try {
+                session = stripeApiClient.createCreditPackCheckoutSession(user, customerId, pack, frontendUrl);
+            } catch (InvalidRequestException ex) {
+                if (!isNoSuchCustomer(ex)) {
+                    throw ex;
+                }
+                clearStripeCustomer(user);
+                customerId = createStripeCustomer(user);
+                session = stripeApiClient.createCreditPackCheckoutSession(user, customerId, pack, frontendUrl);
+            }
+            if (StringUtils.hasText(session.getCustomer()) && !session.getCustomer().equals(user.getStripeCustomerId())) {
+                user.setStripeCustomerId(session.getCustomer());
+                transactionTemplate.executeWithoutResult(status -> userRepository.save(user));
+            }
+            observabilityService.recordStripeEvent("checkout.session.create.credit_pack", true, System.currentTimeMillis() - start, null);
+            return session.getUrl();
+        } catch (RuntimeException | StripeException ex) {
+            observabilityService.recordStripeEvent("checkout.session.create.credit_pack", false, System.currentTimeMillis() - start, LogSanitizer.summarizeError(ex.getMessage()));
+            log.error("Stripe AI credit pack checkout creation failed. userId={}, packId={}, durationMs={}",
+                    user.getId(), pack.name(), System.currentTimeMillis() - start, ex);
             throw ex;
         }
     }
@@ -255,6 +292,11 @@ public class StripeBillingService {
     }
 
     void handleCheckoutCompleted(JsonNode object) {
+        if ("AI_CREDIT_PACK".equals(object.path("metadata").path("type").asText())) {
+            handleCreditPackCheckoutCompleted(object);
+            return;
+        }
+
         Long userId = object.path("metadata").path("userId").asLong(0);
         if (userId == 0) {
             log.warn("Stripe checkout completed without userId metadata.");
@@ -277,6 +319,57 @@ public class StripeBillingService {
             usageLimitService.invalidateUsageCache(user.getId());
             log.info("Stripe checkout completed upgraded user. userId={}", user.getId());
         });
+    }
+
+    void handleCreditPackCheckoutCompleted(JsonNode object) {
+        String sessionId = object.path("id").asText(null);
+        if (!StringUtils.hasText(sessionId)) {
+            log.warn("Stripe AI credit pack checkout completed without session id.");
+            return;
+        }
+        if (aiCreditPurchaseRepository.existsByStripeCheckoutSessionId(sessionId)) {
+            log.info("Stripe AI credit pack checkout already applied. sessionId={}", sessionId);
+            return;
+        }
+
+        JsonNode metadata = object.path("metadata");
+        Long userId = metadata.path("userId").asLong(0);
+        String packId = metadata.path("packId").asText(null);
+        if (userId == 0 || !StringUtils.hasText(packId)) {
+            log.warn("Stripe AI credit pack checkout missing metadata. sessionId={}, userId={}, packId={}",
+                    sessionId, userId, packId);
+            return;
+        }
+
+        AiCreditPack pack;
+        try {
+            pack = AiCreditPack.valueOf(packId);
+        } catch (IllegalArgumentException ex) {
+            log.warn("Stripe AI credit pack checkout had unsupported pack id. sessionId={}, packId={}", sessionId, packId);
+            return;
+        }
+
+        userRepository.findByIdForUpdate(userId).ifPresentOrElse(user -> {
+            int currentBalance = user.getPurchasedAiCreditsBalance() == null ? 0 : Math.max(0, user.getPurchasedAiCreditsBalance());
+            user.setPurchasedAiCreditsBalance(currentBalance + pack.credits());
+            userRepository.save(user);
+
+            AiCreditPurchase purchase = AiCreditPurchase.builder()
+                    .userId(user.getId())
+                    .stripeCheckoutSessionId(sessionId)
+                    .stripePaymentIntentId(textField(object, "payment_intent"))
+                    .creditsPurchased(pack.credits())
+                    .amountCents((int) object.path("amount_total").asLong(pack.amountCents()))
+                    .currency(object.path("currency").asText("usd"))
+                    .status(AiCreditPurchaseStatus.COMPLETED)
+                    .completedAt(LocalDateTime.now())
+                    .build();
+            aiCreditPurchaseRepository.save(purchase);
+            usageLimitService.invalidateUsageCache(user.getId());
+            log.info("Stripe AI credit pack applied. userId={}, sessionId={}, packId={}, credits={}, newBalance={}",
+                    user.getId(), sessionId, pack.name(), pack.credits(), user.getPurchasedAiCreditsBalance());
+        }, () -> log.warn("Stripe AI credit pack checkout could not be mapped to user. sessionId={}, userId={}",
+                sessionId, userId));
     }
 
     void handleSubscriptionUpdated(JsonNode object) {

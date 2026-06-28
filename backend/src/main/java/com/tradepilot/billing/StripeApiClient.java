@@ -18,5 +18,7 @@ public interface StripeApiClient {
 
     Session createCheckoutSession(User user, String customerId, String proPriceId, String frontendUrl) throws StripeException;
 
+    Session createCreditPackCheckoutSession(User user, String customerId, AiCreditPack pack, String frontendUrl) throws StripeException;
+
     String createPortalSession(String customerId, String frontendUrl) throws StripeException;
 }

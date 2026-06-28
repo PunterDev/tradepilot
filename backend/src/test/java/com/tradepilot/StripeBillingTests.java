@@ -1,5 +1,8 @@
 package com.tradepilot;
 
+import com.tradepilot.billing.AiCreditPack;
+import com.tradepilot.billing.AiCreditPurchaseRepository;
+import com.tradepilot.billing.PlanLimitExceededException;
 import com.tradepilot.billing.PlanType;
 import com.tradepilot.billing.ProcessedStripeEventRepository;
 import com.tradepilot.billing.StripeApiClient;
@@ -40,6 +43,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -60,6 +64,7 @@ class StripeBillingTests {
     @Autowired AdminUserService adminUserService;
     @Autowired StripeBillingService stripeBillingService;
     @Autowired ProcessedStripeEventRepository processedStripeEventRepository;
+    @Autowired AiCreditPurchaseRepository aiCreditPurchaseRepository;
     @MockBean StripeApiClient stripeApiClient;
 
     @Test
@@ -101,6 +106,59 @@ class StripeBillingTests {
         assertThat(updated.getStripeCustomerId()).isEqualTo("cus_test_123");
         assertThat(updated.getStripeSubscriptionId()).isEqualTo("sub_test_123");
         assertThat(processedStripeEventRepository.existsByEventId("evt_checkout_" + user.getId())).isTrue();
+    }
+
+    @Test
+    void proUserCanCreateCreditPackCheckoutSession() throws Exception {
+        User user = createUser("stripe-credit-pack-pro@example.com");
+        user.setPlan(PlanType.PRO);
+        user.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
+        user.setStripeCustomerId("cus_credit_pack_pro");
+        userRepository.save(user);
+        when(stripeApiClient.retrieveCustomer("cus_credit_pack_pro")).thenReturn(customer("cus_credit_pack_pro", false));
+        when(stripeApiClient.createCreditPackCheckoutSession(user, "cus_credit_pack_pro", AiCreditPack.STARTER_25, "http://localhost:5173"))
+                .thenReturn(session("cus_credit_pack_pro", "https://checkout.test/credits"));
+
+        String checkoutUrl = stripeBillingService.createCreditPackCheckoutSession(user, AiCreditPack.STARTER_25);
+
+        assertThat(checkoutUrl).isEqualTo("https://checkout.test/credits");
+        verify(stripeApiClient).createCreditPackCheckoutSession(user, "cus_credit_pack_pro", AiCreditPack.STARTER_25, "http://localhost:5173");
+    }
+
+    @Test
+    void freeUserCannotCreateCreditPackCheckoutSession() {
+        User user = createUser("stripe-credit-pack-free@example.com");
+
+        assertThatThrownBy(() -> stripeBillingService.createCreditPackCheckoutSession(user, AiCreditPack.STARTER_25))
+                .isInstanceOf(PlanLimitExceededException.class)
+                .hasMessageContaining("Upgrade to Pro");
+    }
+
+    @Test
+    void creditPackWebhookAddsPurchasedCreditsOnlyOnce() throws Exception {
+        User user = createUser("stripe-credit-pack-webhook@example.com");
+        user.setPlan(PlanType.PRO);
+        user.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
+        userRepository.save(user);
+        String payload = creditPackCheckoutCompletedPayload(user.getId(), "evt_credit_pack_once", "cs_credit_pack_once");
+        String signature = stripeSignature(payload);
+
+        mockMvc.perform(post("/api/stripe/webhook")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Stripe-Signature", signature)
+                        .content(payload))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/stripe/webhook")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Stripe-Signature", signature)
+                        .content(payload))
+                .andExpect(status().isOk());
+
+        User updated = userRepository.findById(user.getId()).orElseThrow();
+        assertThat(updated.getPurchasedAiCreditsBalance()).isEqualTo(25);
+        assertThat(aiCreditPurchaseRepository.findAll())
+                .filteredOn(purchase -> purchase.getUserId().equals(user.getId()))
+                .hasSize(1);
     }
 
     @Test
@@ -513,6 +571,7 @@ class StripeBillingTests {
                         null,
                         null,
                         BigDecimal.valueOf(50_000),
+                        null,
                         TradingAccountStatus.ACTIVE
                 )
         );
@@ -537,6 +596,31 @@ class StripeBillingTests {
                   }
                 }
                 """.formatted(userId, userId);
+    }
+
+    private String creditPackCheckoutCompletedPayload(Long userId, String eventId, String sessionId) {
+        return """
+                {
+                  "id": "%s",
+                  "type": "checkout.session.completed",
+                  "data": {
+                    "object": {
+                      "id": "%s",
+                      "object": "checkout.session",
+                      "customer": "cus_credit_pack_123",
+                      "payment_intent": "pi_credit_pack_123",
+                      "amount_total": 999,
+                      "currency": "usd",
+                      "metadata": {
+                        "type": "AI_CREDIT_PACK",
+                        "userId": "%s",
+                        "packId": "STARTER_25",
+                        "credits": "25"
+                      }
+                    }
+                  }
+                }
+                """.formatted(eventId, sessionId, userId);
     }
 
     private String subscriptionDeletedPayload() {

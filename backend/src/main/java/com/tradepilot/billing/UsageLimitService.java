@@ -3,6 +3,7 @@ package com.tradepilot.billing;
 import com.tradepilot.entity.User;
 import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.repository.TradingAccountRepository;
+import com.tradepilot.repository.UserRepository;
 import com.tradepilot.service.AggregateCacheService;
 import com.tradepilot.service.PerformanceCacheInvalidationService;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ public class UsageLimitService {
     private final AiCreditUsageRepository creditUsageRepository;
     private final TradingAccountRepository tradingAccountRepository;
     private final TradeRepository tradeRepository;
+    private final UserRepository userRepository;
     private final AggregateCacheService aggregateCacheService;
     private final PerformanceCacheInvalidationService cacheInvalidationService;
     private final FeatureAccessService featureAccessService;
@@ -85,14 +87,25 @@ public class UsageLimitService {
         return Math.max(0, getMonthlyCreditLimit(user) - getCreditsUsedThisMonth(user));
     }
 
+    public int getPurchasedCreditsBalance(User user) {
+        Integer balance = user.getPurchasedAiCreditsBalance();
+        return balance == null ? 0 : Math.max(0, balance);
+    }
+
+    public int getTotalCreditsAvailable(User user) {
+        return getCreditsRemaining(user) + getPurchasedCreditsBalance(user);
+    }
+
     public void requireCredits(User user, int requiredCredits) {
         int limit = getMonthlyCreditLimit(user);
         int used = getCreditsUsedThisMonth(user);
         int remaining = Math.max(0, limit - used);
-        if (remaining < requiredCredits) {
-            log.warn("AI credit limit exceeded. userId={}, plan={}, used={}, limit={}, remaining={}, requested={}",
-                    user.getId(), plan(user), used, limit, remaining, requiredCredits);
-            throw new AiCreditLimitExceededException(used, limit, remaining);
+        int purchasedBalance = getPurchasedCreditsBalance(user);
+        int totalAvailable = remaining + purchasedBalance;
+        if (totalAvailable < requiredCredits) {
+            log.warn("AI credit limit exceeded. userId={}, plan={}, used={}, limit={}, monthlyRemaining={}, purchasedBalance={}, totalAvailable={}, requested={}",
+                    user.getId(), plan(user), used, limit, remaining, purchasedBalance, totalAvailable, requiredCredits);
+            throw new AiCreditLimitExceededException(used, limit, totalAvailable);
         }
     }
 
@@ -118,17 +131,36 @@ public class UsageLimitService {
         if (credits <= 0) {
             return;
         }
-        featureAccessService.requireFeature(user, feature);
-        requireCredits(user, credits);
+        User managedUser = userRepository.findByIdForUpdate(user.getId()).orElseThrow();
+        featureAccessService.requireFeature(managedUser, feature);
+        int monthlyLimit = getMonthlyCreditLimit(managedUser);
+        int monthlyUsed = getCreditsUsedThisMonth(managedUser);
+        int monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
+        int purchasedBalance = getPurchasedCreditsBalance(managedUser);
+        int totalAvailable = monthlyRemaining + purchasedBalance;
+        if (totalAvailable < credits) {
+            log.warn("AI credit limit exceeded during locked deduction. userId={}, plan={}, used={}, limit={}, monthlyRemaining={}, purchasedBalance={}, totalAvailable={}, requested={}",
+                    managedUser.getId(), plan(managedUser), monthlyUsed, monthlyLimit, monthlyRemaining, purchasedBalance, totalAvailable, credits);
+            throw new AiCreditLimitExceededException(monthlyUsed, monthlyLimit, totalAvailable);
+        }
+        int monthlyCredits = Math.min(monthlyRemaining, credits);
+        int purchasedCredits = credits - monthlyCredits;
+        if (purchasedCredits > 0) {
+            managedUser.setPurchasedAiCreditsBalance(purchasedBalance - purchasedCredits);
+            userRepository.save(managedUser);
+            user.setPurchasedAiCreditsBalance(managedUser.getPurchasedAiCreditsBalance());
+        }
         creditUsageRepository.save(AiCreditUsage.builder()
                 .userId(user.getId())
                 .feature(feature)
                 .credits(credits)
+                .monthlyCredits(monthlyCredits)
+                .purchasedCredits(purchasedCredits)
                 .requestId(requestId)
                 .metadata(metadata)
                 .build());
-        log.info("AI credits consumed. userId={}, feature={}, credits={}, requestId={}",
-                user.getId(), feature, credits, requestId);
+        log.info("AI credits consumed. userId={}, feature={}, credits={}, monthlyCredits={}, purchasedCredits={}, requestId={}",
+                user.getId(), feature, credits, monthlyCredits, purchasedCredits, requestId);
         cacheInvalidationService.invalidateBillingUsage(user.getId());
     }
 
@@ -158,7 +190,12 @@ public class UsageLimitService {
         used.put("TRADING_ACCOUNTS", Math.toIntExact(Math.min(Integer.MAX_VALUE, tradingAccountRepository.countByUser(user))));
         used.put("IMPORTED_TRADES", Math.toIntExact(Math.min(Integer.MAX_VALUE, tradeRepository.countByUser(user))));
         limits.put("AI_CREDITS", getMonthlyCreditLimit(user));
-        used.put("AI_CREDITS", getCreditsUsedThisMonth(user));
+        int monthlyLimit = getMonthlyCreditLimit(user);
+        int monthlyUsed = getCreditsUsedThisMonth(user);
+        int monthlyRemaining = Math.max(0, monthlyLimit - monthlyUsed);
+        int purchasedBalance = getPurchasedCreditsBalance(user);
+        int totalAvailable = monthlyRemaining + purchasedBalance;
+        used.put("AI_CREDITS", monthlyUsed);
 
         for (UsageType type : UsageType.values()) {
             Feature feature = featureFor(type);
@@ -179,6 +216,7 @@ public class UsageLimitService {
             int count = used.getOrDefault(key, 0);
             remaining.put(key, limit == UNLIMITED ? UNLIMITED : Math.max(0, limit - count));
         });
+        remaining.put("AI_CREDITS", totalAvailable);
 
         BillingUsageResponse response = new BillingUsageResponse();
         response.setPlan(plan);
@@ -187,11 +225,16 @@ public class UsageLimitService {
         response.setUsageThisMonth(used);
         response.setRemaining(remaining);
         response.setResetDate(period.end().toLocalDate().toString());
+        response.setMonthlyAiCredits(monthlyLimit);
+        response.setMonthlyAiCreditsUsed(monthlyUsed);
+        response.setMonthlyAiCreditsRemaining(monthlyRemaining);
+        response.setPurchasedAiCreditsBalance(purchasedBalance);
+        response.setTotalAiCreditsAvailable(totalAvailable);
         return response;
     }
 
     private String usageCacheKey(User user) {
-        return "billing-usage:" + user.getId() + ":" + plan(user) + ":" + subscriptionStatus(user) + ":" + period(user).end();
+        return "billing-usage:" + user.getId() + ":" + plan(user) + ":" + subscriptionStatus(user) + ":" + period(user).end() + ":" + getPurchasedCreditsBalance(user);
     }
 
     private SubscriptionStatus subscriptionStatus(User user) {
