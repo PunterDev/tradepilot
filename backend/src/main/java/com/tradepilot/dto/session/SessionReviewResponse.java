@@ -43,6 +43,9 @@ public class SessionReviewResponse {
     private Integer sessionDisciplineScore;
     private AiSessionReviewResponse aiSessionReview;
     private Boolean aiReviewCached;
+    private Boolean aiGenerated;
+    private Boolean noTrades;
+    private Integer creditsConsumed;
     private LocalDate previousTradingDay;
     private LocalDate nextTradingDay;
 }

@@ -15,6 +15,10 @@ public interface TradeRuleViolationRepository extends JpaRepository<TradeRuleVio
 
     void deleteByUserIdAndTradeIdAndSource(Long userId, Long tradeId, String source);
 
+    long countByUserIdAndTradeIdIn(Long userId, List<Long> tradeIds);
+
+    long deleteByUserIdAndTradeIdIn(Long userId, List<Long> tradeIds);
+
     void deleteByUserId(Long userId);
 
     @Query("""

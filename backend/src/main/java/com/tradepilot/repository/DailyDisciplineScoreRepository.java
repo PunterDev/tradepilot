@@ -11,5 +11,9 @@ public interface DailyDisciplineScoreRepository extends JpaRepository<DailyDisci
 
     Optional<DailyDisciplineScore> findTopByUserIdAndTradeDateBeforeAndAccountIdOrderByTradeDateDesc(Long userId, LocalDate tradeDate, Long accountId);
 
+    long countByUserIdAndAccountIdAndTradeDateBetween(Long userId, Long accountId, LocalDate startDate, LocalDate endDate);
+
+    long deleteByUserIdAndAccountIdAndTradeDateBetween(Long userId, Long accountId, LocalDate startDate, LocalDate endDate);
+
     void deleteByUserId(Long userId);
 }

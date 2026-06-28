@@ -1,7 +1,9 @@
 package com.tradepilot.service;
 
 import com.tradepilot.dto.auth.*;
+import com.tradepilot.billing.BillingUsageResponse;
 import com.tradepilot.billing.PlanType;
+import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.entity.AuthToken;
 import com.tradepilot.entity.User;
 import com.tradepilot.enums.AuthTokenType;
@@ -37,6 +39,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final AuthTokenService authTokenService;
     private final EmailAsyncService emailAsyncService;
+    private final UsageLimitService usageLimitService;
 
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
@@ -79,13 +82,19 @@ public class AuthService {
             throw new EmailNotVerifiedException("Please verify your email before logging in.");
         }
 
+        BillingUsageResponse usage = usageLimitService.getUsage(user);
         AuthResponse response = AuthResponse.of(
                 jwtService.generateToken(user),
                 user.getId(),
                 user.getName(),
                 user.getEmail(),
                 planName(user),
-                roleName(user)
+                roleName(user),
+                usage.getMonthlyAiCredits(),
+                usage.getMonthlyAiCreditsUsed(),
+                usage.getMonthlyAiCreditsRemaining(),
+                usage.getPurchasedAiCreditsBalance(),
+                usage.getTotalAiCreditsAvailable()
         );
         log.info("Login successful. userId={}, role={}, plan={}", user.getId(), response.getRole(), response.getPlan());
         return response;
@@ -93,12 +102,18 @@ public class AuthService {
 
     public UserMeResponse me(User user) {
         log.trace("Auth me requested. userId={}", user == null ? null : user.getId());
+        BillingUsageResponse usage = usageLimitService.getUsage(user);
         return UserMeResponse.of(
                 user.getId(),
                 user.getName(),
                 user.getEmail(),
                 planName(user),
-                roleName(user)
+                roleName(user),
+                usage.getMonthlyAiCredits(),
+                usage.getMonthlyAiCreditsUsed(),
+                usage.getMonthlyAiCreditsRemaining(),
+                usage.getPurchasedAiCreditsBalance(),
+                usage.getTotalAiCreditsAvailable()
         );
     }
 
