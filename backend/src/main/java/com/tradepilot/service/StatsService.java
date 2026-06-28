@@ -84,7 +84,7 @@ public class StatsService {
         response.setLosses(longValue(row, 2));
         response.setBreakevens(longValue(row, 3));
         response.setTotalPnl(decimalValue(row, 4));
-        response.setAverageR(decimalValue(row, 5));
+        response.setAverageR(nullableDecimalValue(row, 5));
         response.setWinRate(decimalValue(row, 6));
         return response;
     }
@@ -97,7 +97,7 @@ public class StatsService {
         response.setLosses(longValue(row, 3));
         response.setBreakevens(longValue(row, 4));
         response.setTotalPnl(decimalValue(row, 5));
-        response.setAverageR(decimalValue(row, 6));
+        response.setAverageR(nullableDecimalValue(row, 6));
         response.setWinRate(decimalValue(row, 7));
         return response;
     }
@@ -116,6 +116,20 @@ public class StatsService {
             return BigDecimal.valueOf(number.doubleValue()).setScale(2, RoundingMode.HALF_UP);
         }
         return BigDecimal.ZERO;
+    }
+
+    private BigDecimal nullableDecimalValue(Object[] row, int index) {
+        Object value = row[index];
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal decimal) {
+            return decimal.setScale(2, RoundingMode.HALF_UP);
+        }
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue()).setScale(2, RoundingMode.HALF_UP);
+        }
+        return null;
     }
 
     private String formatWeekdayLabel(String value) {

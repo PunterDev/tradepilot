@@ -7,7 +7,7 @@ export type Trade = {
 
   symbol: string;
 
-  side: "LONG" | "SHORT";
+  side: "LONG" | "SHORT" | "UNKNOWN";
 
   pnl: number;
 

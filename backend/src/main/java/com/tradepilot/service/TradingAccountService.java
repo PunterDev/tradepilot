@@ -3,6 +3,7 @@ package com.tradepilot.service;
 import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.dto.account.TradingAccountRequest;
 import com.tradepilot.dto.account.TradingAccountResponse;
+import com.tradepilot.dto.account.TradingAccountRiskRequest;
 import com.tradepilot.entity.TradingAccount;
 import com.tradepilot.entity.User;
 import com.tradepilot.enums.TradingAccountStatus;
@@ -32,6 +33,7 @@ public class TradingAccountService {
 
     public TradingAccountResponse create(User user, TradingAccountRequest request) {
         requireUser(user);
+        validateRiskAmount(request.defaultRiskAmount());
         usageLimitService.enforceAccountCreation(user);
 
         TradingAccount account = TradingAccount.builder()
@@ -41,6 +43,7 @@ public class TradingAccountService {
                 .accountNumber(request.accountNumber())
                 .accountType(request.accountType())
                 .startingBalance(request.startingBalance())
+                .defaultRiskAmount(request.defaultRiskAmount())
                 .status(request.status() != null ? request.status() : TradingAccountStatus.ACTIVE)
                 .build();
 
@@ -77,9 +80,25 @@ public class TradingAccountService {
                 account.getAccountNumber(),
                 account.getAccountType(),
                 account.getStartingBalance(),
+                account.getDefaultRiskAmount(),
                 account.getStatus(),
                 account.getCreatedAt()
         );
+    }
+
+    @Transactional
+    public TradingAccountResponse updateRiskAmount(User user, Long accountId, TradingAccountRiskRequest request) {
+        requireUser(user);
+
+        TradingAccount account = tradingAccountRepository.findByIdAndUser(accountId, user)
+                .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+        validateRiskAmount(request.defaultRiskAmount());
+        account.setDefaultRiskAmount(request.defaultRiskAmount());
+
+        TradingAccount saved = tradingAccountRepository.save(account);
+        cacheInvalidationService.invalidateUserTradeDerivedCaches(user.getId());
+        log.info("Trading account default risk updated. userId={}, accountId={}", user.getId(), accountId);
+        return mapToResponse(saved);
     }
 
     @Transactional
@@ -99,6 +118,12 @@ public class TradingAccountService {
     private void requireUser(User user) {
         if (user == null) {
             throw new ResourceNotFoundException("User not found");
+        }
+    }
+
+    private void validateRiskAmount(java.math.BigDecimal riskAmount) {
+        if (riskAmount != null && riskAmount.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Default risk amount must be greater than 0");
         }
     }
 }

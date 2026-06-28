@@ -39,7 +39,31 @@ import {
   th,
 } from "../styles/dashboardStyles";
 
+type CalendarDisplayMode = "DOLLARS" | "R" | "BOTH";
 type SelectedAccountId = number | "ALL" | "";
+
+const CALENDAR_DISPLAY_MODE_KEY = "tradepilot.pnlCalendar.displayMode";
+
+const displayModeOptions: Array<{ value: CalendarDisplayMode; label: string }> = [
+  { value: "DOLLARS", label: "$" },
+  { value: "R", label: "R" },
+  { value: "BOTH", label: "Both" },
+];
+
+function getStoredDisplayMode(): CalendarDisplayMode {
+  if (typeof window === "undefined") return "DOLLARS";
+  const stored = window.localStorage.getItem(CALENDAR_DISPLAY_MODE_KEY);
+  return stored === "R" || stored === "BOTH" || stored === "DOLLARS" ? stored : "DOLLARS";
+}
+
+function formatR(value: number) {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}R`;
+}
+
+function nullableNumber(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
 
 type PnlCalendarProps = {
   dailyPnl: DailyPnl[];
@@ -90,6 +114,14 @@ export default function PnlCalendar({
 }: PnlCalendarProps) {
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [displayMode, setDisplayMode] = useState<CalendarDisplayMode>(getStoredDisplayMode);
+
+  function updateDisplayMode(nextMode: CalendarDisplayMode) {
+    setDisplayMode(nextMode);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(CALENDAR_DISPLAY_MODE_KEY, nextMode);
+    }
+  }
 
   const { calendarDailyPnl, dailyPnlByDate, tradesByDate } = useMemo(() => {
     const computedDailyPnl = buildDailyPnlFromCalendarTrades(trades);
@@ -145,6 +177,26 @@ export default function PnlCalendar({
     [calendarDailyPnl, calendarMonth, calendarYear]
   );
 
+  const monthlyR = useMemo(() => {
+    let total = 0;
+    let hasR = false;
+
+    calendarDailyPnl
+      .filter((day) => {
+        const [year, month] = day.date.split("-").map(Number);
+        return year === calendarYear && month === calendarMonth + 1;
+      })
+      .forEach((day) => {
+        const totalR = nullableNumber(day.totalR);
+        if (totalR !== null) {
+          total += totalR;
+          hasR = true;
+        }
+      });
+
+    return hasR ? total : null;
+  }, [calendarDailyPnl, calendarMonth, calendarYear]);
+
   const selectedDayTrades = selectedDate ? tradesByDate.get(selectedDate) ?? [] : [];
   const selectedDayStats = selectedDate ? dailyPnlByDate.get(selectedDate) : undefined;
 
@@ -156,11 +208,17 @@ export default function PnlCalendar({
     setJournalNotes("");
   }
 
-  function getTradeSide(trade: TradovateTrade): "LONG" | "SHORT" {
+  function getTradeSide(trade: TradovateTrade): "LONG" | "SHORT" | "UNKNOWN" {
+    if (trade.side === "LONG" || trade.side === "SHORT") return trade.side;
+
     const boughtTime = new Date(trade.boughtTimestamp).getTime();
     const soldTime = new Date(trade.soldTimestamp).getTime();
 
-    return boughtTime <= soldTime ? "LONG" : "SHORT";
+    if (!Number.isFinite(boughtTime) || !Number.isFinite(soldTime) || boughtTime === soldTime) {
+      return "UNKNOWN";
+    }
+
+    return boughtTime < soldTime ? "LONG" : "SHORT";
   }
 
   async function openDay(date: string) {
@@ -197,7 +255,47 @@ export default function PnlCalendar({
             <p style={mutedText}>Hover for a quick preview. Click a trading day to open details and journal.</p>
           </div>
 
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <div
+              aria-label="Calendar display mode"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: 4,
+                borderRadius: 999,
+                border: "1px solid rgba(148,163,184,0.18)",
+                background: "rgba(15,23,42,0.66)",
+              }}
+            >
+              {displayModeOptions.map((option) => {
+                const active = displayMode === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => updateDisplayMode(option.value)}
+                    aria-pressed={active}
+                    style={{
+                      border: 0,
+                      borderRadius: 999,
+                      padding: "7px 12px",
+                      minWidth: option.value === "BOTH" ? 58 : 38,
+                      fontWeight: 900,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      color: active ? "#02131f" : "#cbd5e1",
+                      background: active
+                        ? "linear-gradient(135deg, #34d399, #22d3ee)"
+                        : "transparent",
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
             <button
               style={{ ...button, width: 105 }}
               onClick={() => {
@@ -240,9 +338,17 @@ export default function PnlCalendar({
           {calendarDays.map((calendarDay, index) => {
             const pnlDay = calendarDay.date ? dailyPnlByDate.get(calendarDay.date) : undefined;
             const pnl = pnlDay?.totalPnl ?? 0;
+            const totalR = nullableNumber(pnlDay?.totalR);
             const hasTrades = Boolean(pnlDay);
-            const isWin = pnl > 0;
-            const isLoss = pnl < 0;
+            const signBasis = displayMode === "R" ? totalR ?? 0 : pnl;
+            const isWin = signBasis > 0;
+            const isLoss = signBasis < 0;
+            const primaryValue = displayMode === "R"
+              ? totalR === null ? "Set 1R" : formatR(totalR)
+              : formatCompactCurrency(pnl);
+            const secondaryValue = displayMode === "BOTH"
+              ? totalR === null ? "R unavailable" : formatR(totalR)
+              : null;
 
             return (
               <div
@@ -280,10 +386,10 @@ export default function PnlCalendar({
                       <div
                         style={{
                           ...calendarBadge,
-                          color: isWin ? "#34d399" : "#fb7185",
+                          color: isWin ? "#34d399" : isLoss ? "#fb7185" : "#94a3b8",
                         }}
                       >
-                        {isWin ? "Win" : "Loss"}
+                        {isWin ? "Win" : isLoss ? "Loss" : "Flat"}
                       </div>
                     )}
 
@@ -292,11 +398,31 @@ export default function PnlCalendar({
                         <div
                           style={{
                             ...calendarPnlAmount,
-                            color: isWin ? "#6ee7b7" : "#fda4af",
+                            color: displayMode === "R" && totalR === null
+                              ? "#facc15"
+                              : isWin
+                                ? "#6ee7b7"
+                                : isLoss
+                                  ? "#fda4af"
+                                  : "#cbd5e1",
+                            fontSize: displayMode === "BOTH" ? 17 : calendarPnlAmount.fontSize,
                           }}
                         >
-                          {formatCompactCurrency(pnl)}
+                          {primaryValue}
                         </div>
+
+                        {secondaryValue && (
+                          <div
+                            style={{
+                              marginTop: 2,
+                              color: totalR === null ? "#facc15" : totalR >= 0 ? "#a7f3d0" : "#fecdd3",
+                              fontSize: 11,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {secondaryValue}
+                          </div>
+                        )}
 
                         <div style={calendarTradeCount}>
                           {pnlDay!.tradeCount} {pnlDay!.tradeCount === 1 ? "trade" : "trades"} · {pnlDay!.winRate}% win
@@ -312,6 +438,7 @@ export default function PnlCalendar({
                       <div style={hoverPopup}>
                         <div style={{ fontWeight: 900, marginBottom: 8 }}>{calendarDay.date}</div>
                         <div>PnL: {formatCurrency(pnlDay.totalPnl)}</div>
+                        <div>R: {totalR === null ? "Set 1R" : formatR(totalR)}</div>
                         <div>Trades: {pnlDay.tradeCount}</div>
                         <div>Win Rate: {pnlDay.winRate}%</div>
                         <div style={{ marginTop: 8, color: "#94a3b8" }}>Click to view trades + journal</div>
@@ -325,9 +452,31 @@ export default function PnlCalendar({
         </div>
 
         <div style={calendarMonthlyFooter}>
-          <strong>Monthly PnL</strong>
-          <strong style={{ color: monthlyPnl >= 0 ? "#34d399" : "#fb7185" }}>
-            {formatCurrency(monthlyPnl)}
+          <strong>{displayMode === "R" ? "Monthly R" : "Monthly PnL"}</strong>
+          <strong
+            style={{
+              color: displayMode === "R"
+                ? monthlyR === null
+                  ? "#facc15"
+                  : monthlyR >= 0
+                    ? "#34d399"
+                    : "#fb7185"
+                : monthlyPnl >= 0
+                  ? "#34d399"
+                  : "#fb7185",
+              display: "inline-flex",
+              gap: 10,
+              alignItems: "baseline",
+            }}
+          >
+            {displayMode === "R"
+              ? monthlyR === null ? "Set 1R" : formatR(monthlyR)
+              : formatCurrency(monthlyPnl)}
+            {displayMode === "BOTH" && (
+              <span style={{ color: monthlyR === null ? "#facc15" : "#94a3b8", fontSize: 13 }}>
+                {monthlyR === null ? "R unavailable" : formatR(monthlyR)}
+              </span>
+            )}
           </strong>
         </div>
       </div>
@@ -342,6 +491,18 @@ export default function PnlCalendar({
                   {selectedDayStats.tradeCount} trades · {selectedDayStats.winRate}% win rate ·{" "}
                   <strong style={{ color: selectedDayStats.totalPnl >= 0 ? "#34d399" : "#fb7185" }}>
                     {formatCurrency(selectedDayStats.totalPnl)}
+                  </strong>
+                  {" "}· R{" "}
+                  <strong
+                    style={{
+                      color: selectedDayStats.totalR == null
+                        ? "#facc15"
+                        : selectedDayStats.totalR >= 0
+                          ? "#34d399"
+                          : "#fb7185",
+                    }}
+                  >
+                    {selectedDayStats.totalR == null ? "unavailable" : formatR(selectedDayStats.totalR)}
                   </strong>
                 </p>
               </div>
@@ -499,17 +660,19 @@ export default function PnlCalendar({
 
               {selectedDayTrades.length > 0 && (() => {
                 const primaryTrade = selectedDayTrades[0];
+                const side = getTradeSide(primaryTrade);
+                const isShort = side === "SHORT";
 
                 const aiTrade = {
                   id: (primaryTrade as TradovateTrade & { id?: number }).id ?? 1,
                   symbol: primaryTrade.symbol,
-                  side: getTradeSide(selectedDayTrades[0]),
+                  side,
                   pnl: primaryTrade.pnl,
                   quantity: primaryTrade.qty,
-                  entryPrice: primaryTrade.buyPrice,
-                  exitPrice: primaryTrade.sellPrice,
-                  entryTime: primaryTrade.boughtTimestamp,
-                  exitTime: primaryTrade.soldTimestamp,
+                  entryPrice: isShort ? primaryTrade.sellPrice : primaryTrade.buyPrice,
+                  exitPrice: isShort ? primaryTrade.buyPrice : primaryTrade.sellPrice,
+                  entryTime: isShort ? primaryTrade.soldTimestamp : primaryTrade.boughtTimestamp,
+                  exitTime: isShort ? primaryTrade.boughtTimestamp : primaryTrade.soldTimestamp,
                   notes: journalNotes,
                 };
 

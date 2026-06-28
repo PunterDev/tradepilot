@@ -46,6 +46,9 @@ public class TradingAccount {
 
     private BigDecimal startingBalance;
 
+    @Column(name = "default_risk_amount", precision = 18, scale = 2)
+    private BigDecimal defaultRiskAmount;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TradingAccountStatus status;

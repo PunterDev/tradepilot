@@ -14,6 +14,7 @@ public class TradingAccountResponse {
     private String accountNumber;
     private TradingAccountType accountType;
     private BigDecimal startingBalance;
+    private BigDecimal defaultRiskAmount;
     private TradingAccountStatus status;
     private LocalDateTime createdAt;
 
@@ -22,21 +23,22 @@ public class TradingAccountResponse {
 
     public TradingAccountResponse(Long id, String name, PropFirmType propFirm, String accountNumber,
                                   TradingAccountType accountType, BigDecimal startingBalance,
-                                  TradingAccountStatus status, LocalDateTime createdAt) {
+                                  BigDecimal defaultRiskAmount, TradingAccountStatus status, LocalDateTime createdAt) {
         this.id = id;
         this.name = name;
         this.propFirm = propFirm;
         this.accountNumber = accountNumber;
         this.accountType = accountType;
         this.startingBalance = startingBalance;
+        this.defaultRiskAmount = defaultRiskAmount;
         this.status = status;
         this.createdAt = createdAt;
     }
 
     public static TradingAccountResponse of(Long id, String name, PropFirmType propFirm, String accountNumber,
                                             TradingAccountType accountType, BigDecimal startingBalance,
-                                            TradingAccountStatus status, LocalDateTime createdAt) {
-        return new TradingAccountResponse(id, name, propFirm, accountNumber, accountType, startingBalance, status, createdAt);
+                                            BigDecimal defaultRiskAmount, TradingAccountStatus status, LocalDateTime createdAt) {
+        return new TradingAccountResponse(id, name, propFirm, accountNumber, accountType, startingBalance, defaultRiskAmount, status, createdAt);
     }
 
     public Long getId() {
@@ -85,6 +87,14 @@ public class TradingAccountResponse {
 
     public void setStartingBalance(BigDecimal startingBalance) {
         this.startingBalance = startingBalance;
+    }
+
+    public BigDecimal getDefaultRiskAmount() {
+        return defaultRiskAmount;
+    }
+
+    public void setDefaultRiskAmount(BigDecimal defaultRiskAmount) {
+        this.defaultRiskAmount = defaultRiskAmount;
     }
 
     public TradingAccountStatus getStatus() {

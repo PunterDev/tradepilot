@@ -121,9 +121,10 @@ public class TradeAnalyticsService {
                         localDateValue(row[0]),
                         longValue(row[1]),
                         decimalValue(row[2]),
-                        longValue(row[3]),
+                        nullableDecimalValue(row[3]),
                         longValue(row[4]),
-                        longValue(row[5])
+                        longValue(row[5]),
+                        longValue(row[6])
                 ))
                 .toList();
     }
@@ -360,6 +361,13 @@ public class TradeAnalyticsService {
             return BigDecimal.valueOf(number.doubleValue()).setScale(2, RoundingMode.HALF_UP);
         }
         return BigDecimal.ZERO;
+    }
+
+    private BigDecimal nullableDecimalValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return decimalValue(value);
     }
 
     private String weekdayName(String value) {

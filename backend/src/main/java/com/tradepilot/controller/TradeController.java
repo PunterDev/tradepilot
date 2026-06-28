@@ -105,4 +105,14 @@ public class TradeController {
         featureAccessService.requireFeature(user, Feature.CSV_IMPORT);
         return tradeService.importTrades(user, requests);
     }
+
+    @PostMapping("/repair-tradovate-directions")
+    public java.util.Map<String, Object> repairTradovateDirections(
+            @AuthenticationPrincipal User user,
+            @RequestParam(required = false) Long accountId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+    ) {
+        featureAccessService.requireFeature(user, Feature.CSV_IMPORT);
+        return tradeService.repairTradovateDirections(user, accountId, date);
+    }
 }

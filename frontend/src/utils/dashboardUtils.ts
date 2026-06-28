@@ -1,6 +1,7 @@
 export type DailyPnl = {
   date: string;
   totalPnl: number;
+  totalR?: number | null;
   cumulativePnl: number;
   tradeCount: number;
   winningTrades: number;
@@ -14,6 +15,7 @@ type DbTrade = {
   exitTime?: string;
   entryTime?: string;
   pnlAmount?: number | string;
+  pnlR?: number | string | null;
 };
 
 export function formatCurrency(value: number) {
@@ -184,6 +186,7 @@ export function buildDailyPnlFromDbTrades(dbTrades: DbTrade[]): DailyPnl[] {
       dailyMap.set(date, {
         date,
         totalPnl: 0,
+        totalR: null,
         cumulativePnl: 0,
         tradeCount: 0,
         winningTrades: 0,
@@ -194,7 +197,11 @@ export function buildDailyPnlFromDbTrades(dbTrades: DbTrade[]): DailyPnl[] {
     }
 
     const day = dailyMap.get(date)!;
+    const pnlR = safeNullableNumber(trade.pnlR);
     day.totalPnl += pnl;
+    if (pnlR !== null) {
+      day.totalR = (day.totalR ?? 0) + pnlR;
+    }
     day.tradeCount += 1;
 
     if (pnl > 0) day.winningTrades += 1;
@@ -230,19 +237,28 @@ export function buildDailyPnlFromCalendarTrades(
     entryTime?: unknown;
     pnl?: number | string;
     pnlAmount?: number | string;
+    pnlR?: number | string | null;
   }>
 ): DailyPnl[] {
   return buildDailyPnlFromDbTrades(
     trades.map((trade) => ({
       tradeDate: getTradeCalendarDate(trade) ?? undefined,
       pnlAmount: trade.pnlAmount ?? trade.pnl ?? 0,
+      pnlR: trade.pnlR,
     }))
   );
 }
 
-function safeNumber(value: number | string | undefined): number {
+function safeNumber(value: number | string | null | undefined): number {
   if (value === undefined || value === null || value === "") return 0;
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const parsed = Number(value.replace(/[$,]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function safeNullableNumber(value: number | string | null | undefined): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const parsed = Number(value.replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
 }

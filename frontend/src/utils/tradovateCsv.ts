@@ -15,7 +15,7 @@ export type TradovateTrade = {
   boughtTimestamp: string;
   soldTimestamp: string;
   duration: string;
-  side?: "LONG" | "SHORT";
+  side?: "LONG" | "SHORT" | "UNKNOWN";
   setup?: string;
   session?: string;
   mistakeTag?: string | null;
@@ -32,6 +32,7 @@ export type TradovateTrade = {
 export type DailyPnl = {
   date: string;
   totalPnl: number;
+  totalR?: number | null;
   cumulativePnl: number;
   tradeCount: number;
   winningTrades: number;
@@ -52,6 +53,13 @@ type TradovateCsvRow = {
   boughtTimestamp: string;
   soldTimestamp: string;
   duration: string;
+  side?: string;
+  direction?: string;
+  position?: string;
+  openingAction?: string;
+  openAction?: string;
+  entryAction?: string;
+  action?: string;
 };
 
 /**
@@ -93,6 +101,59 @@ function extractDate(timestamp: string): string {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+function normalizeHeader(header: string): keyof TradovateCsvRow | string {
+  const clean = header.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const aliases: Record<string, keyof TradovateCsvRow> = {
+    symbol: "symbol",
+    contract: "symbol",
+    instrument: "symbol",
+    qty: "qty",
+    quantity: "qty",
+    buyprice: "buyPrice",
+    boughtprice: "buyPrice",
+    sellprice: "sellPrice",
+    soldprice: "sellPrice",
+    pnl: "pnl",
+    profitloss: "pnl",
+    boughttimestamp: "boughtTimestamp",
+    buytimestamp: "boughtTimestamp",
+    boughttime: "boughtTimestamp",
+    buytime: "boughtTimestamp",
+    soldtimestamp: "soldTimestamp",
+    selltimestamp: "soldTimestamp",
+    soldtime: "soldTimestamp",
+    selltime: "soldTimestamp",
+    duration: "duration",
+    side: "side",
+    direction: "direction",
+    position: "position",
+    openingaction: "openingAction",
+    openaction: "openAction",
+    entryaction: "entryAction",
+    action: "action",
+  };
+  return aliases[clean] ?? header;
+}
+
+function sideFromText(value?: string): "LONG" | "SHORT" | "UNKNOWN" | undefined {
+  if (!value) return undefined;
+  const clean = value.trim().toUpperCase();
+  if (["LONG", "BUY", "BOUGHT", "BOT", "B"].includes(clean)) return "LONG";
+  if (["SHORT", "SELL", "SOLD", "SLD", "S"].includes(clean)) return "SHORT";
+  if (clean === "UNKNOWN") return "UNKNOWN";
+  return undefined;
+}
+
+function inferSideFromCsvRow(row: TradovateCsvRow): "LONG" | "SHORT" | "UNKNOWN" | undefined {
+  return sideFromText(row.side)
+    ?? sideFromText(row.direction)
+    ?? sideFromText(row.position)
+    ?? sideFromText(row.openingAction)
+    ?? sideFromText(row.openAction)
+    ?? sideFromText(row.entryAction)
+    ?? sideFromText(row.action);
+}
+
 /**
  * Main CSV parser
  */
@@ -104,6 +165,7 @@ export function parseTradovateCsv(file: File): Promise<{
     Papa.parse<TradovateCsvRow>(file, {
       header: true,
       skipEmptyLines: true,
+      transformHeader: normalizeHeader,
       complete: (results) => {
         // STEP 1: Convert CSV rows → trades
         const trades: TradovateTrade[] = results.data.map((row) => ({
@@ -115,6 +177,7 @@ export function parseTradovateCsv(file: File): Promise<{
           boughtTimestamp: row.boughtTimestamp,
           soldTimestamp: row.soldTimestamp,
           duration: row.duration,
+          side: inferSideFromCsvRow(row),
         }));
 
         // STEP 2: Aggregate daily stats

@@ -45,8 +45,31 @@ public interface TradeRepository extends JpaRepository<Trade, Long>, JpaSpecific
     List<Trade> findByUserAndAccount_IdAndTradeDateOrderByEntryTimeAscIdAsc(User user, Long accountId, LocalDate tradeDate);
 
     @EntityGraph(attributePaths = {"account"})
+    @Query("""
+            select t from Trade t
+            where t.user = :user
+              and (:accountId is null or t.account.id = :accountId)
+              and (:tradeDate is null or t.tradeDate = :tradeDate)
+              and t.externalTradeKey is not null
+            order by t.tradeDate asc, t.entryTime asc, t.id asc
+            """)
+    List<Trade> findImportedTradesForDirectionRepair(
+            @Param("user") User user,
+            @Param("accountId") Long accountId,
+            @Param("tradeDate") LocalDate tradeDate
+    );
+
+    @EntityGraph(attributePaths = {"account"})
     List<Trade> findByUserAndAccount_IdAndTradeDateBetweenOrderByTradeDateDesc(
             User user,
+            Long accountId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
+
+    @EntityGraph(attributePaths = {"account"})
+    List<Trade> findByUser_IdAndAccount_IdAndTradeDateBetweenOrderByTradeDateAscEntryTimeAscIdAsc(
+            Long userId,
             Long accountId,
             LocalDate startDate,
             LocalDate endDate
@@ -145,19 +168,24 @@ public interface TradeRepository extends JpaRepository<Trade, Long>, JpaSpecific
     @Query(value = """
             select
                 count(*) as total_trades,
-                sum(case when outcome = 'WIN' then 1 else 0 end) as wins,
-                sum(case when outcome = 'LOSS' then 1 else 0 end) as losses,
-                sum(case when outcome = 'BE' then 1 else 0 end) as breakevens,
-                coalesce(sum(pnl_amount), 0) as total_pnl,
-                coalesce(avg(coalesce(pnl_r, 0)), 0) as average_r,
+                sum(case when t.outcome = 'WIN' then 1 else 0 end) as wins,
+                sum(case when t.outcome = 'LOSS' then 1 else 0 end) as losses,
+                sum(case when t.outcome = 'BE' then 1 else 0 end) as breakevens,
+                coalesce(sum(t.pnl_amount), 0) as total_pnl,
+                avg(case
+                    when coalesce(t.risk_amount, a.default_risk_amount) > 0
+                    then t.pnl_amount / coalesce(t.risk_amount, a.default_risk_amount)
+                    else null
+                end) as average_r,
                 case when count(*) = 0 then 0
-                     else (sum(case when outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*))
+                     else (sum(case when t.outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*))
                 end as win_rate
-            from trades
-            where user_id = :userId
-              and (:accountId is null or account_id = :accountId)
-              and (:startDate is null or trade_date >= :startDate)
-              and (:endDate is null or trade_date <= :endDate)
+            from trades t
+            left join trading_accounts a on a.id = t.account_id
+            where t.user_id = :userId
+              and (:accountId is null or t.account_id = :accountId)
+              and (:startDate is null or t.trade_date >= :startDate)
+              and (:endDate is null or t.trade_date <= :endDate)
             """, nativeQuery = true)
     Object aggregateSummary(
             @Param("userId") Long userId,
@@ -170,26 +198,31 @@ public interface TradeRepository extends JpaRepository<Trade, Long>, JpaSpecific
             select
                 coalesce(cast(:groupBy as text), '') as ignored_group_by,
                 case
-                    when :groupBy = 'setup' then coalesce(setup, 'Unspecified')
-                    when :groupBy = 'session' then coalesce(session, 'Unspecified')
-                    when :groupBy = 'symbol' then coalesce(symbol, 'Unspecified')
-                    when :groupBy = 'weekday' then cast(extract(isodow from trade_date) as text)
+                    when :groupBy = 'setup' then coalesce(t.setup, 'Unspecified')
+                    when :groupBy = 'session' then coalesce(t.session, 'Unspecified')
+                    when :groupBy = 'symbol' then coalesce(t.symbol, 'Unspecified')
+                    when :groupBy = 'weekday' then cast(extract(isodow from t.trade_date) as text)
                     else 'Unspecified'
                 end as label,
                 count(*) as total_trades,
-                sum(case when outcome = 'WIN' then 1 else 0 end) as wins,
-                sum(case when outcome = 'LOSS' then 1 else 0 end) as losses,
-                sum(case when outcome = 'BE' then 1 else 0 end) as breakevens,
-                coalesce(sum(pnl_amount), 0) as total_pnl,
-                coalesce(avg(coalesce(pnl_r, 0)), 0) as average_r,
+                sum(case when t.outcome = 'WIN' then 1 else 0 end) as wins,
+                sum(case when t.outcome = 'LOSS' then 1 else 0 end) as losses,
+                sum(case when t.outcome = 'BE' then 1 else 0 end) as breakevens,
+                coalesce(sum(t.pnl_amount), 0) as total_pnl,
+                avg(case
+                    when coalesce(t.risk_amount, a.default_risk_amount) > 0
+                    then t.pnl_amount / coalesce(t.risk_amount, a.default_risk_amount)
+                    else null
+                end) as average_r,
                 case when count(*) = 0 then 0
-                     else (sum(case when outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*))
+                     else (sum(case when t.outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*))
                 end as win_rate
-            from trades
-            where user_id = :userId
-              and (:accountId is null or account_id = :accountId)
-              and (:startDate is null or trade_date >= :startDate)
-              and (:endDate is null or trade_date <= :endDate)
+            from trades t
+            left join trading_accounts a on a.id = t.account_id
+            where t.user_id = :userId
+              and (:accountId is null or t.account_id = :accountId)
+              and (:startDate is null or t.trade_date >= :startDate)
+              and (:endDate is null or t.trade_date <= :endDate)
             group by label
             order by total_pnl desc
             """, nativeQuery = true)
@@ -202,76 +235,96 @@ public interface TradeRepository extends JpaRepository<Trade, Long>, JpaSpecific
     );
 
     @Query(value = """
-            select coalesce(setup, 'Unspecified') as label,
+            select coalesce(t.setup, 'Unspecified') as label,
                 count(*) as total_trades,
-                sum(case when outcome = 'WIN' then 1 else 0 end) as wins,
-                sum(case when outcome = 'LOSS' then 1 else 0 end) as losses,
-                sum(case when outcome = 'BE' then 1 else 0 end) as breakevens,
-                coalesce(sum(pnl_amount), 0) as total_pnl,
-                coalesce(avg(coalesce(pnl_r, 0)), 0) as average_r,
-                case when count(*) = 0 then 0 else (sum(case when outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*)) end as win_rate
-            from trades
-            where user_id = :userId
-              and (:accountId is null or account_id = :accountId)
-              and (:startDate is null or trade_date >= :startDate)
-              and (:endDate is null or trade_date <= :endDate)
-            group by setup
+                sum(case when t.outcome = 'WIN' then 1 else 0 end) as wins,
+                sum(case when t.outcome = 'LOSS' then 1 else 0 end) as losses,
+                sum(case when t.outcome = 'BE' then 1 else 0 end) as breakevens,
+                coalesce(sum(t.pnl_amount), 0) as total_pnl,
+                avg(case
+                    when coalesce(t.risk_amount, a.default_risk_amount) > 0
+                    then t.pnl_amount / coalesce(t.risk_amount, a.default_risk_amount)
+                    else null
+                end) as average_r,
+                case when count(*) = 0 then 0 else (sum(case when t.outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*)) end as win_rate
+            from trades t
+            left join trading_accounts a on a.id = t.account_id
+            where t.user_id = :userId
+              and (:accountId is null or t.account_id = :accountId)
+              and (:startDate is null or t.trade_date >= :startDate)
+              and (:endDate is null or t.trade_date <= :endDate)
+            group by t.setup
             order by total_pnl desc
             """, nativeQuery = true)
     List<Object[]> aggregateBySetup(@Param("userId") Long userId, @Param("accountId") Long accountId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
     @Query(value = """
-            select coalesce(session, 'Unspecified') as label,
+            select coalesce(t.session, 'Unspecified') as label,
                 count(*) as total_trades,
-                sum(case when outcome = 'WIN' then 1 else 0 end) as wins,
-                sum(case when outcome = 'LOSS' then 1 else 0 end) as losses,
-                sum(case when outcome = 'BE' then 1 else 0 end) as breakevens,
-                coalesce(sum(pnl_amount), 0) as total_pnl,
-                coalesce(avg(coalesce(pnl_r, 0)), 0) as average_r,
-                case when count(*) = 0 then 0 else (sum(case when outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*)) end as win_rate
-            from trades
-            where user_id = :userId
-              and (:accountId is null or account_id = :accountId)
-              and (:startDate is null or trade_date >= :startDate)
-              and (:endDate is null or trade_date <= :endDate)
-            group by session
+                sum(case when t.outcome = 'WIN' then 1 else 0 end) as wins,
+                sum(case when t.outcome = 'LOSS' then 1 else 0 end) as losses,
+                sum(case when t.outcome = 'BE' then 1 else 0 end) as breakevens,
+                coalesce(sum(t.pnl_amount), 0) as total_pnl,
+                avg(case
+                    when coalesce(t.risk_amount, a.default_risk_amount) > 0
+                    then t.pnl_amount / coalesce(t.risk_amount, a.default_risk_amount)
+                    else null
+                end) as average_r,
+                case when count(*) = 0 then 0 else (sum(case when t.outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*)) end as win_rate
+            from trades t
+            left join trading_accounts a on a.id = t.account_id
+            where t.user_id = :userId
+              and (:accountId is null or t.account_id = :accountId)
+              and (:startDate is null or t.trade_date >= :startDate)
+              and (:endDate is null or t.trade_date <= :endDate)
+            group by t.session
             order by total_pnl desc
             """, nativeQuery = true)
     List<Object[]> aggregateBySession(@Param("userId") Long userId, @Param("accountId") Long accountId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
     @Query(value = """
-            select coalesce(symbol, 'Unspecified') as label,
+            select coalesce(t.symbol, 'Unspecified') as label,
                 count(*) as total_trades,
-                sum(case when outcome = 'WIN' then 1 else 0 end) as wins,
-                sum(case when outcome = 'LOSS' then 1 else 0 end) as losses,
-                sum(case when outcome = 'BE' then 1 else 0 end) as breakevens,
-                coalesce(sum(pnl_amount), 0) as total_pnl,
-                coalesce(avg(coalesce(pnl_r, 0)), 0) as average_r,
-                case when count(*) = 0 then 0 else (sum(case when outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*)) end as win_rate
-            from trades
-            where user_id = :userId
-              and (:accountId is null or account_id = :accountId)
-              and (:startDate is null or trade_date >= :startDate)
-              and (:endDate is null or trade_date <= :endDate)
-            group by symbol
+                sum(case when t.outcome = 'WIN' then 1 else 0 end) as wins,
+                sum(case when t.outcome = 'LOSS' then 1 else 0 end) as losses,
+                sum(case when t.outcome = 'BE' then 1 else 0 end) as breakevens,
+                coalesce(sum(t.pnl_amount), 0) as total_pnl,
+                avg(case
+                    when coalesce(t.risk_amount, a.default_risk_amount) > 0
+                    then t.pnl_amount / coalesce(t.risk_amount, a.default_risk_amount)
+                    else null
+                end) as average_r,
+                case when count(*) = 0 then 0 else (sum(case when t.outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*)) end as win_rate
+            from trades t
+            left join trading_accounts a on a.id = t.account_id
+            where t.user_id = :userId
+              and (:accountId is null or t.account_id = :accountId)
+              and (:startDate is null or t.trade_date >= :startDate)
+              and (:endDate is null or t.trade_date <= :endDate)
+            group by t.symbol
             order by total_pnl desc
             """, nativeQuery = true)
     List<Object[]> aggregateBySymbol(@Param("userId") Long userId, @Param("accountId") Long accountId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
     @Query(value = """
-            select cast(extract(isodow from trade_date) as text) as label,
+            select cast(extract(isodow from t.trade_date) as text) as label,
                 count(*) as total_trades,
-                sum(case when outcome = 'WIN' then 1 else 0 end) as wins,
-                sum(case when outcome = 'LOSS' then 1 else 0 end) as losses,
-                sum(case when outcome = 'BE' then 1 else 0 end) as breakevens,
-                coalesce(sum(pnl_amount), 0) as total_pnl,
-                coalesce(avg(coalesce(pnl_r, 0)), 0) as average_r,
-                case when count(*) = 0 then 0 else (sum(case when outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*)) end as win_rate
-            from trades
-            where user_id = :userId
-              and (:accountId is null or account_id = :accountId)
-              and (:startDate is null or trade_date >= :startDate)
-              and (:endDate is null or trade_date <= :endDate)
+                sum(case when t.outcome = 'WIN' then 1 else 0 end) as wins,
+                sum(case when t.outcome = 'LOSS' then 1 else 0 end) as losses,
+                sum(case when t.outcome = 'BE' then 1 else 0 end) as breakevens,
+                coalesce(sum(t.pnl_amount), 0) as total_pnl,
+                avg(case
+                    when coalesce(t.risk_amount, a.default_risk_amount) > 0
+                    then t.pnl_amount / coalesce(t.risk_amount, a.default_risk_amount)
+                    else null
+                end) as average_r,
+                case when count(*) = 0 then 0 else (sum(case when t.outcome = 'WIN' then 1 else 0 end) * 100.0 / count(*)) end as win_rate
+            from trades t
+            left join trading_accounts a on a.id = t.account_id
+            where t.user_id = :userId
+              and (:accountId is null or t.account_id = :accountId)
+              and (:startDate is null or t.trade_date >= :startDate)
+              and (:endDate is null or t.trade_date <= :endDate)
             group by label
             order by label asc
             """, nativeQuery = true)
@@ -279,19 +332,29 @@ public interface TradeRepository extends JpaRepository<Trade, Long>, JpaSpecific
 
     @Query(value = """
             select
-                trade_date as date,
+                t.trade_date as date,
                 count(*) as trade_count,
-                coalesce(sum(pnl_amount), 0) as net_pnl,
-                sum(case when outcome = 'WIN' then 1 else 0 end) as winning_trades,
-                sum(case when outcome = 'LOSS' then 1 else 0 end) as losing_trades,
-                sum(case when outcome = 'BE' then 1 else 0 end) as breakeven_trades
-            from trades
-            where user_id = :userId
-              and (:accountId is null or account_id = :accountId)
-              and (:startDate is null or trade_date >= :startDate)
-              and (:endDate is null or trade_date <= :endDate)
-            group by trade_date
-            order by trade_date asc
+                coalesce(sum(t.pnl_amount), 0) as net_pnl,
+                case
+                    when sum(case when coalesce(t.risk_amount, a.default_risk_amount) > 0 then 1 else 0 end) > 0
+                    then sum(case
+                        when coalesce(t.risk_amount, a.default_risk_amount) > 0
+                        then t.pnl_amount / coalesce(t.risk_amount, a.default_risk_amount)
+                        else 0
+                    end)
+                    else null
+                end as total_r,
+                sum(case when t.outcome = 'WIN' then 1 else 0 end) as winning_trades,
+                sum(case when t.outcome = 'LOSS' then 1 else 0 end) as losing_trades,
+                sum(case when t.outcome = 'BE' then 1 else 0 end) as breakeven_trades
+            from trades t
+            left join trading_accounts a on a.id = t.account_id
+            where t.user_id = :userId
+              and (:accountId is null or t.account_id = :accountId)
+              and (:startDate is null or t.trade_date >= :startDate)
+              and (:endDate is null or t.trade_date <= :endDate)
+            group by t.trade_date
+            order by t.trade_date asc
             """, nativeQuery = true)
     List<Object[]> aggregateDailyPnl(
             @Param("userId") Long userId,

@@ -18,7 +18,14 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.util.Locale;
 import java.util.List;
+import java.util.Map;
 
 import com.tradepilot.entity.ImportBatch;
 import com.tradepilot.entity.TradingAccount;
@@ -28,6 +35,25 @@ import com.tradepilot.entity.TradingAccount;
 @RequiredArgsConstructor
 @Slf4j
 public class TradeService {
+    private static final List<DateTimeFormatter> TRADOVATE_TIMESTAMP_FORMATTERS = List.of(
+            new DateTimeFormatterBuilder()
+            .parseCaseInsensitive()
+            .appendPattern("M/d/yyyy h:mm:ss a")
+            .toFormatter(Locale.US),
+            new DateTimeFormatterBuilder()
+                    .parseCaseInsensitive()
+                    .appendPattern("M/d/yyyy h:mm a")
+                    .toFormatter(Locale.US),
+            new DateTimeFormatterBuilder()
+                    .parseCaseInsensitive()
+                    .appendPattern("M/d/yy h:mm:ss a")
+                    .toFormatter(Locale.US),
+            new DateTimeFormatterBuilder()
+                    .parseCaseInsensitive()
+                    .appendPattern("M/d/yy h:mm a")
+                    .toFormatter(Locale.US)
+    );
+
     private final TradeRepository tradeRepository;
     private final TradingAccountService tradingAccountService;
     private final ImportBatchRepository importBatchRepository;
@@ -144,6 +170,31 @@ public class TradeService {
                 continue;
             }
 
+            Side requestedSide = parseSide(request.side());
+            RepairData repairData = repairDataFromExternalKey(request.externalTradeKey());
+            Side finalSide = requestedSide;
+            if (requestedSide == Side.UNKNOWN && repairData != null && repairData.side() != Side.UNKNOWN) {
+                finalSide = repairData.side();
+                log.info("Tradovate import side inferred from execution timestamps. userId={}, accountId={}, symbol={}, externalTradeKey={}, side={}",
+                        user.getId(), accountId, request.symbol(), request.externalTradeKey(), finalSide);
+            } else if (requestedSide == Side.UNKNOWN) {
+                log.warn("Tradovate import side unresolved. userId={}, accountId={}, symbol={}, tradeDate={}, entryTime={}, exitTime={}, externalTradeKey={}",
+                        user.getId(), accountId, request.symbol(), request.tradeDate(), request.entryTime(), request.exitTime(), request.externalTradeKey());
+            }
+
+            LocalDate tradeDate = request.tradeDate();
+            LocalDateTime entryTime = request.entryTime();
+            LocalDateTime exitTime = request.exitTime();
+            BigDecimal entryPrice = request.entryPrice();
+            BigDecimal exitPrice = request.exitPrice();
+            if (requestedSide == Side.UNKNOWN && repairData != null && repairData.side() != Side.UNKNOWN) {
+                tradeDate = repairData.exitTime().toLocalDate();
+                entryTime = repairData.entryTime();
+                exitTime = repairData.exitTime();
+                entryPrice = repairData.entryPrice() == null ? request.entryPrice() : repairData.entryPrice();
+                exitPrice = repairData.exitPrice() == null ? request.exitPrice() : repairData.exitPrice();
+            }
+
             Trade trade = Trade.builder()
                     .user(user)
                     .account(account)
@@ -151,14 +202,14 @@ public class TradeService {
                     .externalTradeKey(request.externalTradeKey())
                     .symbol(request.symbol())
                     .market(request.market())
-                    .tradeDate(request.tradeDate())
-                    .entryTime(request.entryTime())
-                    .exitTime(request.exitTime())
-                    .side(request.side())
+                    .tradeDate(tradeDate)
+                    .entryTime(entryTime)
+                    .exitTime(exitTime)
+                    .side(finalSide.name())
                     .setup(request.setup())
                     .session(request.session())
-                    .entryPrice(request.entryPrice())
-                    .exitPrice(request.exitPrice())
+                    .entryPrice(entryPrice)
+                    .exitPrice(exitPrice)
                     .quantity(request.quantity())
                     .pnlAmount(request.pnlAmount())
                     .pnlR(request.pnlR())
@@ -180,6 +231,74 @@ public class TradeService {
         return saved.stream()
                 .map(this::mapToResponse)
                 .toList();
+    }
+
+    @Transactional
+    public Map<String, Object> repairTradovateDirections(User user, Long accountId, LocalDate tradeDate) {
+        requireUser(user);
+        validateOwnedAccountFilter(user, accountId);
+
+        List<Trade> candidates = tradeRepository.findImportedTradesForDirectionRepair(user, accountId, tradeDate);
+        int updated = 0;
+        int skipped = 0;
+        int invalidKeys = 0;
+
+        for (Trade trade : candidates) {
+            RepairData repairData = repairDataFromExternalKey(trade.getExternalTradeKey());
+            if (repairData == null) {
+                invalidKeys++;
+                continue;
+            }
+            if (repairData.side() == Side.UNKNOWN) {
+                skipped++;
+                continue;
+            }
+
+            boolean changed = false;
+            if (!repairData.side().name().equals(trade.getSide())) {
+                trade.setSide(repairData.side().name());
+                changed = true;
+            }
+            if (!repairData.entryTime().equals(trade.getEntryTime())) {
+                trade.setEntryTime(repairData.entryTime());
+                changed = true;
+            }
+            if (!repairData.exitTime().equals(trade.getExitTime())) {
+                trade.setExitTime(repairData.exitTime());
+                changed = true;
+            }
+            if (repairData.entryPrice() != null && repairData.entryPrice().compareTo(nullSafe(trade.getEntryPrice())) != 0) {
+                trade.setEntryPrice(repairData.entryPrice());
+                changed = true;
+            }
+            if (repairData.exitPrice() != null && repairData.exitPrice().compareTo(nullSafe(trade.getExitPrice())) != 0) {
+                trade.setExitPrice(repairData.exitPrice());
+                changed = true;
+            }
+            if (!repairData.exitTime().toLocalDate().equals(trade.getTradeDate())) {
+                trade.setTradeDate(repairData.exitTime().toLocalDate());
+                changed = true;
+            }
+            if (changed) {
+                updated++;
+            } else {
+                skipped++;
+            }
+        }
+
+        if (updated > 0) {
+            tradeRepository.saveAll(candidates);
+            cacheInvalidationService.invalidateUserTradeDerivedCaches(user.getId());
+        }
+
+        log.info("Tradovate direction repair completed. userId={}, accountId={}, date={}, scanned={}, updated={}, skipped={}, invalidKeys={}",
+                user.getId(), accountId, tradeDate, candidates.size(), updated, skipped, invalidKeys);
+        return Map.of(
+                "scanned", candidates.size(),
+                "updated", updated,
+                "skipped", skipped,
+                "invalidKeys", invalidKeys
+        );
     }
 
     @Transactional
@@ -218,7 +337,7 @@ public class TradeService {
         t.setTradeDate(r.getTradeDate());
         t.setEntryTime(r.getEntryTime());
         t.setExitTime(r.getExitTime());
-        t.setSide(r.getSide());
+        t.setSide(normalizeSideValue(r.getSide()));
         t.setSetup(r.getSetup());
         t.setSession(r.getSession());
         t.setEntryPrice(r.getEntryPrice());
@@ -252,7 +371,7 @@ public class TradeService {
         response.setTradeDate(t.getTradeDate());
         response.setEntryTime(t.getEntryTime());
         response.setExitTime(t.getExitTime());
-        response.setSide(Side.valueOf(t.getSide()));
+        response.setSide(parseSide(t.getSide()));
         response.setSetup(t.getSetup());
         response.setSession(t.getSession());
         response.setEntryPrice(t.getEntryPrice());
@@ -289,6 +408,22 @@ public class TradeService {
         }
     }
 
+    private String normalizeSideValue(String side) {
+        return parseSide(side).name();
+    }
+
+    private Side parseSide(String side) {
+        if (side == null || side.isBlank()) {
+            return Side.UNKNOWN;
+        }
+        try {
+            return Side.valueOf(side.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            log.warn("Unknown trade side mapped to UNKNOWN. side={}", side);
+            return Side.UNKNOWN;
+        }
+    }
+
     private SetupType parseSetup(String setup) {
         String clean = cleanText(setup);
         if (clean == null) {
@@ -309,6 +444,65 @@ public class TradeService {
         return clean.isEmpty() ? null : clean;
     }
 
+    private RepairData repairDataFromExternalKey(String externalTradeKey) {
+        if (externalTradeKey == null || externalTradeKey.isBlank()) {
+            return null;
+        }
+
+        String[] parts = externalTradeKey.split("\\|", -1);
+        if (parts.length < 8) {
+            return null;
+        }
+
+        LocalDateTime boughtAt = parseTradovateTimestamp(parts[2]);
+        LocalDateTime soldAt = parseTradovateTimestamp(parts[3]);
+        BigDecimal buyPrice = parseDecimal(parts[5]);
+        BigDecimal sellPrice = parseDecimal(parts[6]);
+        if (boughtAt == null || soldAt == null || boughtAt.equals(soldAt)) {
+            return null;
+        }
+
+        if (boughtAt.isBefore(soldAt)) {
+            return new RepairData(Side.LONG, boughtAt, soldAt, buyPrice, sellPrice);
+        }
+        return new RepairData(Side.SHORT, soldAt, boughtAt, sellPrice, buyPrice);
+    }
+
+    private LocalDateTime parseTradovateTimestamp(String value) {
+        String clean = cleanText(value);
+        if (clean == null) {
+            return null;
+        }
+        for (DateTimeFormatter formatter : TRADOVATE_TIMESTAMP_FORMATTERS) {
+            try {
+                return LocalDateTime.parse(clean, formatter);
+            } catch (Exception ignored) {
+                // Try the next known Tradovate export shape.
+            }
+        }
+        try {
+            return LocalDateTime.parse(clean);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private BigDecimal parseDecimal(String value) {
+        String clean = cleanText(value);
+        if (clean == null) {
+            return null;
+        }
+        try {
+            return new BigDecimal(clean.replace(",", ""));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private BigDecimal nullSafe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
     private void validateOwnedAccountFilter(User user, Long accountId) {
         if (accountId != null) {
             tradingAccountService.getAccountForImport(user, accountId);
@@ -319,5 +513,14 @@ public class TradeService {
         if (user == null) {
             throw new ResourceNotFoundException("User not found");
         }
+    }
+
+    private record RepairData(
+            Side side,
+            LocalDateTime entryTime,
+            LocalDateTime exitTime,
+            BigDecimal entryPrice,
+            BigDecimal exitPrice
+    ) {
     }
 }

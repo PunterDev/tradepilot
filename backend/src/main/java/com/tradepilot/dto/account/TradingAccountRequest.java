@@ -3,6 +3,7 @@ package com.tradepilot.dto.account;
 import com.tradepilot.enums.PropFirmType;
 import com.tradepilot.enums.TradingAccountStatus;
 import com.tradepilot.enums.TradingAccountType;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
@@ -14,5 +15,7 @@ public record TradingAccountRequest(
         String accountNumber,
         TradingAccountType accountType,
         BigDecimal startingBalance,
+        @DecimalMin(value = "0.01", message = "Default risk amount must be greater than 0")
+        BigDecimal defaultRiskAmount,
         TradingAccountStatus status
 ) {}
