@@ -20,10 +20,7 @@ import com.tradepilot.leakdetector.dto.LeakType;
 import com.tradepilot.leakdetector.repository.AiLeakDetectorSnapshotRepository;
 import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.service.TradingAccountService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
 import java.text.DecimalFormat;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,12 +30,10 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class AiCoachService {
-
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AiCoachService.class);
     private static final DecimalFormat MONEY_FORMAT = new DecimalFormat("#,##0.00");
-
     private final AiCoachSnapshotRepository repository;
     private final CoachSnapshotMapper mapper;
     private final AiCoachAsyncWorker asyncWorker;
@@ -51,156 +46,59 @@ public class AiCoachService {
     private final CoachAnalyticsAggregator analyticsAggregator;
     private final CoachHashService hashService;
 
-    public CoachSnapshotDto getDailyCoach(
-            User user,
-            Long accountId,
-            LocalDate date
-    ) {
+    public CoachSnapshotDto getDailyCoach(User user, Long accountId, LocalDate date) {
         Long userId = requireUserId(user);
         featureAccessService.requireFeature(user, Feature.DAILY_COACH);
         validateOwnedAccount(user, accountId);
-
-        AiCoachSnapshot snapshot =
-                findOrCreateCachedSnapshot(
-                        user,
-                        userId,
-                        accountId,
-                        CoachSnapshotType.DAILY,
-                        date,
-                        date,
-                        false
-                );
-
+        AiCoachSnapshot snapshot = findOrCreateCachedSnapshot(user, userId, accountId, CoachSnapshotType.DAILY, date, date, false);
         return enrichWithTopLeak(mapper.toDto(snapshot), userId, accountId);
     }
 
-    public CoachSnapshotDto getWeeklyCoach(
-            User user,
-            Long accountId,
-            LocalDate weekStart
-    ) {
+    public CoachSnapshotDto getWeeklyCoach(User user, Long accountId, LocalDate weekStart) {
         Long userId = requireUserId(user);
         featureAccessService.requireFeature(user, Feature.WEEKLY_COACH);
         validateOwnedAccount(user, accountId);
         LocalDate weekEnd = weekStart.plusDays(6);
-
-        AiCoachSnapshot snapshot =
-                findOrCreateCachedSnapshot(
-                        user,
-                        userId,
-                        accountId,
-                        CoachSnapshotType.WEEKLY,
-                        weekStart,
-                        weekEnd,
-                        false
-                );
-
+        AiCoachSnapshot snapshot = findOrCreateCachedSnapshot(user, userId, accountId, CoachSnapshotType.WEEKLY, weekStart, weekEnd, false);
         return mapper.toDto(snapshot);
     }
 
-    public CoachSnapshotDto generateDailyCoach(
-            User user,
-            CoachGenerateRequest request
-    ) {
+    public CoachSnapshotDto generateDailyCoach(User user, CoachGenerateRequest request) {
         Long userId = requireUserId(user);
         featureAccessService.requireFeature(user, Feature.DAILY_COACH);
         validateOwnedAccount(user, request.getAccountId());
         LocalDate date = request.getPeriodStart();
-
-        AiCoachSnapshot snapshot =
-                findOrCreateCachedSnapshot(
-                        user,
-                        userId,
-                        request.getAccountId(),
-                        CoachSnapshotType.DAILY,
-                        date,
-                        date,
-                        Boolean.TRUE.equals(request.getForceRefresh())
-                );
-
+        AiCoachSnapshot snapshot = findOrCreateCachedSnapshot(user, userId, request.getAccountId(), CoachSnapshotType.DAILY, date, date, Boolean.TRUE.equals(request.getForceRefresh()));
         return enrichWithTopLeak(mapper.toDto(snapshot), userId, request.getAccountId());
     }
 
-    public CoachSnapshotDto generateWeeklyCoach(
-            User user,
-            CoachGenerateRequest request
-    ) {
+    public CoachSnapshotDto generateWeeklyCoach(User user, CoachGenerateRequest request) {
         Long userId = requireUserId(user);
         featureAccessService.requireFeature(user, Feature.WEEKLY_COACH);
         validateOwnedAccount(user, request.getAccountId());
         LocalDate weekStart = request.getPeriodStart();
-
-        LocalDate weekEnd =
-                request.getPeriodEnd() != null
-                        ? request.getPeriodEnd()
-                        : weekStart.plusDays(6);
-
-        AiCoachSnapshot snapshot =
-                findOrCreateCachedSnapshot(
-                        user,
-                        userId,
-                        request.getAccountId(),
-                        CoachSnapshotType.WEEKLY,
-                        weekStart,
-                        weekEnd,
-                        Boolean.TRUE.equals(request.getForceRefresh())
-                );
-
+        LocalDate weekEnd = request.getPeriodEnd() != null ? request.getPeriodEnd() : weekStart.plusDays(6);
+        AiCoachSnapshot snapshot = findOrCreateCachedSnapshot(user, userId, request.getAccountId(), CoachSnapshotType.WEEKLY, weekStart, weekEnd, Boolean.TRUE.equals(request.getForceRefresh()));
         return mapper.toDto(snapshot);
     }
 
-    public List<CoachSnapshotDto> getSnapshots(
-            User user,
-            Long accountId,
-            CoachSnapshotType type
-    ) {
+    public List<CoachSnapshotDto> getSnapshots(User user, Long accountId, CoachSnapshotType type) {
         Long userId = requireUserId(user);
         featureAccessService.requireFeature(user, type == CoachSnapshotType.DAILY ? Feature.DAILY_COACH : Feature.WEEKLY_COACH);
         validateOwnedAccount(user, accountId);
-
-        return repository
-                .findTop20ByUserIdAndAccountIdAndSnapshotTypeOrderByPeriodStartDesc(
-                        userId,
-                        accountId,
-                        type
-                )
-                .stream()
-                .map(mapper::toDto)
-                .toList();
+        return repository.findTop20ByUserIdAndAccountIdAndSnapshotTypeOrderByPeriodStartDesc(userId, accountId, type).stream().map(mapper::toDto).toList();
     }
 
-    private AiCoachSnapshot findOrCreateCachedSnapshot(
-            User user,
-            Long userId,
-            Long accountId,
-            CoachSnapshotType type,
-            LocalDate periodStart,
-            LocalDate periodEnd,
-            boolean forceRefresh
-    ) {
+    private AiCoachSnapshot findOrCreateCachedSnapshot(User user, Long userId, Long accountId, CoachSnapshotType type, LocalDate periodStart, LocalDate periodEnd, boolean forceRefresh) {
         Long normalizedAccountId = accountId == null ? 0L : accountId;
-
-        AiCoachSnapshot existing =
-                repository
-                        .findTopByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartAndPeriodEndOrderByCreatedAtDesc(
-                                userId,
-                                normalizedAccountId,
-                                type,
-                                periodStart,
-                                periodEnd
-                        )
-                        .orElse(null);
-
+        AiCoachSnapshot existing = repository.findTopByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartAndPeriodEndOrderByCreatedAtDesc(userId, normalizedAccountId, type, periodStart, periodEnd).orElse(null);
         if (!forceRefresh) {
             if (existing != null) {
-                if (type == CoachSnapshotType.DAILY
-                        && existing.getStatus() == CoachSnapshotStatus.COMPLETED
-                        && isCurrentSnapshot(existing)) {
+                if (type == CoachSnapshotType.DAILY && existing.getStatus() == CoachSnapshotStatus.COMPLETED && isCurrentSnapshot(existing)) {
                     observabilityService.recordCacheEvent("Daily Coach", true);
                     return existing;
                 }
-                if (existing.getStatus() == CoachSnapshotStatus.PROCESSING
-                        || existing.getStatus() == CoachSnapshotStatus.PENDING) {
+                if (existing.getStatus() == CoachSnapshotStatus.PROCESSING || existing.getStatus() == CoachSnapshotStatus.PENDING) {
                     observabilityService.recordCacheEvent(type == CoachSnapshotType.DAILY ? "Daily Coach" : "Weekly Coach", true);
                     return existing;
                 }
@@ -210,31 +108,19 @@ public class AiCoachService {
                 }
             }
         }
-
-        CoachDeterministicSummary summary = analyticsAggregator.aggregate(
-                userId,
-                normalizedAccountId,
-                type,
-                periodStart,
-                periodEnd
-        );
+        CoachDeterministicSummary summary = analyticsAggregator.aggregate(userId, normalizedAccountId, type, periodStart, periodEnd);
         if (summary.getTotalTrades() != null && summary.getTotalTrades() == 0) {
             observabilityService.recordCacheEvent(type == CoachSnapshotType.DAILY ? "Daily Coach" : "Weekly Coach", existing != null && !forceRefresh);
             if (type == CoachSnapshotType.DAILY) {
-                log.info("Daily Coach AI skipped: no trades for selected date. userId={}, accountId={}, reviewDate={}",
-                        userId, normalizedAccountId, periodStart);
+                log.info("Daily Coach AI skipped: no trades for selected date. userId={}, accountId={}, reviewDate={}", userId, normalizedAccountId, periodStart);
             } else {
-                log.info("Weekly Coach AI skipped: no trades for selected week. userId={}, accountId={}, weekStart={}, weekEnd={}",
-                        userId, normalizedAccountId, periodStart, periodEnd);
+                log.info("Weekly Coach AI skipped: no trades for selected week. userId={}, accountId={}, weekStart={}, weekEnd={}", userId, normalizedAccountId, periodStart, periodEnd);
             }
             return saveDeterministicSnapshot(existing, userId, normalizedAccountId, type, periodStart, periodEnd, summary);
         }
-
         observabilityService.recordCacheEvent(type == CoachSnapshotType.DAILY ? "Daily Coach" : "Weekly Coach", false);
-
         UsageType usageType = type == CoachSnapshotType.DAILY ? UsageType.DAILY_COACH : UsageType.WEEKLY_COACH;
         usageLimitService.enforceAiUsage(user, usageType);
-
         if (existing != null) {
             existing.setStatus(CoachSnapshotStatus.PENDING);
             existing.setErrorMessage(null);
@@ -243,34 +129,14 @@ public class AiCoachService {
             asyncWorker.generateAsync(saved.getId());
             return saved;
         }
-
-        AiCoachSnapshot snapshot =
-                AiCoachSnapshot.builder()
-                        .userId(userId)
-                        .accountId(normalizedAccountId)
-                        .snapshotType(type)
-                        .periodStart(periodStart)
-                        .periodEnd(periodEnd)
-                        .status(CoachSnapshotStatus.PENDING)
-                        .build();
-
+        AiCoachSnapshot snapshot = AiCoachSnapshot.builder().userId(userId).accountId(normalizedAccountId).snapshotType(type).periodStart(periodStart).periodEnd(periodEnd).status(CoachSnapshotStatus.PENDING).build();
         AiCoachSnapshot saved = repository.save(snapshot);
         usageLimitService.recordAiUsage(user, usageType, saved.getId());
-
         asyncWorker.generateAsync(saved.getId());
-
         return saved;
     }
 
-    private AiCoachSnapshot saveDeterministicSnapshot(
-            AiCoachSnapshot existing,
-            Long userId,
-            Long accountId,
-            CoachSnapshotType type,
-            LocalDate periodStart,
-            LocalDate periodEnd,
-            CoachDeterministicSummary summary
-    ) {
+    private AiCoachSnapshot saveDeterministicSnapshot(AiCoachSnapshot existing, Long userId, Long accountId, CoachSnapshotType type, LocalDate periodStart, LocalDate periodEnd, CoachDeterministicSummary summary) {
         AiCoachSnapshot snapshot = existing != null ? existing : new AiCoachSnapshot();
         snapshot.setUserId(userId);
         snapshot.setAccountId(accountId);
@@ -302,7 +168,6 @@ public class AiCoachService {
         if (user == null || user.getId() == null) {
             throw new ResourceNotFoundException("User not found");
         }
-
         return user.getId();
     }
 
@@ -318,13 +183,7 @@ public class AiCoachService {
 
     private boolean isCurrentSnapshot(AiCoachSnapshot snapshot) {
         try {
-            CoachDeterministicSummary summary = analyticsAggregator.aggregate(
-                    snapshot.getUserId(),
-                    snapshot.getAccountId(),
-                    snapshot.getSnapshotType(),
-                    snapshot.getPeriodStart(),
-                    snapshot.getPeriodEnd()
-            );
+            CoachDeterministicSummary summary = analyticsAggregator.aggregate(snapshot.getUserId(), snapshot.getAccountId(), snapshot.getSnapshotType(), snapshot.getPeriodStart(), snapshot.getPeriodEnd());
             return hashService.hash(summary).equals(snapshot.getReviewHash());
         } catch (Exception ignored) {
             return false;
@@ -348,9 +207,7 @@ public class AiCoachService {
     }
 
     private String historicalPatternMessage(LeakResultDto leak, boolean appliesToday) {
-        String summary = leak.getSummary() == null || leak.getSummary().isBlank()
-                ? leak.getTitle()
-                : leak.getSummary();
+        String summary = leak.getSummary() == null || leak.getSummary().isBlank() ? leak.getTitle() : leak.getSummary();
         String pattern = accountLevelPatternSummary(leak, summary);
         if (appliesToday) {
             return "Account-level pattern: " + pattern;
@@ -362,12 +219,10 @@ public class AiCoachService {
         if (leak.getLeakType() == LeakType.LONG_SHORT_BIAS && leak.getTitle() != null) {
             String title = leak.getTitle().toUpperCase();
             if (title.contains("SHORT")) {
-                return "Recent account history shows short-side trades have underperformed by "
-                        + money(leak.getTotalPnl()) + " across " + countLabel(leak.getTradeCount()) + ".";
+                return "Recent account history shows short-side trades have underperformed by " + money(leak.getTotalPnl()) + " across " + countLabel(leak.getTradeCount()) + ".";
             }
             if (title.contains("LONG")) {
-                return "Recent account history shows long-side trades have underperformed by "
-                        + money(leak.getTotalPnl()) + " across " + countLabel(leak.getTradeCount()) + ".";
+                return "Recent account history shows long-side trades have underperformed by " + money(leak.getTotalPnl()) + " across " + countLabel(leak.getTradeCount()) + ".";
             }
         }
         return fallback;
@@ -384,25 +239,36 @@ public class AiCoachService {
     }
 
     private Optional<LeakResultDto> topLeak(Long userId, Long accountId) {
-        return leakDetectorSnapshotRepository.findTopByUserIdAndAccountIdOrderByUpdatedAtDesc(userId, accountId)
-                .flatMap(snapshot -> {
-                    try {
-                        List<LeakResultDto> leaks = objectMapper.readValue(snapshot.getResultJson(), new TypeReference<>() {});
-                        return leaks.stream()
-                                .max(Comparator
-                                        .comparing((LeakResultDto leak) -> leak.getSeverity() == null ? 0 : leak.getSeverity().ordinal())
-                                        .thenComparing(leak -> leak.getConfidenceScore() == null ? 0 : leak.getConfidenceScore()));
-                    } catch (Exception e) {
-                        return Optional.empty();
-                    }
+        return leakDetectorSnapshotRepository.findTopByUserIdAndAccountIdOrderByUpdatedAtDesc(userId, accountId).flatMap(snapshot -> {
+            try {
+                List<LeakResultDto> leaks = objectMapper.readValue(snapshot.getResultJson(), new TypeReference<>() {
                 });
+                return leaks.stream().max(Comparator.comparing((LeakResultDto leak) -> leak.getSeverity() == null ? 0 : leak.getSeverity().ordinal()).thenComparing(leak -> leak.getConfidenceScore() == null ? 0 : leak.getConfidenceScore()));
+            } catch (Exception e) {
+                return Optional.empty();
+            }
+        });
     }
 
     private void validateOwnedAccount(User user, Long accountId) {
         if (accountId == null || accountId <= 0) {
             throw new IllegalArgumentException("accountId is required");
         }
-
         tradingAccountService.getAccountForImport(user, accountId);
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public AiCoachService(final AiCoachSnapshotRepository repository, final CoachSnapshotMapper mapper, final AiCoachAsyncWorker asyncWorker, final TradingAccountService tradingAccountService, final UsageLimitService usageLimitService, final FeatureAccessService featureAccessService, final ObservabilityService observabilityService, final AiLeakDetectorSnapshotRepository leakDetectorSnapshotRepository, final ObjectMapper objectMapper, final CoachAnalyticsAggregator analyticsAggregator, final CoachHashService hashService) {
+        this.repository = repository;
+        this.mapper = mapper;
+        this.asyncWorker = asyncWorker;
+        this.tradingAccountService = tradingAccountService;
+        this.usageLimitService = usageLimitService;
+        this.featureAccessService = featureAccessService;
+        this.observabilityService = observabilityService;
+        this.leakDetectorSnapshotRepository = leakDetectorSnapshotRepository;
+        this.objectMapper = objectMapper;
+        this.analyticsAggregator = analyticsAggregator;
+        this.hashService = hashService;
     }
 }

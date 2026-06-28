@@ -1,18 +1,15 @@
 package com.tradepilot.observability;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.LocalDateTime;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class ObservabilityCleanupService {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ObservabilityCleanupService.class);
     private final RequestMetricRepository requestMetricRepository;
     private final SlowRequestEventRepository slowRequestEventRepository;
     private final AiRequestMetricRepository aiRequestMetricRepository;
@@ -21,7 +18,6 @@ public class ObservabilityCleanupService {
     private final StripeEventMetricRepository stripeEventMetricRepository;
     private final QueryPerformanceEventRepository queryPerformanceEventRepository;
     private final SystemAlertRepository systemAlertRepository;
-
     @Value("${app.observability.retention.api-request-metrics-days:60}")
     private int apiRequestMetricsDays;
     @Value("${app.observability.retention.slow-request-events-days:90}")
@@ -49,35 +45,23 @@ public class ObservabilityCleanupService {
 
     @Transactional
     public CleanupCounts cleanupNow(LocalDateTime now) {
-        log.trace("Observability cleanup retention windows. apiRequestDays={}, slowRequestDays={}, aiRequestDays={}, cacheDays={}, emailDays={}, stripeDays={}, queryDays={}, alertDays={}",
-                apiRequestMetricsDays,
-                slowRequestEventsDays,
-                aiRequestMetricsDays,
-                cacheMetricsDays,
-                emailDeliveryEventsDays,
-                stripeEventsDays,
-                queryPerformanceEventsDays,
-                systemAlertsDays);
-        return new CleanupCounts(
-                requestMetricRepository.deleteOlderThan(now.minusDays(apiRequestMetricsDays)),
-                slowRequestEventRepository.deleteOlderThan(now.minusDays(slowRequestEventsDays)),
-                aiRequestMetricRepository.deleteOlderThan(now.minusDays(aiRequestMetricsDays)),
-                cacheMetricRepository.deleteOlderThan(now.minusDays(cacheMetricsDays)),
-                emailDeliveryEventRepository.deleteOlderThan(now.minusDays(emailDeliveryEventsDays)),
-                stripeEventMetricRepository.deleteOlderThan(now.minusDays(stripeEventsDays)),
-                queryPerformanceEventRepository.deleteOlderThan(now.minusDays(queryPerformanceEventsDays)),
-                systemAlertRepository.deleteOlderThan(now.minusDays(systemAlertsDays))
-        );
+        log.trace("Observability cleanup retention windows. apiRequestDays={}, slowRequestDays={}, aiRequestDays={}, cacheDays={}, emailDays={}, stripeDays={}, queryDays={}, alertDays={}", apiRequestMetricsDays, slowRequestEventsDays, aiRequestMetricsDays, cacheMetricsDays, emailDeliveryEventsDays, stripeEventsDays, queryPerformanceEventsDays, systemAlertsDays);
+        return new CleanupCounts(requestMetricRepository.deleteOlderThan(now.minusDays(apiRequestMetricsDays)), slowRequestEventRepository.deleteOlderThan(now.minusDays(slowRequestEventsDays)), aiRequestMetricRepository.deleteOlderThan(now.minusDays(aiRequestMetricsDays)), cacheMetricRepository.deleteOlderThan(now.minusDays(cacheMetricsDays)), emailDeliveryEventRepository.deleteOlderThan(now.minusDays(emailDeliveryEventsDays)), stripeEventMetricRepository.deleteOlderThan(now.minusDays(stripeEventsDays)), queryPerformanceEventRepository.deleteOlderThan(now.minusDays(queryPerformanceEventsDays)), systemAlertRepository.deleteOlderThan(now.minusDays(systemAlertsDays)));
     }
 
-    public record CleanupCounts(
-            int apiRequestMetrics,
-            int slowRequestEvents,
-            int aiRequestMetrics,
-            int cacheMetrics,
-            int emailDeliveryEvents,
-            int stripeEvents,
-            int queryPerformanceEvents,
-            int systemAlerts
-    ) {}
+
+    public record CleanupCounts(int apiRequestMetrics, int slowRequestEvents, int aiRequestMetrics, int cacheMetrics, int emailDeliveryEvents, int stripeEvents, int queryPerformanceEvents, int systemAlerts) {
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public ObservabilityCleanupService(final RequestMetricRepository requestMetricRepository, final SlowRequestEventRepository slowRequestEventRepository, final AiRequestMetricRepository aiRequestMetricRepository, final CacheMetricRepository cacheMetricRepository, final EmailDeliveryEventRepository emailDeliveryEventRepository, final StripeEventMetricRepository stripeEventMetricRepository, final QueryPerformanceEventRepository queryPerformanceEventRepository, final SystemAlertRepository systemAlertRepository) {
+        this.requestMetricRepository = requestMetricRepository;
+        this.slowRequestEventRepository = slowRequestEventRepository;
+        this.aiRequestMetricRepository = aiRequestMetricRepository;
+        this.cacheMetricRepository = cacheMetricRepository;
+        this.emailDeliveryEventRepository = emailDeliveryEventRepository;
+        this.stripeEventMetricRepository = stripeEventMetricRepository;
+        this.queryPerformanceEventRepository = queryPerformanceEventRepository;
+        this.systemAlertRepository = systemAlertRepository;
+    }
 }

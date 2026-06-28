@@ -1,16 +1,13 @@
 package com.tradepilot.retention;
 
 import com.tradepilot.retention.dto.*;
-import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/retention")
-@RequiredArgsConstructor
 public class AdminRetentionAnalyticsController {
     private final AdminRetentionAnalyticsService retentionAnalyticsService;
 
@@ -32,5 +29,10 @@ public class AdminRetentionAnalyticsController {
     @GetMapping("/users")
     public List<RetentionUserResponse> users() {
         return retentionAnalyticsService.users();
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public AdminRetentionAnalyticsController(final AdminRetentionAnalyticsService retentionAnalyticsService) {
+        this.retentionAnalyticsService = retentionAnalyticsService;
     }
 }

@@ -1,20 +1,14 @@
 package com.tradepilot.billing;
 
 import com.tradepilot.entity.User;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
 import java.util.Set;
 
 @Service
-@Slf4j
 public class FeatureAccessService {
-    private static final Set<Feature> FREE_FEATURES = Set.of(
-            Feature.CSV_IMPORT,
-            Feature.PNL_CALENDAR,
-            Feature.BASIC_ANALYTICS,
-            Feature.AI_TRADE_REVIEW
-    );
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(FeatureAccessService.class);
+    private static final Set<Feature> FREE_FEATURES = Set.of(Feature.CSV_IMPORT, Feature.PNL_CALENDAR, Feature.BASIC_ANALYTICS, Feature.AI_TRADE_REVIEW);
 
     public boolean hasFeature(User user, Feature feature) {
         if (isPro(user)) {
@@ -27,9 +21,7 @@ public class FeatureAccessService {
         if (hasFeature(user, feature)) {
             return;
         }
-
-        log.warn("Feature access blocked. userId={}, plan={}, feature={}",
-                user == null ? null : user.getId(), plan(user), feature);
+        log.warn("Feature access blocked. userId={}, plan={}, feature={}", user == null ? null : user.getId(), plan(user), feature);
         throw new FeatureAccessException(feature, "Upgrade to Pro to access " + label(feature) + ".");
     }
 

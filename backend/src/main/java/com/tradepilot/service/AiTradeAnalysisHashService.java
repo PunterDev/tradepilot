@@ -2,17 +2,13 @@ package com.tradepilot.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradepilot.dto.ai.AiTradeAnalysisRequest;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 
 @Service
-@RequiredArgsConstructor
 public class AiTradeAnalysisHashService {
-
     private final ObjectMapper objectMapper;
 
     public String hash(AiTradeAnalysisRequest request, byte[] imageBytes) {
@@ -27,5 +23,10 @@ public class AiTradeAnalysisHashService {
         } catch (Exception e) {
             throw new IllegalStateException("Unable to hash AI trade analysis request", e);
         }
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public AiTradeAnalysisHashService(final ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
     }
 }

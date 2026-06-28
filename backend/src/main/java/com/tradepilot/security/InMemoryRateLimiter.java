@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class InMemoryRateLimiter {
     private final Clock clock;
-    private final Map<String, Window> windows = new ConcurrentHashMap<>();
+    private final Map<String, RateLimitWindow> windows = new ConcurrentHashMap<>();
 
     public InMemoryRateLimiter() {
         this(Clock.systemUTC());
@@ -21,21 +21,23 @@ public class InMemoryRateLimiter {
     }
 
     public synchronized RateLimitResult check(String key, int maxRequests, long windowSeconds) {
+        if (maxRequests <= 0) {
+            return RateLimitResult.blocked(Math.max(1, windowSeconds));
+        }
         long now = clock.millis();
         long windowMs = Math.max(1, windowSeconds) * 1000L;
-        Window window = windows.get(key);
-        if (window == null || now - window.startedAtMs >= windowMs) {
-            windows.put(key, new Window(now, 1));
+        RateLimitWindow window = windows.get(key);
+        if (window == null || window.isExpired(now, windowMs)) {
+            windows.put(key, new RateLimitWindow(now, 1));
             cleanupExpired(now, windowMs);
             return RateLimitResult.allowed(0);
         }
 
-        if (window.count >= maxRequests) {
-            long retryAfterMs = Math.max(0, windowMs - (now - window.startedAtMs));
-            return RateLimitResult.blocked(Math.max(1, (retryAfterMs + 999) / 1000));
+        if (window.isAtLimit(maxRequests)) {
+            return RateLimitResult.blocked(window.retryAfterSeconds(now, windowMs));
         }
 
-        window.count++;
+        window.increment();
         return RateLimitResult.allowed(0);
     }
 
@@ -43,32 +45,12 @@ public class InMemoryRateLimiter {
         if (windows.size() < 10_000) {
             return;
         }
-        Iterator<Map.Entry<String, Window>> iterator = windows.entrySet().iterator();
+        Iterator<Map.Entry<String, RateLimitWindow>> iterator = windows.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<String, Window> entry = iterator.next();
-            if (now - entry.getValue().startedAtMs >= windowMs) {
+            Map.Entry<String, RateLimitWindow> entry = iterator.next();
+            if (entry.getValue().isExpired(now, windowMs)) {
                 iterator.remove();
             }
-        }
-    }
-
-    private static final class Window {
-        private final long startedAtMs;
-        private int count;
-
-        private Window(long startedAtMs, int count) {
-            this.startedAtMs = startedAtMs;
-            this.count = count;
-        }
-    }
-
-    public record RateLimitResult(boolean allowed, long retryAfterSeconds) {
-        private static RateLimitResult allowed(long retryAfterSeconds) {
-            return new RateLimitResult(true, retryAfterSeconds);
-        }
-
-        private static RateLimitResult blocked(long retryAfterSeconds) {
-            return new RateLimitResult(false, retryAfterSeconds);
         }
     }
 }

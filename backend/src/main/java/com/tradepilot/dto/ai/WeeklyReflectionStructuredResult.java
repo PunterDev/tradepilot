@@ -1,13 +1,7 @@
 package com.tradepilot.dto.ai;
 
-import lombok.*;
-
 import java.util.List;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
 public class WeeklyReflectionStructuredResult {
     private String summary;
     private List<String> strengths;
@@ -15,4 +9,228 @@ public class WeeklyReflectionStructuredResult {
     private List<String> psychologyPatterns;
     private List<String> actionItems;
     private Integer coachingScore;
+
+
+    @java.lang.SuppressWarnings("all")
+    public static class WeeklyReflectionStructuredResultBuilder {
+        @java.lang.SuppressWarnings("all")
+        private String summary;
+        @java.lang.SuppressWarnings("all")
+        private List<String> strengths;
+        @java.lang.SuppressWarnings("all")
+        private List<String> mistakes;
+        @java.lang.SuppressWarnings("all")
+        private List<String> psychologyPatterns;
+        @java.lang.SuppressWarnings("all")
+        private List<String> actionItems;
+        @java.lang.SuppressWarnings("all")
+        private Integer coachingScore;
+
+        @java.lang.SuppressWarnings("all")
+        WeeklyReflectionStructuredResultBuilder() {
+        }
+
+        /**
+         * @return {@code this}.
+         */
+        @java.lang.SuppressWarnings("all")
+        public WeeklyReflectionStructuredResult.WeeklyReflectionStructuredResultBuilder summary(final String summary) {
+            this.summary = summary;
+            return this;
+        }
+
+        /**
+         * @return {@code this}.
+         */
+        @java.lang.SuppressWarnings("all")
+        public WeeklyReflectionStructuredResult.WeeklyReflectionStructuredResultBuilder strengths(final List<String> strengths) {
+            this.strengths = strengths;
+            return this;
+        }
+
+        /**
+         * @return {@code this}.
+         */
+        @java.lang.SuppressWarnings("all")
+        public WeeklyReflectionStructuredResult.WeeklyReflectionStructuredResultBuilder mistakes(final List<String> mistakes) {
+            this.mistakes = mistakes;
+            return this;
+        }
+
+        /**
+         * @return {@code this}.
+         */
+        @java.lang.SuppressWarnings("all")
+        public WeeklyReflectionStructuredResult.WeeklyReflectionStructuredResultBuilder psychologyPatterns(final List<String> psychologyPatterns) {
+            this.psychologyPatterns = psychologyPatterns;
+            return this;
+        }
+
+        /**
+         * @return {@code this}.
+         */
+        @java.lang.SuppressWarnings("all")
+        public WeeklyReflectionStructuredResult.WeeklyReflectionStructuredResultBuilder actionItems(final List<String> actionItems) {
+            this.actionItems = actionItems;
+            return this;
+        }
+
+        /**
+         * @return {@code this}.
+         */
+        @java.lang.SuppressWarnings("all")
+        public WeeklyReflectionStructuredResult.WeeklyReflectionStructuredResultBuilder coachingScore(final Integer coachingScore) {
+            this.coachingScore = coachingScore;
+            return this;
+        }
+
+        @java.lang.SuppressWarnings("all")
+        public WeeklyReflectionStructuredResult build() {
+            return new WeeklyReflectionStructuredResult(this.summary, this.strengths, this.mistakes, this.psychologyPatterns, this.actionItems, this.coachingScore);
+        }
+
+        @java.lang.Override
+        @java.lang.SuppressWarnings("all")
+        public java.lang.String toString() {
+            return "WeeklyReflectionStructuredResult.WeeklyReflectionStructuredResultBuilder(summary=" + this.summary + ", strengths=" + this.strengths + ", mistakes=" + this.mistakes + ", psychologyPatterns=" + this.psychologyPatterns + ", actionItems=" + this.actionItems + ", coachingScore=" + this.coachingScore + ")";
+        }
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public static WeeklyReflectionStructuredResult.WeeklyReflectionStructuredResultBuilder builder() {
+        return new WeeklyReflectionStructuredResult.WeeklyReflectionStructuredResultBuilder();
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getSummary() {
+        return this.summary;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public List<String> getStrengths() {
+        return this.strengths;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public List<String> getMistakes() {
+        return this.mistakes;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public List<String> getPsychologyPatterns() {
+        return this.psychologyPatterns;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public List<String> getActionItems() {
+        return this.actionItems;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public Integer getCoachingScore() {
+        return this.coachingScore;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setSummary(final String summary) {
+        this.summary = summary;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setStrengths(final List<String> strengths) {
+        this.strengths = strengths;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setMistakes(final List<String> mistakes) {
+        this.mistakes = mistakes;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setPsychologyPatterns(final List<String> psychologyPatterns) {
+        this.psychologyPatterns = psychologyPatterns;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setActionItems(final List<String> actionItems) {
+        this.actionItems = actionItems;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setCoachingScore(final Integer coachingScore) {
+        this.coachingScore = coachingScore;
+    }
+
+    @java.lang.Override
+    @java.lang.SuppressWarnings("all")
+    public boolean equals(final java.lang.Object o) {
+        if (o == this) return true;
+        if (!(o instanceof WeeklyReflectionStructuredResult)) return false;
+        final WeeklyReflectionStructuredResult other = (WeeklyReflectionStructuredResult) o;
+        if (!other.canEqual((java.lang.Object) this)) return false;
+        final java.lang.Object this$coachingScore = this.getCoachingScore();
+        final java.lang.Object other$coachingScore = other.getCoachingScore();
+        if (this$coachingScore == null ? other$coachingScore != null : !this$coachingScore.equals(other$coachingScore)) return false;
+        final java.lang.Object this$summary = this.getSummary();
+        final java.lang.Object other$summary = other.getSummary();
+        if (this$summary == null ? other$summary != null : !this$summary.equals(other$summary)) return false;
+        final java.lang.Object this$strengths = this.getStrengths();
+        final java.lang.Object other$strengths = other.getStrengths();
+        if (this$strengths == null ? other$strengths != null : !this$strengths.equals(other$strengths)) return false;
+        final java.lang.Object this$mistakes = this.getMistakes();
+        final java.lang.Object other$mistakes = other.getMistakes();
+        if (this$mistakes == null ? other$mistakes != null : !this$mistakes.equals(other$mistakes)) return false;
+        final java.lang.Object this$psychologyPatterns = this.getPsychologyPatterns();
+        final java.lang.Object other$psychologyPatterns = other.getPsychologyPatterns();
+        if (this$psychologyPatterns == null ? other$psychologyPatterns != null : !this$psychologyPatterns.equals(other$psychologyPatterns)) return false;
+        final java.lang.Object this$actionItems = this.getActionItems();
+        final java.lang.Object other$actionItems = other.getActionItems();
+        if (this$actionItems == null ? other$actionItems != null : !this$actionItems.equals(other$actionItems)) return false;
+        return true;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    protected boolean canEqual(final java.lang.Object other) {
+        return other instanceof WeeklyReflectionStructuredResult;
+    }
+
+    @java.lang.Override
+    @java.lang.SuppressWarnings("all")
+    public int hashCode() {
+        final int PRIME = 59;
+        int result = 1;
+        final java.lang.Object $coachingScore = this.getCoachingScore();
+        result = result * PRIME + ($coachingScore == null ? 43 : $coachingScore.hashCode());
+        final java.lang.Object $summary = this.getSummary();
+        result = result * PRIME + ($summary == null ? 43 : $summary.hashCode());
+        final java.lang.Object $strengths = this.getStrengths();
+        result = result * PRIME + ($strengths == null ? 43 : $strengths.hashCode());
+        final java.lang.Object $mistakes = this.getMistakes();
+        result = result * PRIME + ($mistakes == null ? 43 : $mistakes.hashCode());
+        final java.lang.Object $psychologyPatterns = this.getPsychologyPatterns();
+        result = result * PRIME + ($psychologyPatterns == null ? 43 : $psychologyPatterns.hashCode());
+        final java.lang.Object $actionItems = this.getActionItems();
+        result = result * PRIME + ($actionItems == null ? 43 : $actionItems.hashCode());
+        return result;
+    }
+
+    @java.lang.Override
+    @java.lang.SuppressWarnings("all")
+    public java.lang.String toString() {
+        return "WeeklyReflectionStructuredResult(summary=" + this.getSummary() + ", strengths=" + this.getStrengths() + ", mistakes=" + this.getMistakes() + ", psychologyPatterns=" + this.getPsychologyPatterns() + ", actionItems=" + this.getActionItems() + ", coachingScore=" + this.getCoachingScore() + ")";
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public WeeklyReflectionStructuredResult() {
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public WeeklyReflectionStructuredResult(final String summary, final List<String> strengths, final List<String> mistakes, final List<String> psychologyPatterns, final List<String> actionItems, final Integer coachingScore) {
+        this.summary = summary;
+        this.strengths = strengths;
+        this.mistakes = mistakes;
+        this.psychologyPatterns = psychologyPatterns;
+        this.actionItems = actionItems;
+        this.coachingScore = coachingScore;
+    }
 }

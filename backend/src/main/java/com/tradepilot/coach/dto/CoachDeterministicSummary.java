@@ -1,14 +1,10 @@
 package com.tradepilot.coach.dto;
 
-import lombok.Getter;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
-@Getter
 public class CoachDeterministicSummary {
-
     private LocalDate selectedDate;
     private Integer totalTrades;
     private BigDecimal netPnl;
@@ -30,7 +26,6 @@ public class CoachDeterministicSummary {
     private String dataQuality;
     private String dataQualityReason;
     private String nextSessionRule;
-
     private String bestSetup;
     private String worstSetup;
     private String bestSession;
@@ -40,53 +35,14 @@ public class CoachDeterministicSummary {
     private String emotionAnalysis;
     private String confidenceAnalysis;
     private List<String> journalMetadataExamples;
-
     private BigDecimal executionScoreAverage;
     private BigDecimal riskScoreAverage;
     private BigDecimal disciplineScoreAverage;
-
     private List<String> repeatedMistakes;
     private List<String> strengths;
     private List<String> warnings;
 
-    public CoachDeterministicSummary(
-            LocalDate selectedDate,
-            Integer totalTrades,
-            BigDecimal netPnl,
-            BigDecimal winRate,
-            BigDecimal profitFactor,
-            Integer longTradeCount,
-            Integer shortTradeCount,
-            Integer unknownTradeCount,
-            Integer winningTradeCount,
-            Integer losingTradeCount,
-            String dominantDirection,
-            List<String> instruments,
-            BigDecimal longPnl,
-            BigDecimal shortPnl,
-            String worstTradeSide,
-            String selectedDaySummary,
-            String primaryIssueToday,
-            String setupDirectionReview,
-            String dataQuality,
-            String dataQualityReason,
-            String nextSessionRule,
-            String bestSetup,
-            String worstSetup,
-            String bestSession,
-            String worstSession,
-            String biggestMistake,
-            String setupAnalysis,
-            String emotionAnalysis,
-            String confidenceAnalysis,
-            List<String> journalMetadataExamples,
-            BigDecimal executionScoreAverage,
-            BigDecimal riskScoreAverage,
-            BigDecimal disciplineScoreAverage,
-            List<String> repeatedMistakes,
-            List<String> strengths,
-            List<String> warnings
-    ) {
+    public CoachDeterministicSummary(LocalDate selectedDate, Integer totalTrades, BigDecimal netPnl, BigDecimal winRate, BigDecimal profitFactor, Integer longTradeCount, Integer shortTradeCount, Integer unknownTradeCount, Integer winningTradeCount, Integer losingTradeCount, String dominantDirection, List<String> instruments, BigDecimal longPnl, BigDecimal shortPnl, String worstTradeSide, String selectedDaySummary, String primaryIssueToday, String setupDirectionReview, String dataQuality, String dataQualityReason, String nextSessionRule, String bestSetup, String worstSetup, String bestSession, String worstSession, String biggestMistake, String setupAnalysis, String emotionAnalysis, String confidenceAnalysis, List<String> journalMetadataExamples, BigDecimal executionScoreAverage, BigDecimal riskScoreAverage, BigDecimal disciplineScoreAverage, List<String> repeatedMistakes, List<String> strengths, List<String> warnings) {
         this.selectedDate = selectedDate;
         this.totalTrades = totalTrades;
         this.netPnl = netPnl;
@@ -125,82 +81,8 @@ public class CoachDeterministicSummary {
         this.warnings = warnings;
     }
 
-    public static CoachDeterministicSummary of(
-            LocalDate selectedDate,
-            Integer totalTrades,
-            BigDecimal netPnl,
-            BigDecimal winRate,
-            BigDecimal profitFactor,
-            Integer longTradeCount,
-            Integer shortTradeCount,
-            Integer unknownTradeCount,
-            Integer winningTradeCount,
-            Integer losingTradeCount,
-            String dominantDirection,
-            List<String> instruments,
-            BigDecimal longPnl,
-            BigDecimal shortPnl,
-            String worstTradeSide,
-            String selectedDaySummary,
-            String primaryIssueToday,
-            String setupDirectionReview,
-            String dataQuality,
-            String dataQualityReason,
-            String nextSessionRule,
-            String bestSetup,
-            String worstSetup,
-            String bestSession,
-            String worstSession,
-            String biggestMistake,
-            String setupAnalysis,
-            String emotionAnalysis,
-            String confidenceAnalysis,
-            List<String> journalMetadataExamples,
-            BigDecimal executionScoreAverage,
-            BigDecimal riskScoreAverage,
-            BigDecimal disciplineScoreAverage,
-            List<String> repeatedMistakes,
-            List<String> strengths,
-            List<String> warnings
-    ) {
-        return new CoachDeterministicSummary(
-                selectedDate,
-                totalTrades,
-                netPnl,
-                winRate,
-                profitFactor,
-                longTradeCount,
-                shortTradeCount,
-                unknownTradeCount,
-                winningTradeCount,
-                losingTradeCount,
-                dominantDirection,
-                instruments,
-                longPnl,
-                shortPnl,
-                worstTradeSide,
-                selectedDaySummary,
-                primaryIssueToday,
-                setupDirectionReview,
-                dataQuality,
-                dataQualityReason,
-                nextSessionRule,
-                bestSetup,
-                worstSetup,
-                bestSession,
-                worstSession,
-                biggestMistake,
-                setupAnalysis,
-                emotionAnalysis,
-                confidenceAnalysis,
-                journalMetadataExamples,
-                executionScoreAverage,
-                riskScoreAverage,
-                disciplineScoreAverage,
-                repeatedMistakes,
-                strengths,
-                warnings
-        );
+    public static CoachDeterministicSummary of(LocalDate selectedDate, Integer totalTrades, BigDecimal netPnl, BigDecimal winRate, BigDecimal profitFactor, Integer longTradeCount, Integer shortTradeCount, Integer unknownTradeCount, Integer winningTradeCount, Integer losingTradeCount, String dominantDirection, List<String> instruments, BigDecimal longPnl, BigDecimal shortPnl, String worstTradeSide, String selectedDaySummary, String primaryIssueToday, String setupDirectionReview, String dataQuality, String dataQualityReason, String nextSessionRule, String bestSetup, String worstSetup, String bestSession, String worstSession, String biggestMistake, String setupAnalysis, String emotionAnalysis, String confidenceAnalysis, List<String> journalMetadataExamples, BigDecimal executionScoreAverage, BigDecimal riskScoreAverage, BigDecimal disciplineScoreAverage, List<String> repeatedMistakes, List<String> strengths, List<String> warnings) {
+        return new CoachDeterministicSummary(selectedDate, totalTrades, netPnl, winRate, profitFactor, longTradeCount, shortTradeCount, unknownTradeCount, winningTradeCount, losingTradeCount, dominantDirection, instruments, longPnl, shortPnl, worstTradeSide, selectedDaySummary, primaryIssueToday, setupDirectionReview, dataQuality, dataQualityReason, nextSessionRule, bestSetup, worstSetup, bestSession, worstSession, biggestMistake, setupAnalysis, emotionAnalysis, confidenceAnalysis, journalMetadataExamples, executionScoreAverage, riskScoreAverage, disciplineScoreAverage, repeatedMistakes, strengths, warnings);
     }
 
     public static CoachDeterministicSummary empty(String warning) {
@@ -208,84 +90,190 @@ public class CoachDeterministicSummary {
     }
 
     public static CoachDeterministicSummary emptyDaily(String warning) {
-        return of(
-                null,
-                0,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                0,
-                0,
-                0,
-                0,
-                0,
-                "UNKNOWN",
-                List.of(),
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                "UNKNOWN",
-                "No trades found for this date.",
-                "Import trades for this date before drawing conclusions.",
-                "No setup/direction review available because there were no trades on this date.",
-                "No Trades",
-                warning,
-                "Import trades first, then review the next session plan.",
-                "Not enough data",
-                "Not enough data",
-                "Not enough data",
-                "Not enough data",
-                "Not enough data",
-                "No setup metadata available yet.",
-                "No emotional trading data available due to lack of trades.",
-                "No confidence metadata available yet.",
-                List.of(),
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                List.of(),
-                List.of(),
-                List.of(warning)
-        );
+        return of(null, 0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, 0, 0, 0, 0, "UNKNOWN", List.of(), BigDecimal.ZERO, BigDecimal.ZERO, "UNKNOWN", "No trades found for this date.", "Import trades for this date before drawing conclusions.", "No setup/direction review available because there were no trades on this date.", "No Trades", warning, "Import trades first, then review the next session plan.", "Not enough data", "Not enough data", "Not enough data", "Not enough data", "Not enough data", "No setup metadata available yet.", "No emotional trading data available due to lack of trades.", "No confidence metadata available yet.", List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, List.of(), List.of(), List.of(warning));
     }
 
     public static CoachDeterministicSummary emptyWeekly(String warning) {
-        return of(
-                null,
-                0,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                0,
-                0,
-                0,
-                0,
-                0,
-                "UNKNOWN",
-                List.of(),
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                "UNKNOWN",
-                "No trades found for this week.",
-                "Import trades for this week before generating weekly coaching.",
-                "No setup review available because there were no trades this week.",
-                "No Trades",
-                warning,
-                "Import trades for this week, then generate weekly coach feedback.",
-                "Not enough data",
-                "Not enough data",
-                "Not enough data",
-                "Not enough data",
-                "Not enough data",
-                "No setup metadata available yet.",
-                "No emotional or behavioral pattern can be assessed because there were no trades this week.",
-                "No confidence metadata available yet.",
-                List.of(),
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                List.of(),
-                List.of(),
-                List.of(warning)
-        );
+        return of(null, 0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, 0, 0, 0, 0, "UNKNOWN", List.of(), BigDecimal.ZERO, BigDecimal.ZERO, "UNKNOWN", "No trades found for this week.", "Import trades for this week before generating weekly coaching.", "No setup review available because there were no trades this week.", "No Trades", warning, "Import trades for this week, then generate weekly coach feedback.", "Not enough data", "Not enough data", "Not enough data", "Not enough data", "Not enough data", "No setup metadata available yet.", "No emotional or behavioral pattern can be assessed because there were no trades this week.", "No confidence metadata available yet.", List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, List.of(), List.of(), List.of(warning));
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public LocalDate getSelectedDate() {
+        return this.selectedDate;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public Integer getTotalTrades() {
+        return this.totalTrades;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public BigDecimal getNetPnl() {
+        return this.netPnl;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public BigDecimal getWinRate() {
+        return this.winRate;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public BigDecimal getProfitFactor() {
+        return this.profitFactor;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public Integer getLongTradeCount() {
+        return this.longTradeCount;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public Integer getShortTradeCount() {
+        return this.shortTradeCount;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public Integer getUnknownTradeCount() {
+        return this.unknownTradeCount;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public Integer getWinningTradeCount() {
+        return this.winningTradeCount;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public Integer getLosingTradeCount() {
+        return this.losingTradeCount;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getDominantDirection() {
+        return this.dominantDirection;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public List<String> getInstruments() {
+        return this.instruments;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public BigDecimal getLongPnl() {
+        return this.longPnl;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public BigDecimal getShortPnl() {
+        return this.shortPnl;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getWorstTradeSide() {
+        return this.worstTradeSide;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getSelectedDaySummary() {
+        return this.selectedDaySummary;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getPrimaryIssueToday() {
+        return this.primaryIssueToday;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getSetupDirectionReview() {
+        return this.setupDirectionReview;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getDataQuality() {
+        return this.dataQuality;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getDataQualityReason() {
+        return this.dataQualityReason;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getNextSessionRule() {
+        return this.nextSessionRule;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getBestSetup() {
+        return this.bestSetup;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getWorstSetup() {
+        return this.worstSetup;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getBestSession() {
+        return this.bestSession;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getWorstSession() {
+        return this.worstSession;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getBiggestMistake() {
+        return this.biggestMistake;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getSetupAnalysis() {
+        return this.setupAnalysis;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getEmotionAnalysis() {
+        return this.emotionAnalysis;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getConfidenceAnalysis() {
+        return this.confidenceAnalysis;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public List<String> getJournalMetadataExamples() {
+        return this.journalMetadataExamples;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public BigDecimal getExecutionScoreAverage() {
+        return this.executionScoreAverage;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public BigDecimal getRiskScoreAverage() {
+        return this.riskScoreAverage;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public BigDecimal getDisciplineScoreAverage() {
+        return this.disciplineScoreAverage;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public List<String> getRepeatedMistakes() {
+        return this.repeatedMistakes;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public List<String> getStrengths() {
+        return this.strengths;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public List<String> getWarnings() {
+        return this.warnings;
     }
 }

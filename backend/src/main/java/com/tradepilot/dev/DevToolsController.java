@@ -1,17 +1,14 @@
 package com.tradepilot.dev;
 
 import com.tradepilot.entity.User;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/dev")
-@RequiredArgsConstructor
 public class DevToolsController {
     private final DevToolsAvailability availability;
     private final DevDemoDataService demoDataService;
@@ -50,5 +47,11 @@ public class DevToolsController {
         if (!availability.enabled()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Dev tools are disabled.");
         }
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public DevToolsController(final DevToolsAvailability availability, final DevDemoDataService demoDataService) {
+        this.availability = availability;
+        this.demoDataService = demoDataService;
     }
 }

@@ -5,8 +5,6 @@ import com.resend.core.exception.ResendException;
 import com.resend.services.emails.model.CreateEmailOptions;
 import com.resend.services.emails.model.CreateEmailResponse;
 import com.tradepilot.util.LogSanitizer;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -14,12 +12,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class ResendEmailClient {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ResendEmailClient.class);
     @Value("${app.email.resend.api-key:}")
     private String resendApiKey;
-
     @Value("${app.email.from:}")
     private String emailFrom;
 
@@ -29,7 +26,6 @@ public class ResendEmailClient {
             log.info("EMAIL MODE: RESEND_ENABLED");
             return;
         }
-
         log.warn("EMAIL MODE: RESEND_NOT_CONFIGURED. Configure RESEND_API_KEY and EMAIL_FROM for production email delivery.");
     }
 
@@ -42,19 +38,17 @@ public class ResendEmailClient {
     }
 
     public String sendHtml(String to, String subject, String htmlBody, String replyTo) throws ResendException {
-        var builder = CreateEmailOptions.builder()
-                .from(emailFrom)
-                .to(to)
-                .subject(subject)
-                .html(htmlBody);
-
+        var builder = CreateEmailOptions.builder().from(emailFrom).to(to).subject(subject).html(htmlBody);
         if (StringUtils.hasText(replyTo)) {
             builder.replyTo(replyTo);
         }
-
         CreateEmailResponse response = new Resend(resendApiKey).emails().send(builder.build());
         String emailId = response == null ? null : response.getId();
         log.debug("Resend email accepted. recipient={}, emailId={}", LogSanitizer.maskEmail(to), emailId);
         return emailId;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public ResendEmailClient() {
     }
 }

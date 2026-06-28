@@ -1,15 +1,12 @@
 package com.tradepilot.observability;
 
 import com.tradepilot.observability.dto.*;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
@@ -22,13 +19,12 @@ import java.util.List;
 import java.util.function.Supplier;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class ObservabilityService {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ObservabilityService.class);
     private static final long SLOW_WARNING_MS = 500;
-    private static final long SLOW_CRITICAL_MS = 2_000;
+    private static final long SLOW_CRITICAL_MS = 2000;
     private static final Duration SUMMARY_CACHE_TTL = Duration.ofSeconds(30);
-
     private final RequestMetricRepository requestMetricRepository;
     private final SlowRequestEventRepository slowRequestEventRepository;
     private final AiRequestMetricRepository aiRequestMetricRepository;
@@ -39,16 +35,12 @@ public class ObservabilityService {
     private final SystemAlertRepository systemAlertRepository;
     private final CacheMetricRecorder cacheMetricRecorder;
     private final QueryPerformanceEventRecorder queryPerformanceEventRecorder;
-
     @Value("${app.observability.ai-cost-per-1k-tokens:0.0006}")
     private BigDecimal aiCostPerThousandTokens;
-
     @Value("${app.observability.ai-cost-daily-threshold:10.00}")
     private BigDecimal aiCostDailyThreshold;
-
     @Value("${app.observability.slow-query-threshold-ms:250}")
     private long slowQueryThresholdMs;
-
     private volatile ObservabilitySummaryResponse cachedSummary;
     private volatile Instant cachedSummaryExpiresAt = Instant.EPOCH;
     private final Map<String, CachedSummary> summaryCache = new ConcurrentHashMap<>();
@@ -57,77 +49,34 @@ public class ObservabilityService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordRequest(String endpoint, String method, int status, long durationMs, Long userId) {
         LocalDateTime now = LocalDateTime.now();
-        requestMetricRepository.save(RequestMetric.builder()
-                .endpoint(limit(endpoint, 220))
-                .method(limit(method, 16))
-                .status(status)
-                .durationMs(durationMs)
-                .userId(userId)
-                .createdAt(now)
-                .build());
-
+        requestMetricRepository.save(RequestMetric.builder().endpoint(limit(endpoint, 220)).method(limit(method, 16)).status(status).durationMs(durationMs).userId(userId).createdAt(now).build());
         if (durationMs > SLOW_WARNING_MS) {
-            slowRequestEventRepository.save(SlowRequestEvent.builder()
-                    .endpoint(limit(endpoint, 220))
-                    .durationMs(durationMs)
-                    .status(status)
-                    .userId(userId)
-                    .severity(durationMs > SLOW_CRITICAL_MS ? "CRITICAL" : "WARNING")
-                    .createdAt(now)
-                    .build());
+            slowRequestEventRepository.save(SlowRequestEvent.builder().endpoint(limit(endpoint, 220)).durationMs(durationMs).status(status).userId(userId).severity(durationMs > SLOW_CRITICAL_MS ? "CRITICAL" : "WARNING").createdAt(now).build());
         }
     }
 
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordAiCall(Long userId, String feature, String model, int promptTokens, int completionTokens, int totalTokens, long durationMs, boolean success) {
-        aiRequestMetricRepository.save(AiRequestMetric.builder()
-                .userId(userId)
-                .feature(limit(feature, 64))
-                .model(limit(model, 80))
-                .promptTokens(promptTokens)
-                .completionTokens(completionTokens)
-                .totalTokens(totalTokens)
-                .estimatedCost(estimateCost(totalTokens))
-                .durationMs(durationMs)
-                .success(success)
-                .createdAt(LocalDateTime.now())
-                .build());
+        aiRequestMetricRepository.save(AiRequestMetric.builder().userId(userId).feature(limit(feature, 64)).model(limit(model, 80)).promptTokens(promptTokens).completionTokens(completionTokens).totalTokens(totalTokens).estimatedCost(estimateCost(totalTokens)).durationMs(durationMs).success(success).createdAt(LocalDateTime.now()).build());
     }
 
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordCacheEvent(String cacheName, boolean hit) {
-        cacheMetricRepository.save(CacheMetric.builder()
-                .cacheName(limit(cacheName, 120))
-                .hit(hit)
-                .createdAt(LocalDateTime.now())
-                .build());
+        cacheMetricRepository.save(CacheMetric.builder().cacheName(limit(cacheName, 120)).hit(hit).createdAt(LocalDateTime.now()).build());
     }
 
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordEmail(String recipient, String template, boolean success, long durationMs, String errorMessage) {
-        emailDeliveryEventRepository.save(EmailDeliveryEvent.builder()
-                .recipient(limit(recipient, 240))
-                .template(limit(template, 120))
-                .success(success)
-                .durationMs(durationMs)
-                .errorMessage(limit(errorMessage, 700))
-                .createdAt(LocalDateTime.now())
-                .build());
+        emailDeliveryEventRepository.save(EmailDeliveryEvent.builder().recipient(limit(recipient, 240)).template(limit(template, 120)).success(success).durationMs(durationMs).errorMessage(limit(errorMessage, 700)).createdAt(LocalDateTime.now()).build());
     }
 
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordStripeEvent(String eventType, boolean success, long durationMs, String errorMessage) {
-        stripeEventMetricRepository.save(StripeEventMetric.builder()
-                .eventType(limit(eventType, 120))
-                .success(success)
-                .durationMs(durationMs)
-                .errorMessage(limit(errorMessage, 700))
-                .createdAt(LocalDateTime.now())
-                .build());
+        stripeEventMetricRepository.save(StripeEventMetric.builder().eventType(limit(eventType, 120)).success(success).durationMs(durationMs).errorMessage(limit(errorMessage, 700)).createdAt(LocalDateTime.now()).build());
     }
 
     public <T> T timeQuery(String queryName, Supplier<T> supplier) {
@@ -146,8 +95,7 @@ public class ObservabilityService {
         try {
             queryPerformanceEventRecorder.record(queryName, durationMs);
         } catch (RuntimeException ex) {
-            log.warn("Query performance event persistence failed. queryName={}, durationMs={}, reason={}",
-                    limit(queryName, 140), durationMs, limit(ex.getMessage(), 300));
+            log.warn("Query performance event persistence failed. queryName={}, durationMs={}, reason={}", limit(queryName, 140), durationMs, limit(ex.getMessage(), 300));
         }
     }
 
@@ -176,8 +124,7 @@ public class ObservabilityService {
             log.info("Observability summary requested. range={}, start={}, end={}", cacheKey, range.start(), range.end());
             ObservabilitySummaryResponse summary = buildSummary(range);
             summaryCache.put(cacheKey, new CachedSummary(summary, now.plus(SUMMARY_CACHE_TTL)));
-            log.info("Observability summary completed. range={}, requests={}, errorRate={}, p95Ms={}",
-                    cacheKey, summary.getRequestsToday(), summary.getErrorRate(), summary.getP95ResponseTime());
+            log.info("Observability summary completed. range={}, requests={}, errorRate={}, p95Ms={}", cacheKey, summary.getRequestsToday(), summary.getErrorRate(), summary.getP95ResponseTime());
             return summary;
         }
     }
@@ -200,7 +147,6 @@ public class ObservabilityService {
         long emailFailures = emailDeliveryEventRepository.failuresBetween(start, end);
         long stripeSuccesses = stripeEventMetricRepository.successesBetween(start, end);
         long stripeFailures = stripeEventMetricRepository.failuresBetween(start, end);
-
         ObservabilitySummaryResponse response = new ObservabilitySummaryResponse();
         response.setRequestsToday(requestCount);
         response.setAvgResponseTime(requestMetricRepository.averageDurationBetween(start, end));
@@ -261,21 +207,12 @@ public class ObservabilityService {
             return 0;
         }
         int index = (int) Math.max(0, Math.ceil(totalRequests * 0.95) - 1);
-        return requestMetricRepository.durationPageBetween(start, end, PageRequest.of(index, 1))
-                .stream()
-                .findFirst()
-                .orElse(0L);
+        return requestMetricRepository.durationPageBetween(start, end, PageRequest.of(index, 1)).stream().findFirst().orElse(0L);
     }
 
     private void maybeAlert(String type, String severity, String message, boolean active) {
         if (active && !systemAlertRepository.existsByTypeAndResolvedFalse(type)) {
-            systemAlertRepository.save(SystemAlert.builder()
-                    .type(type)
-                    .severity(severity)
-                    .message(message)
-                    .resolved(false)
-                    .createdAt(LocalDateTime.now())
-                    .build());
+            systemAlertRepository.save(SystemAlert.builder().type(type).severity(severity).message(message).resolved(false).createdAt(LocalDateTime.now()).build());
         }
     }
 
@@ -283,100 +220,47 @@ public class ObservabilityService {
         if (totalTokens <= 0) {
             return BigDecimal.ZERO;
         }
-        return BigDecimal.valueOf(totalTokens)
-                .multiply(nullSafe(aiCostPerThousandTokens))
-                .divide(BigDecimal.valueOf(1_000), 6, RoundingMode.HALF_UP);
+        return BigDecimal.valueOf(totalTokens).multiply(nullSafe(aiCostPerThousandTokens)).divide(BigDecimal.valueOf(1000), 6, RoundingMode.HALF_UP);
     }
 
     private EndpointMetricDto mapEndpoint(Object[] row) {
-        return EndpointMetricDto.builder()
-                .endpoint(String.valueOf(row[0]))
-                .requestCount(longValue(row[1]))
-                .avgDurationMs(doubleValue(row[2]))
-                .maxDurationMs(longValue(row[3]))
-                .build();
+        return EndpointMetricDto.builder().endpoint(String.valueOf(row[0])).requestCount(longValue(row[1])).avgDurationMs(doubleValue(row[2])).maxDurationMs(longValue(row[3])).build();
     }
 
     private SlowRequestDto mapSlowRequest(SlowRequestEvent event) {
-        return SlowRequestDto.builder()
-                .endpoint(event.getEndpoint())
-                .durationMs(event.getDurationMs())
-                .status(event.getStatus())
-                .userId(event.getUserId())
-                .severity(event.getSeverity())
-                .createdAt(event.getCreatedAt())
-                .build();
+        return SlowRequestDto.builder().endpoint(event.getEndpoint()).durationMs(event.getDurationMs()).status(event.getStatus()).userId(event.getUserId()).severity(event.getSeverity()).createdAt(event.getCreatedAt()).build();
     }
 
     private AiFeatureCostDto mapAiCost(Object[] row) {
-        return AiFeatureCostDto.builder()
-                .feature(String.valueOf(row[0]))
-                .calls(longValue(row[1]))
-                .tokens(longValue(row[2]))
-                .estimatedCost(bigDecimalValue(row[3]))
-                .build();
+        return AiFeatureCostDto.builder().feature(String.valueOf(row[0])).calls(longValue(row[1])).tokens(longValue(row[2])).estimatedCost(bigDecimalValue(row[3])).build();
     }
 
     private CacheHealthDto mapCache(Object[] row) {
         long hits = longValue(row[1]);
         long misses = longValue(row[2]);
-        return CacheHealthDto.builder()
-                .cacheName(String.valueOf(row[0]))
-                .hits(hits)
-                .misses(misses)
-                .hitRate(rate(hits, hits + misses))
-                .build();
+        return CacheHealthDto.builder().cacheName(String.valueOf(row[0])).hits(hits).misses(misses).hitRate(rate(hits, hits + misses)).build();
     }
 
     private EmailFailureDto mapEmailFailure(EmailDeliveryEvent event) {
-        return EmailFailureDto.builder()
-                .recipient(event.getRecipient())
-                .template(event.getTemplate())
-                .errorMessage(event.getErrorMessage())
-                .createdAt(event.getCreatedAt())
-                .build();
+        return EmailFailureDto.builder().recipient(event.getRecipient()).template(event.getTemplate()).errorMessage(event.getErrorMessage()).createdAt(event.getCreatedAt()).build();
     }
 
     private StripeEventDto mapStripeEvent(StripeEventMetric event) {
-        return StripeEventDto.builder()
-                .eventType(event.getEventType())
-                .success(Boolean.TRUE.equals(event.getSuccess()))
-                .durationMs(event.getDurationMs())
-                .errorMessage(event.getErrorMessage())
-                .createdAt(event.getCreatedAt())
-                .build();
+        return StripeEventDto.builder().eventType(event.getEventType()).success(Boolean.TRUE.equals(event.getSuccess())).durationMs(event.getDurationMs()).errorMessage(event.getErrorMessage()).createdAt(event.getCreatedAt()).build();
     }
 
     private SystemAlertDto mapAlert(SystemAlert alert) {
-        return SystemAlertDto.builder()
-                .id(alert.getId())
-                .type(alert.getType())
-                .severity(alert.getSeverity())
-                .message(alert.getMessage())
-                .status(alert.getStatus())
-                .createdAt(alert.getCreatedAt())
-                .resolvedAt(alert.getResolvedAt())
-                .resolvedBy(alert.getResolvedBy())
-                .build();
+        return SystemAlertDto.builder().id(alert.getId()).type(alert.getType()).severity(alert.getSeverity()).message(alert.getMessage()).status(alert.getStatus()).createdAt(alert.getCreatedAt()).resolvedAt(alert.getResolvedAt()).resolvedBy(alert.getResolvedBy()).build();
     }
 
     private ApiTrendPointDto mapApiTrend(Object[] row) {
         long requests = longValue(row[1]);
         long errors = longValue(row[3]);
-        return ApiTrendPointDto.builder()
-                .date(localDate(row[0]))
-                .requests(requests)
-                .avgDurationMs(doubleValue(row[2]))
-                .errorRate(rate(errors, requests))
-                .build();
+        return ApiTrendPointDto.builder().date(localDate(row[0])).requests(requests).avgDurationMs(doubleValue(row[2])).errorRate(rate(errors, requests)).build();
     }
 
     private AiTrendPointDto mapAiTrend(Object[] row) {
-        return AiTrendPointDto.builder()
-                .date(localDate(row[0]))
-                .tokens(longValue(row[1]))
-                .estimatedCost(bigDecimalValue(row[2]))
-                .build();
+        return AiTrendPointDto.builder().date(localDate(row[0])).tokens(longValue(row[1])).estimatedCost(bigDecimalValue(row[2])).build();
     }
 
     private long percentile(List<Long> sortedValues, int percentile) {
@@ -433,5 +317,21 @@ public class ObservabilityService {
         return value.length() <= max ? value : value.substring(0, max);
     }
 
-    private record CachedSummary(ObservabilitySummaryResponse summary, Instant expiresAt) {}
+
+    private record CachedSummary(ObservabilitySummaryResponse summary, Instant expiresAt) {
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public ObservabilityService(final RequestMetricRepository requestMetricRepository, final SlowRequestEventRepository slowRequestEventRepository, final AiRequestMetricRepository aiRequestMetricRepository, final CacheMetricRepository cacheMetricRepository, final EmailDeliveryEventRepository emailDeliveryEventRepository, final StripeEventMetricRepository stripeEventMetricRepository, final QueryPerformanceEventRepository queryPerformanceEventRepository, final SystemAlertRepository systemAlertRepository, final CacheMetricRecorder cacheMetricRecorder, final QueryPerformanceEventRecorder queryPerformanceEventRecorder) {
+        this.requestMetricRepository = requestMetricRepository;
+        this.slowRequestEventRepository = slowRequestEventRepository;
+        this.aiRequestMetricRepository = aiRequestMetricRepository;
+        this.cacheMetricRepository = cacheMetricRepository;
+        this.emailDeliveryEventRepository = emailDeliveryEventRepository;
+        this.stripeEventMetricRepository = stripeEventMetricRepository;
+        this.queryPerformanceEventRepository = queryPerformanceEventRepository;
+        this.systemAlertRepository = systemAlertRepository;
+        this.cacheMetricRecorder = cacheMetricRecorder;
+        this.queryPerformanceEventRecorder = queryPerformanceEventRecorder;
+    }
 }

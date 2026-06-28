@@ -11,18 +11,15 @@ import com.tradepilot.featureusage.FeatureUsageService;
 import com.tradepilot.service.TradeDetailService;
 import com.tradepilot.service.TradeService;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
 import java.time.LocalDate;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/trades")
-@RequiredArgsConstructor
 public class TradeController {
     private final TradeService tradeService;
     private final TradeDetailService tradeDetailService;
@@ -36,20 +33,7 @@ public class TradeController {
     }
 
     @GetMapping
-    public PagedResponse<TradeResponse> getTrades(
-            @AuthenticationPrincipal User user,
-            @RequestParam(required = false) Long accountId,
-            @RequestParam(required = false) String symbol,
-            @RequestParam(required = false) SetupType setup,
-            @RequestParam(required = false) SessionType session,
-            @RequestParam(required = false) OutcomeType outcome,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "25") int size,
-            @RequestParam(defaultValue = "tradeDate") String sortBy,
-            @RequestParam(defaultValue = "desc") String sortDir
-    ) {
+    public PagedResponse<TradeResponse> getTrades(@AuthenticationPrincipal User user, @RequestParam(required = false) Long accountId, @RequestParam(required = false) String symbol, @RequestParam(required = false) SetupType setup, @RequestParam(required = false) SessionType session, @RequestParam(required = false) OutcomeType outcome, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "25") int size, @RequestParam(defaultValue = "tradeDate") String sortBy, @RequestParam(defaultValue = "desc") String sortDir) {
         TradeFilterRequest filter = new TradeFilterRequest();
         filter.setAccountId(accountId);
         filter.setSymbol(symbol);
@@ -58,7 +42,6 @@ public class TradeController {
         filter.setOutcome(outcome);
         filter.setStartDate(startDate);
         filter.setEndDate(endDate);
-
         return tradeService.getTrades(user, filter, page, size, sortBy, sortDir);
     }
 
@@ -83,11 +66,7 @@ public class TradeController {
     }
 
     @PatchMapping("/{id}/journal")
-    public TradeResponse updateTradeJournal(
-            @PathVariable Long id,
-            @Valid @RequestBody TradeJournalRequest request,
-            @AuthenticationPrincipal User user
-    ) {
+    public TradeResponse updateTradeJournal(@PathVariable Long id, @Valid @RequestBody TradeJournalRequest request, @AuthenticationPrincipal User user) {
         return tradeService.updateTradeJournal(user, id, request);
     }
 
@@ -98,21 +77,22 @@ public class TradeController {
     }
 
     @PostMapping("/import")
-    public List<TradeResponse> importTrades(
-            @RequestBody List<TradeImportRequest> requests,
-            @AuthenticationPrincipal User user
-    ) {
+    public List<TradeResponse> importTrades(@RequestBody List<TradeImportRequest> requests, @AuthenticationPrincipal User user) {
         featureAccessService.requireFeature(user, Feature.CSV_IMPORT);
         return tradeService.importTrades(user, requests);
     }
 
     @PostMapping("/repair-tradovate-directions")
-    public java.util.Map<String, Object> repairTradovateDirections(
-            @AuthenticationPrincipal User user,
-            @RequestParam(required = false) Long accountId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
-    ) {
+    public java.util.Map<String, Object> repairTradovateDirections(@AuthenticationPrincipal User user, @RequestParam(required = false) Long accountId, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         featureAccessService.requireFeature(user, Feature.CSV_IMPORT);
         return tradeService.repairTradovateDirections(user, accountId, date);
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public TradeController(final TradeService tradeService, final TradeDetailService tradeDetailService, final FeatureUsageService featureUsageService, final FeatureAccessService featureAccessService) {
+        this.tradeService = tradeService;
+        this.tradeDetailService = tradeDetailService;
+        this.featureUsageService = featureUsageService;
+        this.featureAccessService = featureAccessService;
     }
 }

@@ -11,90 +11,53 @@ import com.tradepilot.exception.ResourceNotFoundException;
 import com.tradepilot.repository.ImportBatchRepository;
 import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.repository.TradingAccountRepository;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class TradingAccountService {
-
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TradingAccountService.class);
     private final TradingAccountRepository tradingAccountRepository;
     private final ImportBatchRepository importBatchRepository;
     private final UsageLimitService usageLimitService;
     private final PerformanceCacheInvalidationService cacheInvalidationService;
-
-
     private final TradeRepository tradeRepository;
 
     public TradingAccountResponse create(User user, TradingAccountRequest request) {
         requireUser(user);
         validateRiskAmount(request.defaultRiskAmount());
         usageLimitService.enforceAccountCreation(user);
-
-        TradingAccount account = TradingAccount.builder()
-                .user(user)
-                .name(request.name())
-                .propFirm(request.propFirm())
-                .accountNumber(request.accountNumber())
-                .accountType(request.accountType())
-                .startingBalance(request.startingBalance())
-                .defaultRiskAmount(request.defaultRiskAmount())
-                .status(request.status() != null ? request.status() : TradingAccountStatus.ACTIVE)
-                .build();
-
+        TradingAccount account = TradingAccount.builder().user(user).name(request.name()).propFirm(request.propFirm()).accountNumber(request.accountNumber()).accountType(request.accountType()).startingBalance(request.startingBalance()).defaultRiskAmount(request.defaultRiskAmount()).status(request.status() != null ? request.status() : TradingAccountStatus.ACTIVE).build();
         TradingAccount saved = tradingAccountRepository.save(account);
         cacheInvalidationService.invalidateBillingUsage(user.getId());
-        log.info("Trading account created. userId={}, accountId={}, type={}",
-                user.getId(), saved.getId(), saved.getAccountType());
+        log.info("Trading account created. userId={}, accountId={}, type={}", user.getId(), saved.getId(), saved.getAccountType());
         return mapToResponse(saved);
     }
 
     public List<TradingAccountResponse> getAccounts(User user) {
         requireUser(user);
-
         List<TradingAccount> accounts = tradingAccountRepository.findByUserOrderByCreatedAtDesc(user);
         log.trace("Trading accounts loaded. userId={}, count={}", user.getId(), accounts.size());
-
-        return accounts.stream()
-                .map(this::mapToResponse)
-                .toList();
+        return accounts.stream().map(this::mapToResponse).toList();
     }
 
     public TradingAccount getAccountForImport(User user, Long accountId) {
         requireUser(user);
-
-        return tradingAccountRepository.findByIdAndUser(accountId, user)
-                .orElseThrow(() -> new ResourceNotFoundException("Trading account not found"));
+        return tradingAccountRepository.findByIdAndUser(accountId, user).orElseThrow(() -> new ResourceNotFoundException("Trading account not found"));
     }
 
     public TradingAccountResponse mapToResponse(TradingAccount account) {
-        return TradingAccountResponse.of(
-                account.getId(),
-                account.getName(),
-                account.getPropFirm(),
-                account.getAccountNumber(),
-                account.getAccountType(),
-                account.getStartingBalance(),
-                account.getDefaultRiskAmount(),
-                account.getStatus(),
-                account.getCreatedAt()
-        );
+        return TradingAccountResponse.of(account.getId(), account.getName(), account.getPropFirm(), account.getAccountNumber(), account.getAccountType(), account.getStartingBalance(), account.getDefaultRiskAmount(), account.getStatus(), account.getCreatedAt());
     }
 
     @Transactional
     public TradingAccountResponse updateRiskAmount(User user, Long accountId, TradingAccountRiskRequest request) {
         requireUser(user);
-
-        TradingAccount account = tradingAccountRepository.findByIdAndUser(accountId, user)
-                .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+        TradingAccount account = tradingAccountRepository.findByIdAndUser(accountId, user).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         validateRiskAmount(request.defaultRiskAmount());
         account.setDefaultRiskAmount(request.defaultRiskAmount());
-
         TradingAccount saved = tradingAccountRepository.save(account);
         cacheInvalidationService.invalidateUserTradeDerivedCaches(user.getId());
         log.info("Trading account default risk updated. userId={}, accountId={}", user.getId(), accountId);
@@ -104,10 +67,7 @@ public class TradingAccountService {
     @Transactional
     public void deleteAccount(User user, Long accountId) {
         requireUser(user);
-
-        TradingAccount account = tradingAccountRepository.findByIdAndUser(accountId, user)
-                .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
-
+        TradingAccount account = tradingAccountRepository.findByIdAndUser(accountId, user).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         importBatchRepository.deleteByAccountIdAndUser(accountId, user);
         tradeRepository.deleteByAccountIdAndUser(accountId, user);
         tradingAccountRepository.delete(account);
@@ -125,5 +85,14 @@ public class TradingAccountService {
         if (riskAmount != null && riskAmount.compareTo(java.math.BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Default risk amount must be greater than 0");
         }
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public TradingAccountService(final TradingAccountRepository tradingAccountRepository, final ImportBatchRepository importBatchRepository, final UsageLimitService usageLimitService, final PerformanceCacheInvalidationService cacheInvalidationService, final TradeRepository tradeRepository) {
+        this.tradingAccountRepository = tradingAccountRepository;
+        this.importBatchRepository = importBatchRepository;
+        this.usageLimitService = usageLimitService;
+        this.cacheInvalidationService = cacheInvalidationService;
+        this.tradeRepository = tradeRepository;
     }
 }

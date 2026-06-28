@@ -3,16 +3,14 @@ package com.tradepilot.service;
 import com.tradepilot.entity.ContactMessage;
 import com.tradepilot.repository.ContactMessageRepository;
 import com.tradepilot.util.LogSanitizer;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class EmailAsyncService {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(EmailAsyncService.class);
     private final EmailService emailService;
     private final ContactMessageRepository contactMessageRepository;
 
@@ -22,8 +20,7 @@ public class EmailAsyncService {
             emailService.sendVerificationEmail(email, link);
             log.info("Verification email processed. userId={}", userId);
         } catch (Exception ex) {
-            log.warn("Verification email async processing failed. userId={}, recipient={}, error={}",
-                    userId, LogSanitizer.maskEmail(email), LogSanitizer.summarizeError(ex.getMessage()));
+            log.warn("Verification email async processing failed. userId={}, recipient={}, error={}", userId, LogSanitizer.maskEmail(email), LogSanitizer.summarizeError(ex.getMessage()));
         }
     }
 
@@ -33,8 +30,7 @@ public class EmailAsyncService {
             emailService.sendPasswordResetEmail(email, link);
             log.info("Password reset email processed. userId={}", userId);
         } catch (Exception ex) {
-            log.warn("Password reset email async processing failed. userId={}, recipient={}, error={}",
-                    userId, LogSanitizer.maskEmail(email), LogSanitizer.summarizeError(ex.getMessage()));
+            log.warn("Password reset email async processing failed. userId={}, recipient={}, error={}", userId, LogSanitizer.maskEmail(email), LogSanitizer.summarizeError(ex.getMessage()));
         }
     }
 
@@ -47,22 +43,18 @@ public class EmailAsyncService {
         } catch (Exception ex) {
             result = new EmailService.EmailSendResult(false, LogSanitizer.summarizeError(ex.getMessage()));
         }
-
         ContactMessage contactMessage = contactMessageRepository.findById(contactMessageId).orElse(null);
         if (contactMessage == null) {
             log.warn("Contact email result could not be recorded because message is missing. contactMessageId={}", contactMessageId);
             return;
         }
-
         contactMessage.setEmailSent(result.sent());
         contactMessage.setEmailError(result.sent() ? null : truncate(LogSanitizer.summarizeError(result.error()), 1000));
         contactMessageRepository.save(contactMessage);
-
         if (result.sent()) {
             log.info("Contact form email processed. contactMessageId={}, emailSent=true", contactMessageId);
         } else {
-            log.warn("Contact form saved but async email delivery failed. contactMessageId={}, recipient={}, error={}",
-                    contactMessageId, LogSanitizer.maskEmail(to), LogSanitizer.summarizeError(result.error()));
+            log.warn("Contact form saved but async email delivery failed. contactMessageId={}, recipient={}, error={}", contactMessageId, LogSanitizer.maskEmail(to), LogSanitizer.summarizeError(result.error()));
         }
     }
 
@@ -72,5 +64,11 @@ public class EmailAsyncService {
         }
         String trimmed = value.trim();
         return trimmed.length() <= maxLength ? trimmed : trimmed.substring(0, maxLength);
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public EmailAsyncService(final EmailService emailService, final ContactMessageRepository contactMessageRepository) {
+        this.emailService = emailService;
+        this.contactMessageRepository = contactMessageRepository;
     }
 }

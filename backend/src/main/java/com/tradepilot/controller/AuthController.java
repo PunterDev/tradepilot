@@ -4,7 +4,6 @@ import com.tradepilot.dto.auth.*;
 import com.tradepilot.entity.User;
 import com.tradepilot.service.AuthService;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.server.ResponseStatusException;
@@ -12,7 +11,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
-@RequiredArgsConstructor
 public class AuthController {
     private final AuthService authService;
 
@@ -55,4 +53,8 @@ public class AuthController {
         return authService.resetPassword(request);
     }
 
+    @java.lang.SuppressWarnings("all")
+    public AuthController(final AuthService authService) {
+        this.authService = authService;
+    }
 }

@@ -4,17 +4,14 @@ import com.tradepilot.dto.stats.*;
 import com.tradepilot.entity.User;
 import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.repository.TradeRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 public class StatsService {
     private final TradeRepository tradeRepository;
     private final TradingAccountService tradingAccountService;
@@ -23,10 +20,7 @@ public class StatsService {
     @Transactional(readOnly = true)
     public DashboardSummaryResponse getDashboardSummary(User user, Long accountId, LocalDate startDate, LocalDate endDate) {
         validateFilters(user, accountId, startDate, endDate);
-        return mapSummary((Object[]) observabilityService.timeQuery(
-                "dashboard_summary",
-                () -> tradeRepository.aggregateSummary(user.getId(), accountId, startDate, endDate)
-        ));
+        return mapSummary((Object[]) observabilityService.timeQuery("dashboard_summary", () -> tradeRepository.aggregateSummary(user.getId(), accountId, startDate, endDate)));
     }
 
     @Transactional(readOnly = true)
@@ -46,12 +40,10 @@ public class StatsService {
 
     @Transactional(readOnly = true)
     public List<MetricItemResponse> getStatsByWeekday(User user, Long accountId, LocalDate s, LocalDate e) {
-        return getStatsByDimension(user, accountId, s, e, "weekday").stream()
-                .map(item -> {
-                    item.setLabel(formatWeekdayLabel(item.getLabel()));
-                    return item;
-                })
-                .toList();
+        return getStatsByDimension(user, accountId, s, e, "weekday").stream().map(item -> {
+            item.setLabel(formatWeekdayLabel(item.getLabel()));
+            return item;
+        }).toList();
     }
 
     private List<MetricItemResponse> getStatsByDimension(User user, Long accountId, LocalDate s, LocalDate e, String dimension) {
@@ -73,8 +65,7 @@ public class StatsService {
         if (accountId != null) {
             tradingAccountService.getAccountForImport(user, accountId);
         }
-        if (s != null && e != null && s.isAfter(e))
-            throw new IllegalArgumentException("startDate cannot be after endDate");
+        if (s != null && e != null && s.isAfter(e)) throw new IllegalArgumentException("startDate cannot be after endDate");
     }
 
     private DashboardSummaryResponse mapSummary(Object[] row) {
@@ -143,5 +134,12 @@ public class StatsService {
             case "7", "7.0" -> "Sunday";
             default -> "Unspecified";
         };
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public StatsService(final TradeRepository tradeRepository, final TradingAccountService tradingAccountService, final ObservabilityService observabilityService) {
+        this.tradeRepository = tradeRepository;
+        this.tradingAccountService = tradingAccountService;
+        this.observabilityService = observabilityService;
     }
 }

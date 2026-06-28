@@ -1,8 +1,5 @@
 package com.tradepilot.billing;
 
-import lombok.Getter;
-
-@Getter
 public class AiCreditLimitExceededException extends RuntimeException {
     private final int creditsUsed;
     private final int creditsLimit;
@@ -13,5 +10,20 @@ public class AiCreditLimitExceededException extends RuntimeException {
         this.creditsUsed = creditsUsed;
         this.creditsLimit = creditsLimit;
         this.creditsRemaining = creditsRemaining;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public int getCreditsUsed() {
+        return this.creditsUsed;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public int getCreditsLimit() {
+        return this.creditsLimit;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public int getCreditsRemaining() {
+        return this.creditsRemaining;
     }
 }

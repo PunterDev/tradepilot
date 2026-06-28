@@ -12,8 +12,6 @@ import com.tradepilot.exception.EmailNotVerifiedException;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.security.JwtService;
 import com.tradepilot.util.LogSanitizer;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -21,18 +19,16 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Duration;
 import java.util.Locale;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class AuthService {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthService.class);
     private static final String VERIFY_MESSAGE = "Account created. Please check your email to verify your account.";
     private static final String RESEND_MESSAGE = "If an account exists, a verification link has been sent.";
     private static final String FORGOT_MESSAGE = "If an account exists, a reset link has been sent.";
-
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -40,7 +36,6 @@ public class AuthService {
     private final AuthTokenService authTokenService;
     private final EmailAsyncService emailAsyncService;
     private final UsageLimitService usageLimitService;
-
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
 
@@ -51,18 +46,10 @@ public class AuthService {
             log.warn("Registration rejected because email already exists. email={}", LogSanitizer.maskEmail(email));
             throw new IllegalArgumentException("Email is already registered");
         }
-
-        User user = User.builder()
-                .name(request.getName().trim())
-                .email(email)
-                .passwordHash(passwordEncoder.encode(request.getPassword()))
-                .emailVerified(false)
-                .build();
+        User user = User.builder().name(request.getName().trim()).email(email).passwordHash(passwordEncoder.encode(request.getPassword())).emailVerified(false).build();
         User saved = userRepository.save(user);
-
         sendVerification(saved);
         log.info("Registration completed. userId={}", saved.getId());
-
         return new MessageResponse(VERIFY_MESSAGE);
     }
 
@@ -76,26 +63,12 @@ public class AuthService {
             throw ex;
         }
         User user = userRepository.findByEmail(email).orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
-
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
             log.warn("Login blocked pending email verification. userId={}", user.getId());
             throw new EmailNotVerifiedException("Please verify your email before logging in.");
         }
-
         BillingUsageResponse usage = usageLimitService.getUsage(user);
-        AuthResponse response = AuthResponse.of(
-                jwtService.generateToken(user),
-                user.getId(),
-                user.getName(),
-                user.getEmail(),
-                planName(user),
-                roleName(user),
-                usage.getMonthlyAiCredits(),
-                usage.getMonthlyAiCreditsUsed(),
-                usage.getMonthlyAiCreditsRemaining(),
-                usage.getPurchasedAiCreditsBalance(),
-                usage.getTotalAiCreditsAvailable()
-        );
+        AuthResponse response = AuthResponse.of(jwtService.generateToken(user), user.getId(), user.getName(), user.getEmail(), planName(user), roleName(user), usage.getMonthlyAiCredits(), usage.getMonthlyAiCreditsUsed(), usage.getMonthlyAiCreditsRemaining(), usage.getPurchasedAiCreditsBalance(), usage.getTotalAiCreditsAvailable());
         log.info("Login successful. userId={}, role={}, plan={}", user.getId(), response.getRole(), response.getPlan());
         return response;
     }
@@ -103,18 +76,7 @@ public class AuthService {
     public UserMeResponse me(User user) {
         log.trace("Auth me requested. userId={}", user == null ? null : user.getId());
         BillingUsageResponse usage = usageLimitService.getUsage(user);
-        return UserMeResponse.of(
-                user.getId(),
-                user.getName(),
-                user.getEmail(),
-                planName(user),
-                roleName(user),
-                usage.getMonthlyAiCredits(),
-                usage.getMonthlyAiCreditsUsed(),
-                usage.getMonthlyAiCreditsRemaining(),
-                usage.getPurchasedAiCreditsBalance(),
-                usage.getTotalAiCreditsAvailable()
-        );
+        return UserMeResponse.of(user.getId(), user.getName(), user.getEmail(), planName(user), roleName(user), usage.getMonthlyAiCredits(), usage.getMonthlyAiCreditsUsed(), usage.getMonthlyAiCreditsRemaining(), usage.getPurchasedAiCreditsBalance(), usage.getTotalAiCreditsAvailable());
     }
 
     @Transactional
@@ -133,23 +95,18 @@ public class AuthService {
     public MessageResponse resendVerification(EmailRequest request) {
         String email = normalizeEmail(request.email());
         log.info("Verification resend requested. email={}", LogSanitizer.maskEmail(email));
-        userRepository.findByEmail(email)
-                .filter(user -> !Boolean.TRUE.equals(user.getEmailVerified()))
-                .ifPresent(this::sendVerification);
-
+        userRepository.findByEmail(email).filter(user -> !Boolean.TRUE.equals(user.getEmailVerified())).ifPresent(this::sendVerification);
         return new MessageResponse(RESEND_MESSAGE);
     }
 
     public MessageResponse forgotPassword(EmailRequest request) {
         String email = normalizeEmail(request.email());
         log.info("Password reset requested. email={}", LogSanitizer.maskEmail(email));
-        userRepository.findByEmail(email)
-                .ifPresent(user -> {
-                    String rawToken = authTokenService.createToken(user, AuthTokenType.PASSWORD_RESET, Duration.ofMinutes(30));
-                    emailAsyncService.sendPasswordResetEmail(user.getId(), user.getEmail(), buildLink("/reset-password", rawToken));
-                    log.info("Password reset email queued. userId={}", user.getId());
-                });
-
+        userRepository.findByEmail(email).ifPresent(user -> {
+            String rawToken = authTokenService.createToken(user, AuthTokenType.PASSWORD_RESET, Duration.ofMinutes(30));
+            emailAsyncService.sendPasswordResetEmail(user.getId(), user.getEmail(), buildLink("/reset-password", rawToken));
+            log.info("Password reset email queued. userId={}", user.getId());
+        });
         return new MessageResponse(FORGOT_MESSAGE);
     }
 
@@ -173,9 +130,7 @@ public class AuthService {
     }
 
     private String buildLink(String path, String rawToken) {
-        String normalizedFrontendUrl = frontendUrl.endsWith("/")
-                ? frontendUrl.substring(0, frontendUrl.length() - 1)
-                : frontendUrl;
+        String normalizedFrontendUrl = frontendUrl.endsWith("/") ? frontendUrl.substring(0, frontendUrl.length() - 1) : frontendUrl;
         return normalizedFrontendUrl + path + "?token=" + rawToken;
     }
 
@@ -189,5 +144,16 @@ public class AuthService {
 
     private String roleName(User user) {
         return (user.getRole() == null ? UserRole.USER : user.getRole()).name();
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public AuthService(final UserRepository userRepository, final PasswordEncoder passwordEncoder, final JwtService jwtService, final AuthenticationManager authenticationManager, final AuthTokenService authTokenService, final EmailAsyncService emailAsyncService, final UsageLimitService usageLimitService) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+        this.authenticationManager = authenticationManager;
+        this.authTokenService = authTokenService;
+        this.emailAsyncService = emailAsyncService;
+        this.usageLimitService = usageLimitService;
     }
 }

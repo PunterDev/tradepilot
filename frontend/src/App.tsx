@@ -462,8 +462,9 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         defaultRiskAmount: newDefaultRiskAmount ? Number(newDefaultRiskAmount) : undefined,
         status: "ACTIVE",
       });
+      const refreshedAccounts = await getAccounts();
 
-      setAccounts((prev) => [created, ...prev]);
+      setAccounts(refreshedAccounts);
       setSelectedAccountId(created.id);
       setNewAccountName("");
       setNewPropFirm("TOPSTEP");
@@ -473,6 +474,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
       setNewDefaultRiskAmount("");
       setShowAccountForm(false);
       void billing.reload();
+      alert("Account created. You can import CSV into it now.");
     } catch (error) {
       console.error(error);
       alert("Failed to create account.");
@@ -685,8 +687,22 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
                 saving={saving}
                 fileName={fileName}
                 parsedImportCount={parsedImportCount}
+                showAccountForm={showAccountForm}
+                creatingAccount={creatingAccount}
+                newAccountName={newAccountName}
+                newPropFirm={newPropFirm}
+                newAccountType={newAccountType}
+                newStartingBalance={newStartingBalance}
+                newDefaultRiskAmount={newDefaultRiskAmount}
                 billingResult={billingResult}
                 onSelectAccount={setSelectedAccountId}
+                onToggleAccountForm={() => setShowAccountForm((prev) => !prev)}
+                onCreateAccount={handleCreateAccount}
+                onAccountNameChange={setNewAccountName}
+                onPropFirmChange={setNewPropFirm}
+                onAccountTypeChange={setNewAccountType}
+                onStartingBalanceChange={setNewStartingBalance}
+                onDefaultRiskAmountChange={setNewDefaultRiskAmount}
                 onCsvUpload={handleCsvUpload}
                 onSaveToDatabase={handleSaveToDatabase}
               />

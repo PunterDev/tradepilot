@@ -3,55 +3,27 @@ package com.tradepilot.coach.service;
 import com.tradepilot.coach.dto.CoachAiResponse;
 import com.tradepilot.coach.dto.CoachDeterministicSummary;
 import com.tradepilot.coach.entity.CoachSnapshotType;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Locale;
 
 @Service
-@Slf4j
 public class CoachOutputConsistencyService {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CoachOutputConsistencyService.class);
 
-    public CoachAiResponse enforce(
-            CoachSnapshotType type,
-            CoachDeterministicSummary summary,
-            CoachAiResponse response,
-            Long userId,
-            Long accountId,
-            LocalDate reviewDate
-    ) {
+    public CoachAiResponse enforce(CoachSnapshotType type, CoachDeterministicSummary summary, CoachAiResponse response, Long userId, Long accountId, LocalDate reviewDate) {
         if (response == null || summary == null || !hasPositiveOutcome(summary)) {
             return response;
         }
-
         String dominantDirection = dominantDirection(summary);
         if (dominantDirection == null) {
             return response;
         }
-
         String patchedText = profitableDirectionReview(dominantDirection);
-        response.setNextSessionFocus(patchIfContradictory(
-                response.getNextSessionFocus(),
-                patchedText,
-                type,
-                summary,
-                userId,
-                accountId,
-                reviewDate,
-                "nextSessionFocus"
-        ));
-        response.setAvoidNextSession(patchIfContradictory(
-                response.getAvoidNextSession(),
-                processReviewText(type, summary),
-                type,
-                summary,
-                userId,
-                accountId,
-                reviewDate,
-                "avoidNextSession"
-        ));
+        response.setNextSessionFocus(patchIfContradictory(response.getNextSessionFocus(), patchedText, type, summary, userId, accountId, reviewDate, "nextSessionFocus"));
+        response.setAvoidNextSession(patchIfContradictory(response.getAvoidNextSession(), processReviewText(type, summary), type, summary, userId, accountId, reviewDate, "avoidNextSession"));
         return response;
     }
 
@@ -85,29 +57,11 @@ public class CoachOutputConsistencyService {
         return pnl != null && pnl.compareTo(BigDecimal.ZERO) > 0;
     }
 
-    private String patchIfContradictory(
-            String original,
-            String replacement,
-            CoachSnapshotType type,
-            CoachDeterministicSummary summary,
-            Long userId,
-            Long accountId,
-            LocalDate reviewDate,
-            String field
-    ) {
+    private String patchIfContradictory(String original, String replacement, CoachSnapshotType type, CoachDeterministicSummary summary, Long userId, Long accountId, LocalDate reviewDate, String field) {
         if (!contradictsProfitableDirection(original, dominantDirection(summary))) {
             return original;
         }
-        log.warn(
-                "AI Coach consistency patch applied. userId={}, accountId={}, reviewDate={}, type={}, field={}, reason={}, originalText={}",
-                userId,
-                accountId,
-                reviewDate,
-                type,
-                field,
-                "PROFITABLE_DIRECTION_DESCRIBED_AS_FAILED",
-                sanitizeForLog(original)
-        );
+        log.warn("AI Coach consistency patch applied. userId={}, accountId={}, reviewDate={}, type={}, field={}, reason={}, originalText={}", userId, accountId, reviewDate, type, field, "PROFITABLE_DIRECTION_DESCRIBED_AS_FAILED", sanitizeForLog(original));
         return replacement;
     }
 
@@ -117,24 +71,10 @@ public class CoachOutputConsistencyService {
         }
         String normalized = text.toLowerCase(Locale.ROOT);
         if ("LONG".equals(dominantDirection)) {
-            return containsAny(normalized,
-                    "long idea failed",
-                    "long failed",
-                    "long direction failed",
-                    "bullish idea failed",
-                    "bullish failed",
-                    "bullish direction failed"
-            );
+            return containsAny(normalized, "long idea failed", "long failed", "long direction failed", "bullish idea failed", "bullish failed", "bullish direction failed");
         }
         if ("SHORT".equals(dominantDirection)) {
-            return containsAny(normalized,
-                    "short idea failed",
-                    "short failed",
-                    "short direction failed",
-                    "bearish idea failed",
-                    "bearish failed",
-                    "bearish direction failed"
-            );
+            return containsAny(normalized, "short idea failed", "short failed", "short direction failed", "bearish idea failed", "bearish failed", "bearish direction failed");
         }
         return false;
     }
@@ -149,8 +89,7 @@ public class CoachOutputConsistencyService {
     }
 
     private String profitableDirectionReview(String side) {
-        return "The " + side
-                + " trade was profitable. Review whether the entry had a clear thesis, invalidation point, predefined stop, and realistic target before taking a similar setup.";
+        return "The " + side + " trade was profitable. Review whether the entry had a clear thesis, invalidation point, predefined stop, and realistic target before taking a similar setup.";
     }
 
     private String processReviewText(CoachSnapshotType type, CoachDeterministicSummary summary) {

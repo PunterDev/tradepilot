@@ -12,12 +12,9 @@ import com.tradepilot.exception.ResourceNotFoundException;
 import com.tradepilot.repository.ImportBatchRepository;
 import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.repository.spec.TradeSpecification;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -26,34 +23,14 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
-
 import com.tradepilot.entity.ImportBatch;
 import com.tradepilot.entity.TradingAccount;
 
-
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class TradeService {
-    private static final List<DateTimeFormatter> TRADOVATE_TIMESTAMP_FORMATTERS = List.of(
-            new DateTimeFormatterBuilder()
-            .parseCaseInsensitive()
-            .appendPattern("M/d/yyyy h:mm:ss a")
-            .toFormatter(Locale.US),
-            new DateTimeFormatterBuilder()
-                    .parseCaseInsensitive()
-                    .appendPattern("M/d/yyyy h:mm a")
-                    .toFormatter(Locale.US),
-            new DateTimeFormatterBuilder()
-                    .parseCaseInsensitive()
-                    .appendPattern("M/d/yy h:mm:ss a")
-                    .toFormatter(Locale.US),
-            new DateTimeFormatterBuilder()
-                    .parseCaseInsensitive()
-                    .appendPattern("M/d/yy h:mm a")
-                    .toFormatter(Locale.US)
-    );
-
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TradeService.class);
+    private static final List<DateTimeFormatter> TRADOVATE_TIMESTAMP_FORMATTERS = List.of(new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy h:mm:ss a").toFormatter(Locale.US), new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy h:mm a").toFormatter(Locale.US), new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy h:mm:ss a").toFormatter(Locale.US), new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy h:mm a").toFormatter(Locale.US));
     private final TradeRepository tradeRepository;
     private final TradingAccountService tradingAccountService;
     private final ImportBatchRepository importBatchRepository;
@@ -73,16 +50,13 @@ public class TradeService {
     public PagedResponse<TradeResponse> getTrades(User user, TradeFilterRequest filter, int page, int size, String sortBy, String sortDir) {
         requireUser(user);
         validateOwnedAccountFilter(user, filter.getAccountId());
-
-        if (filter.getStartDate() != null && filter.getEndDate() != null && filter.getStartDate().isAfter(filter.getEndDate()))
-            throw new IllegalArgumentException("startDate cannot be after endDate");
+        if (filter.getStartDate() != null && filter.getEndDate() != null && filter.getStartDate().isAfter(filter.getEndDate())) throw new IllegalArgumentException("startDate cannot be after endDate");
         String safeSortBy = sanitizeSortBy(sortBy);
         String safeSortDir = "asc".equalsIgnoreCase(sortDir) ? "asc" : "desc";
         int safePage = Math.max(page, 0);
         int safeSize = size <= 0 ? 25 : Math.min(size, 100);
         Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.fromString(safeSortDir), safeSortBy));
-        log.trace("Trades requested. userId={}, accountId={}, page={}, size={}, sortBy={}, sortDir={}",
-                user.getId(), filter.getAccountId(), safePage, safeSize, safeSortBy, safeSortDir);
+        log.trace("Trades requested. userId={}, accountId={}, page={}, size={}, sortBy={}, sortDir={}", user.getId(), filter.getAccountId(), safePage, safeSize, safeSortBy, safeSortDir);
         Page<Trade> tradePage = tradeRepository.findAll(TradeSpecification.withFilters(user, filter), pageable);
         List<TradeResponse> content = tradePage.getContent().stream().map(this::mapToResponse).toList();
         return PagedResponse.of(content, tradePage.getNumber(), tradePage.getSize(), tradePage.getTotalElements(), tradePage.getTotalPages(), tradePage.isFirst(), tradePage.isLast(), safeSortBy, safeSortDir);
@@ -109,8 +83,7 @@ public class TradeService {
     @Transactional
     public TradeResponse updateTradeJournal(User user, Long tradeId, TradeJournalRequest request) {
         requireUser(user);
-        Trade trade = tradeRepository.findByIdAndUser(tradeId, user)
-                .orElseThrow(() -> new ResourceNotFoundException("Trade not found"));
+        Trade trade = tradeRepository.findByIdAndUser(tradeId, user).orElseThrow(() -> new ResourceNotFoundException("Trade not found"));
         trade.setSetup(parseSetup(request.setup()));
         trade.setConfidence(request.confidence());
         trade.setConfidenceRating(request.confidence());
@@ -125,63 +98,41 @@ public class TradeService {
     @Transactional
     public List<TradeResponse> importTrades(User user, List<TradeImportRequest> requests) {
         requireUser(user);
-
         if (requests == null || requests.isEmpty()) {
             log.warn("Trade import skipped because request list is empty. userId={}", user.getId());
             return List.of();
         }
-
         Long accountId = requests.get(0).accountId();
         log.info("Trade import started. userId={}, accountId={}, requestedRows={}", user.getId(), accountId, requests.size());
-
         if (accountId == null) {
             throw new IllegalArgumentException("accountId is required for import");
         }
-
         usageLimitService.enforceTradeImport(user, requests.size());
-
         TradingAccount account = tradingAccountService.getAccountForImport(user, accountId);
-
-        ImportBatch batch = ImportBatch.builder()
-                .user(user)
-                .account(account)
-                .fileName(requests.get(0).fileName())
-                .totalRows(requests.size())
-                .importedRows(0)
-                .skippedDuplicates(0)
-                .build();
-
+        ImportBatch batch = ImportBatch.builder().user(user).account(account).fileName(requests.get(0).fileName()).totalRows(requests.size()).importedRows(0).skippedDuplicates(0).build();
         batch = importBatchRepository.save(batch);
-
         List<Trade> tradesToSave = new java.util.ArrayList<>();
         java.util.Set<String> seenKeys = new java.util.HashSet<>();
         int skippedDuplicates = 0;
-
         for (TradeImportRequest request : requests) {
             String key = request.externalTradeKey();
-
             if (key != null && !seenKeys.add(key)) {
                 skippedDuplicates++;
                 continue;
             }
-
             if (key != null && tradeRepository.existsByUserAndAccount_IdAndExternalTradeKey(user, accountId, key)) {
                 skippedDuplicates++;
                 continue;
             }
-
             Side requestedSide = parseSide(request.side());
             RepairData repairData = repairDataFromExternalKey(request.externalTradeKey());
             Side finalSide = requestedSide;
             if (requestedSide == Side.UNKNOWN && repairData != null && repairData.side() != Side.UNKNOWN) {
                 finalSide = repairData.side();
-                log.info("Tradovate import side inferred from execution timestamps. userId={}, accountId={}, symbol={}, externalTradeKey={}, side={}",
-                        user.getId(), accountId, request.symbol(), request.externalTradeKey(), finalSide);
+                log.info("Tradovate import side inferred from execution timestamps. userId={}, accountId={}, symbol={}, externalTradeKey={}, side={}", user.getId(), accountId, request.symbol(), request.externalTradeKey(), finalSide);
             } else if (requestedSide == Side.UNKNOWN) {
-                log.warn("Tradovate import side unresolved. userId={}, accountId={}, symbol={}, tradeDate={}, entryTime={}, exitTime={}, externalTradeKey={}",
-                        user.getId(), accountId, request.symbol(), request.tradeDate(), request.entryTime(), request.exitTime(), request.externalTradeKey());
+                log.warn("Tradovate import side unresolved. userId={}, accountId={}, symbol={}, tradeDate={}, entryTime={}, exitTime={}, externalTradeKey={}", user.getId(), accountId, request.symbol(), request.tradeDate(), request.entryTime(), request.exitTime(), request.externalTradeKey());
             }
-
             LocalDate tradeDate = request.tradeDate();
             LocalDateTime entryTime = request.entryTime();
             LocalDateTime exitTime = request.exitTime();
@@ -194,55 +145,26 @@ public class TradeService {
                 entryPrice = repairData.entryPrice() == null ? request.entryPrice() : repairData.entryPrice();
                 exitPrice = repairData.exitPrice() == null ? request.exitPrice() : repairData.exitPrice();
             }
-
-            Trade trade = Trade.builder()
-                    .user(user)
-                    .account(account)
-                    .importBatch(batch)
-                    .externalTradeKey(request.externalTradeKey())
-                    .symbol(request.symbol())
-                    .market(request.market())
-                    .tradeDate(tradeDate)
-                    .entryTime(entryTime)
-                    .exitTime(exitTime)
-                    .side(finalSide.name())
-                    .setup(request.setup())
-                    .session(request.session())
-                    .entryPrice(entryPrice)
-                    .exitPrice(exitPrice)
-                    .quantity(request.quantity())
-                    .pnlAmount(request.pnlAmount())
-                    .pnlR(request.pnlR())
-                    .outcome(request.outcome())
-                    .build();
-
+            Trade trade = Trade.builder().user(user).account(account).importBatch(batch).externalTradeKey(request.externalTradeKey()).symbol(request.symbol()).market(request.market()).tradeDate(tradeDate).entryTime(entryTime).exitTime(exitTime).side(finalSide.name()).setup(request.setup()).session(request.session()).entryPrice(entryPrice).exitPrice(exitPrice).quantity(request.quantity()).pnlAmount(request.pnlAmount()).pnlR(request.pnlR()).outcome(request.outcome()).build();
             tradesToSave.add(trade);
         }
-
         List<Trade> saved = tradeRepository.saveAll(tradesToSave);
-
         batch.setImportedRows(saved.size());
         batch.setSkippedDuplicates(skippedDuplicates);
         importBatchRepository.save(batch);
         cacheInvalidationService.invalidateUserTradeDerivedCaches(user.getId());
-        log.info("Trade import completed. userId={}, accountId={}, batchId={}, importedRows={}, skippedDuplicates={}",
-                user.getId(), accountId, batch.getId(), saved.size(), skippedDuplicates);
-
-        return saved.stream()
-                .map(this::mapToResponse)
-                .toList();
+        log.info("Trade import completed. userId={}, accountId={}, batchId={}, importedRows={}, skippedDuplicates={}", user.getId(), accountId, batch.getId(), saved.size(), skippedDuplicates);
+        return saved.stream().map(this::mapToResponse).toList();
     }
 
     @Transactional
     public Map<String, Object> repairTradovateDirections(User user, Long accountId, LocalDate tradeDate) {
         requireUser(user);
         validateOwnedAccountFilter(user, accountId);
-
         List<Trade> candidates = tradeRepository.findImportedTradesForDirectionRepair(user, accountId, tradeDate);
         int updated = 0;
         int skipped = 0;
         int invalidKeys = 0;
-
         for (Trade trade : candidates) {
             RepairData repairData = repairDataFromExternalKey(trade.getExternalTradeKey());
             if (repairData == null) {
@@ -253,7 +175,6 @@ public class TradeService {
                 skipped++;
                 continue;
             }
-
             boolean changed = false;
             if (!repairData.side().name().equals(trade.getSide())) {
                 trade.setSide(repairData.side().name());
@@ -285,20 +206,12 @@ public class TradeService {
                 skipped++;
             }
         }
-
         if (updated > 0) {
             tradeRepository.saveAll(candidates);
             cacheInvalidationService.invalidateUserTradeDerivedCaches(user.getId());
         }
-
-        log.info("Tradovate direction repair completed. userId={}, accountId={}, date={}, scanned={}, updated={}, skipped={}, invalidKeys={}",
-                user.getId(), accountId, tradeDate, candidates.size(), updated, skipped, invalidKeys);
-        return Map.of(
-                "scanned", candidates.size(),
-                "updated", updated,
-                "skipped", skipped,
-                "invalidKeys", invalidKeys
-        );
+        log.info("Tradovate direction repair completed. userId={}, accountId={}, date={}, scanned={}, updated={}, skipped={}, invalidKeys={}", user.getId(), accountId, tradeDate, candidates.size(), updated, skipped, invalidKeys);
+        return Map.of("scanned", candidates.size(), "updated", updated, "skipped", skipped, "invalidKeys", invalidKeys);
     }
 
     @Transactional
@@ -313,8 +226,7 @@ public class TradeService {
     @Transactional(readOnly = true)
     public Trade getOwnedTrade(User user, Long tradeId) {
         requireUser(user);
-        return tradeRepository.findByIdAndUser(tradeId, user)
-                .orElseThrow(() -> new ResourceNotFoundException("Trade not found"));
+        return tradeRepository.findByIdAndUser(tradeId, user).orElseThrow(() -> new ResourceNotFoundException("Trade not found"));
     }
 
     private String sanitizeSortBy(String sortBy) {
@@ -448,12 +360,10 @@ public class TradeService {
         if (externalTradeKey == null || externalTradeKey.isBlank()) {
             return null;
         }
-
         String[] parts = externalTradeKey.split("\\|", -1);
         if (parts.length < 8) {
             return null;
         }
-
         LocalDateTime boughtAt = parseTradovateTimestamp(parts[2]);
         LocalDateTime soldAt = parseTradovateTimestamp(parts[3]);
         BigDecimal buyPrice = parseDecimal(parts[5]);
@@ -461,7 +371,6 @@ public class TradeService {
         if (boughtAt == null || soldAt == null || boughtAt.equals(soldAt)) {
             return null;
         }
-
         if (boughtAt.isBefore(soldAt)) {
             return new RepairData(Side.LONG, boughtAt, soldAt, buyPrice, sellPrice);
         }
@@ -477,8 +386,8 @@ public class TradeService {
             try {
                 return LocalDateTime.parse(clean, formatter);
             } catch (Exception ignored) {
-                // Try the next known Tradovate export shape.
             }
+            // Try the next known Tradovate export shape.
         }
         try {
             return LocalDateTime.parse(clean);
@@ -515,12 +424,16 @@ public class TradeService {
         }
     }
 
-    private record RepairData(
-            Side side,
-            LocalDateTime entryTime,
-            LocalDateTime exitTime,
-            BigDecimal entryPrice,
-            BigDecimal exitPrice
-    ) {
+
+    private record RepairData(Side side, LocalDateTime entryTime, LocalDateTime exitTime, BigDecimal entryPrice, BigDecimal exitPrice) {
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public TradeService(final TradeRepository tradeRepository, final TradingAccountService tradingAccountService, final ImportBatchRepository importBatchRepository, final UsageLimitService usageLimitService, final PerformanceCacheInvalidationService cacheInvalidationService) {
+        this.tradeRepository = tradeRepository;
+        this.tradingAccountService = tradingAccountService;
+        this.importBatchRepository = importBatchRepository;
+        this.usageLimitService = usageLimitService;
+        this.cacheInvalidationService = cacheInvalidationService;
     }
 }

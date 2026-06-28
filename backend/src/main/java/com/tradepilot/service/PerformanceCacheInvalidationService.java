@@ -1,10 +1,8 @@
 package com.tradepilot.service;
 
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 public class PerformanceCacheInvalidationService {
     private final AggregateCacheService aggregateCacheService;
 
@@ -29,5 +27,10 @@ public class PerformanceCacheInvalidationService {
 
     public void invalidateBillingUsage(Long userId) {
         aggregateCacheService.evictByPrefix("billing-usage:" + userId + ":");
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public PerformanceCacheInvalidationService(final AggregateCacheService aggregateCacheService) {
+        this.aggregateCacheService = aggregateCacheService;
     }
 }

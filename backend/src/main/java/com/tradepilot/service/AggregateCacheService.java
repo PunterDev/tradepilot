@@ -1,20 +1,17 @@
 package com.tradepilot.service;
 
 import org.springframework.stereotype.Service;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import com.tradepilot.observability.CacheMetricRecorder;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class AggregateCacheService {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AggregateCacheService.class);
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
     private final CacheMetricRecorder cacheMetricRecorder;
 
@@ -28,15 +25,13 @@ public class AggregateCacheService {
             log.debug("Aggregate cache hit. cacheName={}, key={}, elapsedMs={}", cacheName(key), key, elapsedMs(startedAt));
             return (T) existing.value();
         }
-
         cacheMetricRecorder.record(cacheName(key), false);
         log.debug("Aggregate cache miss. cacheName={}, key={}", cacheName(key), key);
         long loaderStartedAt = System.nanoTime();
         T value = loader.get();
         long loaderElapsedMs = elapsedMs(loaderStartedAt);
         cache.put(key, new CacheEntry(value, Instant.now().plus(ttl)));
-        log.debug("Aggregate cache loader completed. cacheName={}, key={}, loaderMs={}, totalMs={}",
-                cacheName(key), key, loaderElapsedMs, elapsedMs(startedAt));
+        log.debug("Aggregate cache loader completed. cacheName={}, key={}, loaderMs={}, totalMs={}", cacheName(key), key, loaderElapsedMs, elapsedMs(startedAt));
         return value;
     }
 
@@ -57,6 +52,12 @@ public class AggregateCacheService {
         return Duration.ofNanos(System.nanoTime() - startedAtNanos).toMillis();
     }
 
+
     private record CacheEntry(Object value, Instant expiresAt) {
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public AggregateCacheService(final CacheMetricRecorder cacheMetricRecorder) {
+        this.cacheMetricRecorder = cacheMetricRecorder;
     }
 }

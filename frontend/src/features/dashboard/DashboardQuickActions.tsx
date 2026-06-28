@@ -12,7 +12,21 @@ type Props = {
   saving: boolean;
   fileName: string;
   tradeCount: number;
+  showAccountForm: boolean;
+  creatingAccount: boolean;
+  newAccountName: string;
+  newPropFirm: string;
+  newAccountType: string;
+  newStartingBalance: string;
+  newDefaultRiskAmount: string;
   onSelectAccount: (accountId: SelectedAccountId) => void;
+  onToggleAccountForm: () => void;
+  onCreateAccount: () => void;
+  onAccountNameChange: (value: string) => void;
+  onPropFirmChange: (value: string) => void;
+  onAccountTypeChange: (value: string) => void;
+  onStartingBalanceChange: (value: string) => void;
+  onDefaultRiskAmountChange: (value: string) => void;
   onCsvUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onSaveToDatabase: () => void;
 };
@@ -24,7 +38,21 @@ export default function DashboardQuickActions({
   saving,
   fileName,
   tradeCount,
+  showAccountForm,
+  creatingAccount,
+  newAccountName,
+  newPropFirm,
+  newAccountType,
+  newStartingBalance,
+  newDefaultRiskAmount,
   onSelectAccount,
+  onToggleAccountForm,
+  onCreateAccount,
+  onAccountNameChange,
+  onPropFirmChange,
+  onAccountTypeChange,
+  onStartingBalanceChange,
+  onDefaultRiskAmountChange,
   onCsvUpload,
   onSaveToDatabase,
 }: Props) {
@@ -37,24 +65,129 @@ export default function DashboardQuickActions({
   return (
     <div style={grid}>
       <section style={topCard}>
-        <h2 style={sectionTitle}>Account</h2>
-        <label style={label}>Viewing</label>
-        <select
-          value={selectedAccountId}
-          onChange={(event) => {
-            const value = event.target.value;
-            onSelectAccount(value === "ALL" ? "ALL" : value ? Number(value) : "");
-          }}
-          style={input}
-        >
-          <option value="ALL">All Accounts</option>
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </select>
-        <p style={mutedText}>All Accounts is analytics-only. Select one account before importing.</p>
+        <div>
+          <div style={accountHeader}>
+            <h2 style={sectionTitle}>Account</h2>
+            <button
+              type="button"
+              onClick={onToggleAccountForm}
+              style={addAccountButton}
+            >
+              {showAccountForm ? "Cancel" : "+ Add Account"}
+            </button>
+          </div>
+
+          <label style={label}>Viewing</label>
+          <select
+            value={accounts.length > 0 ? selectedAccountId : ""}
+            onChange={(event) => {
+              const value = event.target.value;
+              onSelectAccount(value === "ALL" ? "ALL" : value ? Number(value) : "");
+            }}
+            style={input}
+            disabled={accounts.length === 0}
+          >
+            {accounts.length === 0 ? (
+              <option value="">No accounts yet</option>
+            ) : (
+              <>
+                <option value="ALL">All Accounts</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+
+          {accounts.length === 0 ? (
+            <p style={mutedText}>Create your first trading account before importing trades.</p>
+          ) : (
+            <p style={mutedText}>All Accounts is analytics-only. Select one account before importing.</p>
+          )}
+        </div>
+
+        {showAccountForm && (
+          <div style={accountForm}>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={label}>Account Name</label>
+              <input
+                style={input}
+                placeholder="Topstep 50K"
+                value={newAccountName}
+                onChange={(event) => onAccountNameChange(event.target.value)}
+              />
+            </div>
+
+            <div>
+              <label style={label}>Broker / Platform</label>
+              <select
+                style={input}
+                value={newPropFirm}
+                onChange={(event) => onPropFirmChange(event.target.value)}
+              >
+                <option value="TOPSTEP">Topstep</option>
+                <option value="APEX">Apex</option>
+                <option value="TAKE_PROFIT_TRADER">Take Profit Trader</option>
+                <option value="TRADEIFY">Tradeify</option>
+                <option value="OTHER">Tradovate / Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={label}>Account Type</label>
+              <select
+                style={input}
+                value={newAccountType}
+                onChange={(event) => onAccountTypeChange(event.target.value)}
+              >
+                <option value="">Optional</option>
+                <option value="FUNDED">Funded</option>
+                <option value="EVALUATION">Evaluation</option>
+                <option value="PERSONAL">Personal</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={label}>Starting Balance</label>
+              <input
+                style={input}
+                type="number"
+                placeholder="50000"
+                value={newStartingBalance}
+                onChange={(event) => onStartingBalanceChange(event.target.value)}
+              />
+            </div>
+
+            <div>
+              <label style={label}>Default 1R</label>
+              <input
+                style={input}
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="200"
+                value={newDefaultRiskAmount}
+                onChange={(event) => onDefaultRiskAmountChange(event.target.value)}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={onCreateAccount}
+              disabled={creatingAccount || !newAccountName.trim()}
+              style={{
+                ...button,
+                gridColumn: "1 / -1",
+                opacity: creatingAccount || !newAccountName.trim() ? 0.55 : 1,
+                cursor: creatingAccount || !newAccountName.trim() ? "not-allowed" : "pointer",
+              }}
+            >
+              {creatingAccount ? "Creating..." : "Create Account"}
+            </button>
+          </div>
+        )}
       </section>
 
       <section style={topCard}>
@@ -126,6 +259,35 @@ const topCard: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   justifyContent: "space-between",
+};
+
+const accountHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  marginBottom: 8,
+};
+
+const addAccountButton: CSSProperties = {
+  width: "auto",
+  whiteSpace: "nowrap",
+  padding: "9px 12px",
+  borderRadius: 999,
+  border: "1px solid rgba(52,211,153,0.42)",
+  background: "rgba(34,197,94,0.12)",
+  color: "#86efac",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const accountForm: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 12,
+  marginTop: 16,
+  paddingTop: 16,
+  borderTop: "1px solid rgba(148,163,184,0.14)",
 };
 
 const linkButton: CSSProperties = {

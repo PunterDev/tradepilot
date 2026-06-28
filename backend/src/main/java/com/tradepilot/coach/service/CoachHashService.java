@@ -3,16 +3,12 @@ package com.tradepilot.coach.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradepilot.coach.dto.CoachDeterministicSummary;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 @Service
-@RequiredArgsConstructor
 public class CoachHashService {
-
     private final ObjectMapper objectMapper;
 
     public String hash(CoachDeterministicSummary summary) {
@@ -36,15 +32,18 @@ public class CoachHashService {
 
     private String toHex(byte[] hash) {
         StringBuilder hex = new StringBuilder();
-
         for (byte b : hash) {
-            String hexValue = Integer.toHexString(0xff & b);
+            String hexValue = Integer.toHexString(255 & b);
             if (hexValue.length() == 1) {
                 hex.append('0');
             }
             hex.append(hexValue);
         }
-
         return hex.toString();
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public CoachHashService(final ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
     }
 }

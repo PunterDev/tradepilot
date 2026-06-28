@@ -15,13 +15,10 @@ import com.tradepilot.entity.User;
 import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.util.LogSanitizer;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
-
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -29,9 +26,9 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class StripeBillingService {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(StripeBillingService.class);
     private final StripeProperties stripeProperties;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
@@ -41,7 +38,6 @@ public class StripeBillingService {
     private final ProcessedStripeEventRepository processedStripeEventRepository;
     private final AiCreditPurchaseRepository aiCreditPurchaseRepository;
     private final UsageLimitService usageLimitService;
-
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
 
@@ -55,7 +51,6 @@ public class StripeBillingService {
         Stripe.apiKey = stripeProperties.getSecretKey();
         String normalizedBillingCycle = normalizeBillingCycle(billingCycle);
         log.info("Stripe checkout session creation started. userId={}, billingCycle={}", user.getId(), normalizedBillingCycle);
-
         try {
             String customerId = ensureStripeCustomer(user);
             Session session;
@@ -69,19 +64,16 @@ public class StripeBillingService {
                 customerId = createStripeCustomer(user);
                 session = stripeApiClient.createCheckoutSession(user, customerId, priceId, frontendUrl);
             }
-
             if (StringUtils.hasText(session.getCustomer()) && !session.getCustomer().equals(user.getStripeCustomerId())) {
                 user.setStripeCustomerId(session.getCustomer());
                 transactionTemplate.executeWithoutResult(status -> userRepository.save(user));
             }
             observabilityService.recordStripeEvent("checkout.session.create", true, System.currentTimeMillis() - start, null);
-            log.info("Stripe checkout session creation completed. userId={}, billingCycle={}, durationMs={}",
-                    user.getId(), normalizedBillingCycle, System.currentTimeMillis() - start);
+            log.info("Stripe checkout session creation completed. userId={}, billingCycle={}, durationMs={}", user.getId(), normalizedBillingCycle, System.currentTimeMillis() - start);
             return session.getUrl();
         } catch (RuntimeException | StripeException ex) {
             observabilityService.recordStripeEvent("checkout.session.create", false, System.currentTimeMillis() - start, LogSanitizer.summarizeError(ex.getMessage()));
-            log.error("Stripe checkout session creation failed. userId={}, billingCycle={}, durationMs={}",
-                    user.getId(), normalizedBillingCycle, System.currentTimeMillis() - start, ex);
+            log.error("Stripe checkout session creation failed. userId={}, billingCycle={}, durationMs={}", user.getId(), normalizedBillingCycle, System.currentTimeMillis() - start, ex);
             throw ex;
         }
     }
@@ -96,8 +88,7 @@ public class StripeBillingService {
             try {
                 String portalUrl = stripeApiClient.createPortalSession(customerId, frontendUrl);
                 observabilityService.recordStripeEvent("billing.portal.create", true, System.currentTimeMillis() - start, null);
-                log.info("Stripe portal session creation completed. userId={}, durationMs={}",
-                        user.getId(), System.currentTimeMillis() - start);
+                log.info("Stripe portal session creation completed. userId={}, durationMs={}", user.getId(), System.currentTimeMillis() - start);
                 return portalUrl;
             } catch (InvalidRequestException ex) {
                 if (!isNoSuchCustomer(ex)) {
@@ -106,14 +97,12 @@ public class StripeBillingService {
                 clearStripeCustomer(user);
                 String portalUrl = stripeApiClient.createPortalSession(createStripeCustomer(user), frontendUrl);
                 observabilityService.recordStripeEvent("billing.portal.create", true, System.currentTimeMillis() - start, null);
-                log.info("Stripe portal session creation completed after customer recovery. userId={}, durationMs={}",
-                        user.getId(), System.currentTimeMillis() - start);
+                log.info("Stripe portal session creation completed after customer recovery. userId={}, durationMs={}", user.getId(), System.currentTimeMillis() - start);
                 return portalUrl;
             }
         } catch (RuntimeException | StripeException ex) {
             observabilityService.recordStripeEvent("billing.portal.create", false, System.currentTimeMillis() - start, LogSanitizer.summarizeError(ex.getMessage()));
-            log.error("Stripe portal session creation failed. userId={}, durationMs={}",
-                    user.getId(), System.currentTimeMillis() - start, ex);
+            log.error("Stripe portal session creation failed. userId={}, durationMs={}", user.getId(), System.currentTimeMillis() - start, ex);
             throw ex;
         }
     }
@@ -125,8 +114,7 @@ public class StripeBillingService {
             throw new PlanLimitExceededException("Upgrade to Pro to buy AI credit packs.");
         }
         Stripe.apiKey = stripeProperties.getSecretKey();
-        log.info("Stripe AI credit pack checkout creation started. userId={}, packId={}, credits={}",
-                user.getId(), pack.name(), pack.credits());
+        log.info("Stripe AI credit pack checkout creation started. userId={}, packId={}, credits={}", user.getId(), pack.name(), pack.credits());
         try {
             String customerId = ensureStripeCustomer(user);
             Session session;
@@ -148,21 +136,18 @@ public class StripeBillingService {
             return session.getUrl();
         } catch (RuntimeException | StripeException ex) {
             observabilityService.recordStripeEvent("checkout.session.create.credit_pack", false, System.currentTimeMillis() - start, LogSanitizer.summarizeError(ex.getMessage()));
-            log.error("Stripe AI credit pack checkout creation failed. userId={}, packId={}, durationMs={}",
-                    user.getId(), pack.name(), System.currentTimeMillis() - start, ex);
+            log.error("Stripe AI credit pack checkout creation failed. userId={}, packId={}, durationMs={}", user.getId(), pack.name(), System.currentTimeMillis() - start, ex);
             throw ex;
         }
     }
 
-    public void handleWebhook(String payload, String signatureHeader)
-            throws SignatureVerificationException, IOException {
+    public void handleWebhook(String payload, String signatureHeader) throws SignatureVerificationException, IOException {
         long start = System.currentTimeMillis();
         if (!StringUtils.hasText(stripeProperties.getWebhookSecret())) {
             observabilityService.recordStripeEvent("webhook.unconfigured", false, System.currentTimeMillis() - start, "Stripe webhook secret missing");
             log.warn("Stripe webhook rejected because webhook secret is not configured.");
             throw new StripeNotConfiguredException();
         }
-
         try {
             Webhook.constructEvent(payload, signatureHeader, stripeProperties.getWebhookSecret());
             JsonNode root = objectMapper.readTree(payload);
@@ -173,15 +158,12 @@ public class StripeBillingService {
                 throw new IOException("Stripe event id is missing");
             }
             log.info("Stripe webhook processing started. eventId={}, type={}", eventId, type);
-
             if (processedStripeEventRepository.existsByEventId(eventId)) {
                 observabilityService.recordStripeEvent(type + ".duplicate", true, System.currentTimeMillis() - start, null);
                 log.warn("Duplicate Stripe webhook ignored. eventId={}, type={}", eventId, type);
                 return;
             }
-
             StripeWebhookCommand command = normalizeWebhookCommand(eventId, type, root.path("data").path("object"));
-
             transactionTemplate.executeWithoutResult(status -> {
                 if (processedStripeEventRepository.existsByEventId(eventId)) {
                     log.warn("Duplicate Stripe webhook ignored inside transaction. eventId={}, type={}", eventId, type);
@@ -192,10 +174,8 @@ public class StripeBillingService {
                     case "checkout.session.completed" -> handleCheckoutCompleted(command.object());
                     case "customer.subscription.updated" -> handleSubscriptionUpdated(command.object());
                     case "customer.subscription.deleted" -> handleSubscriptionDeleted(command.object());
-                    case "invoice_payment.paid", "invoice.payment_succeeded" ->
-                            handleInvoicePaymentSucceeded(command.eventId(), command.invoice(), command.invoiceSubscriptionPeriod());
-                    case "invoice_payment.payment_failed", "invoice.payment_failed" ->
-                            handleInvoicePaymentFailed(command.eventId(), command.invoice(), command.invoiceSubscriptionPeriod());
+                    case "invoice_payment.paid", "invoice.payment_succeeded" -> handleInvoicePaymentSucceeded(command.eventId(), command.invoice(), command.invoiceSubscriptionPeriod());
+                    case "invoice_payment.payment_failed", "invoice.payment_failed" -> handleInvoicePaymentFailed(command.eventId(), command.invoice(), command.invoiceSubscriptionPeriod());
                     default -> {
                         // Ignore Stripe events this app does not need yet.
                         log.warn("Unsupported Stripe webhook event ignored. eventId={}, type={}", eventId, type);
@@ -203,16 +183,14 @@ public class StripeBillingService {
                 }
             });
             observabilityService.recordStripeEvent(type, true, System.currentTimeMillis() - start, null);
-            log.info("Stripe webhook processing completed. eventId={}, type={}, durationMs={}",
-                    eventId, type, System.currentTimeMillis() - start);
+            log.info("Stripe webhook processing completed. eventId={}, type={}, durationMs={}", eventId, type, System.currentTimeMillis() - start);
         } catch (SignatureVerificationException ex) {
             observabilityService.recordStripeEvent("webhook", false, System.currentTimeMillis() - start, "Invalid Stripe webhook signature");
             log.warn("Stripe webhook rejected due to invalid signature. durationMs={}", System.currentTimeMillis() - start);
             throw ex;
         } catch (IOException ex) {
             observabilityService.recordStripeEvent("webhook", false, System.currentTimeMillis() - start, LogSanitizer.summarizeError(ex.getMessage()));
-            log.warn("Stripe webhook rejected due to invalid payload. durationMs={}, reason={}",
-                    System.currentTimeMillis() - start, LogSanitizer.summarizeError(ex.getMessage()));
+            log.warn("Stripe webhook rejected due to invalid payload. durationMs={}, reason={}", System.currentTimeMillis() - start, LogSanitizer.summarizeError(ex.getMessage()));
             throw ex;
         } catch (RuntimeException ex) {
             observabilityService.recordStripeEvent("webhook", false, System.currentTimeMillis() - start, LogSanitizer.summarizeError(ex.getMessage()));
@@ -227,8 +205,7 @@ public class StripeBillingService {
                 JsonNode invoice = resolveInvoiceFromPaymentEvent(eventId, type, object);
                 yield new StripeWebhookCommand(eventId, type, object, invoice, lookupInvoiceSubscriptionPeriod(invoice, eventId));
             }
-            case "invoice.payment_succeeded", "invoice.payment_failed" ->
-                    new StripeWebhookCommand(eventId, type, object, object, lookupInvoiceSubscriptionPeriod(object, eventId));
+            case "invoice.payment_succeeded", "invoice.payment_failed" -> new StripeWebhookCommand(eventId, type, object, object, lookupInvoiceSubscriptionPeriod(object, eventId));
             default -> new StripeWebhookCommand(eventId, type, object, object, null);
         };
     }
@@ -245,8 +222,7 @@ public class StripeBillingService {
                 Invoice invoiceModel = stripeApiClient.retrieveInvoice(invoiceId);
                 return objectMapper.valueToTree(invoiceModel);
             } catch (StripeException ex) {
-                log.warn("Stripe invoice lookup failed for payment event. eventId={}, type={}, invoiceId={}, reason={}",
-                        eventId, type, invoiceId, LogSanitizer.summarizeError(ex.getMessage()));
+                log.warn("Stripe invoice lookup failed for payment event. eventId={}, type={}, invoiceId={}, reason={}", eventId, type, invoiceId, LogSanitizer.summarizeError(ex.getMessage()));
                 throw new IOException("Stripe invoice lookup failed", ex);
             }
         }
@@ -269,7 +245,6 @@ public class StripeBillingService {
             }
             clearStripeCustomer(user);
         }
-
         return createStripeCustomer(user);
     }
 
@@ -296,13 +271,11 @@ public class StripeBillingService {
             handleCreditPackCheckoutCompleted(object);
             return;
         }
-
         Long userId = object.path("metadata").path("userId").asLong(0);
         if (userId == 0) {
             log.warn("Stripe checkout completed without userId metadata.");
             return;
         }
-
         userRepository.findById(userId).ifPresent(user -> {
             JsonNode subscription = object.path("subscription");
             user.setPlan(PlanType.PRO);
@@ -331,16 +304,13 @@ public class StripeBillingService {
             log.info("Stripe AI credit pack checkout already applied. sessionId={}", sessionId);
             return;
         }
-
         JsonNode metadata = object.path("metadata");
         Long userId = metadata.path("userId").asLong(0);
         String packId = metadata.path("packId").asText(null);
         if (userId == 0 || !StringUtils.hasText(packId)) {
-            log.warn("Stripe AI credit pack checkout missing metadata. sessionId={}, userId={}, packId={}",
-                    sessionId, userId, packId);
+            log.warn("Stripe AI credit pack checkout missing metadata. sessionId={}, userId={}, packId={}", sessionId, userId, packId);
             return;
         }
-
         AiCreditPack pack;
         try {
             pack = AiCreditPack.valueOf(packId);
@@ -348,28 +318,15 @@ public class StripeBillingService {
             log.warn("Stripe AI credit pack checkout had unsupported pack id. sessionId={}, packId={}", sessionId, packId);
             return;
         }
-
         userRepository.findByIdForUpdate(userId).ifPresentOrElse(user -> {
             int currentBalance = user.getPurchasedAiCreditsBalance() == null ? 0 : Math.max(0, user.getPurchasedAiCreditsBalance());
             user.setPurchasedAiCreditsBalance(currentBalance + pack.credits());
             userRepository.save(user);
-
-            AiCreditPurchase purchase = AiCreditPurchase.builder()
-                    .userId(user.getId())
-                    .stripeCheckoutSessionId(sessionId)
-                    .stripePaymentIntentId(textField(object, "payment_intent"))
-                    .creditsPurchased(pack.credits())
-                    .amountCents((int) object.path("amount_total").asLong(pack.amountCents()))
-                    .currency(object.path("currency").asText("usd"))
-                    .status(AiCreditPurchaseStatus.COMPLETED)
-                    .completedAt(LocalDateTime.now())
-                    .build();
+            AiCreditPurchase purchase = AiCreditPurchase.builder().userId(user.getId()).stripeCheckoutSessionId(sessionId).stripePaymentIntentId(textField(object, "payment_intent")).creditsPurchased(pack.credits()).amountCents((int) object.path("amount_total").asLong(pack.amountCents())).currency(object.path("currency").asText("usd")).status(AiCreditPurchaseStatus.COMPLETED).completedAt(LocalDateTime.now()).build();
             aiCreditPurchaseRepository.save(purchase);
             usageLimitService.invalidateUsageCache(user.getId());
-            log.info("Stripe AI credit pack applied. userId={}, sessionId={}, packId={}, credits={}, newBalance={}",
-                    user.getId(), sessionId, pack.name(), pack.credits(), user.getPurchasedAiCreditsBalance());
-        }, () -> log.warn("Stripe AI credit pack checkout could not be mapped to user. sessionId={}, userId={}",
-                sessionId, userId));
+            log.info("Stripe AI credit pack applied. userId={}, sessionId={}, packId={}, credits={}, newBalance={}", user.getId(), sessionId, pack.name(), pack.credits(), user.getPurchasedAiCreditsBalance());
+        }, () -> log.warn("Stripe AI credit pack checkout could not be mapped to user. sessionId={}, userId={}", sessionId, userId));
     }
 
     void handleSubscriptionUpdated(JsonNode object) {
@@ -379,16 +336,13 @@ public class StripeBillingService {
             boolean cancelAtPeriodEnd = object.path("cancel_at_period_end").asBoolean(false);
             SubscriptionStatus subscriptionStatus = mapSubscriptionStatus(status, cancelAtPeriodEnd);
             user.setSubscriptionStatus(subscriptionStatus);
-            user.setPlan(subscriptionStatus == SubscriptionStatus.ACTIVE || subscriptionStatus == SubscriptionStatus.TRIALING
-                    ? PlanType.PRO
-                    : PlanType.FREE);
+            user.setPlan(subscriptionStatus == SubscriptionStatus.ACTIVE || subscriptionStatus == SubscriptionStatus.TRIALING ? PlanType.PRO : PlanType.FREE);
             applyStripeIds(user, object.path("customer").asText(null), object.path("id").asText(null));
             applySubscriptionPeriod(user, object);
             applySubscriptionCancellationMetadata(user, object);
             userRepository.save(user);
             usageLimitService.invalidateUsageCache(user.getId());
-            log.info("Stripe subscription updated. userId={}, status={}, plan={}, cancelAtPeriodEnd={}",
-                    user.getId(), subscriptionStatus, user.getPlan(), cancelAtPeriodEnd);
+            log.info("Stripe subscription updated. userId={}, status={}, plan={}, cancelAtPeriodEnd={}", user.getId(), subscriptionStatus, user.getPlan(), cancelAtPeriodEnd);
         });
     }
 
@@ -408,11 +362,9 @@ public class StripeBillingService {
 
     void handleInvoicePaymentSucceeded(String eventId, JsonNode invoice, Period invoiceSubscriptionPeriod) {
         if (invoice == null || invoice.isMissingNode() || invoice.isNull() || invoice.isTextual()) {
-            log.warn("Stripe paid invoice event did not include supported invoice details. eventId={}, invoiceId={}",
-                    eventId, invoice == null ? null : invoice.asText(null));
+            log.warn("Stripe paid invoice event did not include supported invoice details. eventId={}, invoiceId={}", eventId, invoice == null ? null : invoice.asText(null));
             return;
         }
-
         findUserForInvoice(invoice).ifPresentOrElse(user -> {
             user.setPlan(PlanType.PRO);
             user.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
@@ -422,17 +374,14 @@ public class StripeBillingService {
             userRepository.save(user);
             usageLimitService.invalidateUsageCache(user.getId());
             log.info("Stripe invoice payment confirmed active subscription. userId={}", user.getId());
-        }, () -> log.warn("Stripe paid invoice could not be mapped to a TradePilot user. invoiceId={}",
-                textField(invoice, "id")));
+        }, () -> log.warn("Stripe paid invoice could not be mapped to a TradePilot user. invoiceId={}", textField(invoice, "id")));
     }
 
     void handleInvoicePaymentFailed(String eventId, JsonNode invoice, Period invoiceSubscriptionPeriod) {
         if (invoice.isMissingNode() || invoice.isNull() || invoice.isTextual()) {
-            log.warn("Stripe invoice payment failed event did not include expanded invoice details. eventId={}, invoiceId={}",
-                    eventId, invoice.asText(null));
+            log.warn("Stripe invoice payment failed event did not include expanded invoice details. eventId={}, invoiceId={}", eventId, invoice.asText(null));
             return;
         }
-
         findUserForInvoice(invoice).ifPresentOrElse(user -> {
             user.setPlan(PlanType.FREE);
             user.setSubscriptionStatus(SubscriptionStatus.PAST_DUE);
@@ -441,8 +390,7 @@ public class StripeBillingService {
             userRepository.save(user);
             usageLimitService.invalidateUsageCache(user.getId());
             log.warn("Stripe invoice payment failed; subscription marked past due. userId={}", user.getId());
-        }, () -> log.warn("Stripe failed invoice could not be mapped to a TradePilot user. invoiceId={}",
-                textField(invoice, "id")));
+        }, () -> log.warn("Stripe failed invoice could not be mapped to a TradePilot user. invoiceId={}", textField(invoice, "id")));
     }
 
     private Optional<User> findUserForSubscription(JsonNode object) {
@@ -453,7 +401,6 @@ public class StripeBillingService {
                 return bySubscription;
             }
         }
-
         String customerId = object.path("customer").asText(null);
         if (StringUtils.hasText(customerId)) {
             return userRepository.findByStripeCustomerId(customerId);
@@ -469,7 +416,6 @@ public class StripeBillingService {
                 return bySubscription;
             }
         }
-
         String customerId = textField(invoice, "customer");
         if (StringUtils.hasText(customerId)) {
             return userRepository.findByStripeCustomerId(customerId);
@@ -494,17 +440,13 @@ public class StripeBillingService {
     }
 
     private void applyInvoicePeriod(User user, JsonNode invoice, String eventId, Period invoiceSubscriptionPeriod) {
-        Optional<Period> period = Optional.ofNullable(invoiceSubscriptionPeriod)
-                .filter(value -> isValidPeriod(value.start(), value.end()))
-                .or(() -> periodFromInvoiceLines(invoice));
+        Optional<Period> period = Optional.ofNullable(invoiceSubscriptionPeriod).filter(value -> isValidPeriod(value.start(), value.end())).or(() -> periodFromInvoiceLines(invoice));
         if (period.isEmpty()) {
-            log.warn("Stripe invoice period not updated because no valid subscription or invoice line period was available. eventId={}, invoiceId={}",
-                    eventId, textField(invoice, "id"));
+            log.warn("Stripe invoice period not updated because no valid subscription or invoice line period was available. eventId={}, invoiceId={}", eventId, textField(invoice, "id"));
             return;
         }
         if (!isValidPeriod(period.get().start(), period.get().end())) {
-            log.warn("Stripe invoice period not updated because extracted period is invalid. eventId={}, invoiceId={}, start={}, end={}",
-                    eventId, textField(invoice, "id"), period.get().start(), period.get().end());
+            log.warn("Stripe invoice period not updated because extracted period is invalid. eventId={}, invoiceId={}, start={}, end={}", eventId, textField(invoice, "id"), period.get().start(), period.get().end());
             return;
         }
         setPeriodStart(user, period.get().start());
@@ -535,22 +477,16 @@ public class StripeBillingService {
         try {
             Subscription subscription = stripeApiClient.retrieveSubscription(subscriptionId);
             if (subscription == null) {
-                log.warn("Stripe subscription period lookup returned no subscription. eventId={}, invoiceId={}, subscriptionId={}",
-                        eventId, textField(invoice, "id"), subscriptionId);
+                log.warn("Stripe subscription period lookup returned no subscription. eventId={}, invoiceId={}, subscriptionId={}", eventId, textField(invoice, "id"), subscriptionId);
                 return null;
             }
-            Period period = new Period(
-                    firstPositiveNullable(subscription.getCurrentPeriodStart(), subscriptionPeriodStart(invoice.path("subscription"))),
-                    firstPositiveNullable(subscription.getCurrentPeriodEnd(), subscriptionPeriodEnd(invoice.path("subscription")))
-            );
+            Period period = new Period(firstPositiveNullable(subscription.getCurrentPeriodStart(), subscriptionPeriodStart(invoice.path("subscription"))), firstPositiveNullable(subscription.getCurrentPeriodEnd(), subscriptionPeriodEnd(invoice.path("subscription"))));
             if (isValidPeriod(period.start(), period.end())) {
                 return period;
             }
-            log.warn("Stripe subscription period from retrieved subscription is invalid. eventId={}, invoiceId={}, subscriptionId={}, start={}, end={}",
-                    eventId, textField(invoice, "id"), subscriptionId, period.start(), period.end());
+            log.warn("Stripe subscription period from retrieved subscription is invalid. eventId={}, invoiceId={}, subscriptionId={}, start={}, end={}", eventId, textField(invoice, "id"), subscriptionId, period.start(), period.end());
         } catch (StripeException ex) {
-            log.warn("Stripe subscription period lookup failed for invoice. eventId={}, invoiceId={}, subscriptionId={}, reason={}",
-                    eventId, textField(invoice, "id"), subscriptionId, LogSanitizer.summarizeError(ex.getMessage()));
+            log.warn("Stripe subscription period lookup failed for invoice. eventId={}, invoiceId={}, subscriptionId={}, reason={}", eventId, textField(invoice, "id"), subscriptionId, LogSanitizer.summarizeError(ex.getMessage()));
         }
         return null;
     }
@@ -586,18 +522,11 @@ public class StripeBillingService {
     }
 
     private long subscriptionPeriodStart(JsonNode subscription) {
-        return firstPositive(
-                subscription.path("current_period_start").asLong(0),
-                subscription.path("items").path("data").path(0).path("current_period_start").asLong(0)
-        );
+        return firstPositive(subscription.path("current_period_start").asLong(0), subscription.path("items").path("data").path(0).path("current_period_start").asLong(0));
     }
 
     private long subscriptionPeriodEnd(JsonNode subscription) {
-        return firstPositive(
-                subscription.path("current_period_end").asLong(0),
-                subscription.path("items").path("data").path(0).path("current_period_end").asLong(0),
-                subscription.path("cancel_at").asLong(0)
-        );
+        return firstPositive(subscription.path("current_period_end").asLong(0), subscription.path("items").path("data").path(0).path("current_period_end").asLong(0), subscription.path("cancel_at").asLong(0));
     }
 
     private String textField(JsonNode object, String fieldName) {
@@ -658,19 +587,7 @@ public class StripeBillingService {
     }
 
     private void logSubscriptionFields(String eventType, JsonNode subscription) {
-        log.info("Stripe subscription fields received. eventType={}, subscriptionId={}, customerId={}, status={}, currentPeriodStart={}, currentPeriodEnd={}, itemCurrentPeriodStart={}, itemCurrentPeriodEnd={}, cancelAtPeriodEnd={}, cancelAt={}, canceledAt={}, metadataKeys={}",
-                eventType,
-                textField(subscription, "id"),
-                textField(subscription, "customer"),
-                subscription.path("status").asText(null),
-                subscription.path("current_period_start").asLong(0),
-                subscription.path("current_period_end").asLong(0),
-                subscription.path("items").path("data").path(0).path("current_period_start").asLong(0),
-                subscription.path("items").path("data").path(0).path("current_period_end").asLong(0),
-                subscription.path("cancel_at_period_end").asBoolean(false),
-                subscription.path("cancel_at").asLong(0),
-                subscription.path("canceled_at").asLong(0),
-                metadataKeys(subscription.path("metadata")));
+        log.info("Stripe subscription fields received. eventType={}, subscriptionId={}, customerId={}, status={}, currentPeriodStart={}, currentPeriodEnd={}, itemCurrentPeriodStart={}, itemCurrentPeriodEnd={}, cancelAtPeriodEnd={}, cancelAt={}, canceledAt={}, metadataKeys={}", eventType, textField(subscription, "id"), textField(subscription, "customer"), subscription.path("status").asText(null), subscription.path("current_period_start").asLong(0), subscription.path("current_period_end").asLong(0), subscription.path("items").path("data").path(0).path("current_period_start").asLong(0), subscription.path("items").path("data").path(0).path("current_period_end").asLong(0), subscription.path("cancel_at_period_end").asBoolean(false), subscription.path("cancel_at").asLong(0), subscription.path("canceled_at").asLong(0), metadataKeys(subscription.path("metadata")));
     }
 
     private String metadataKeys(JsonNode metadata) {
@@ -688,16 +605,12 @@ public class StripeBillingService {
         return keys.toString();
     }
 
+
     private record Period(long start, long end) {
     }
 
-    private record StripeWebhookCommand(
-            String eventId,
-            String type,
-            JsonNode object,
-            JsonNode invoice,
-            Period invoiceSubscriptionPeriod
-    ) {
+
+    private record StripeWebhookCommand(String eventId, String type, JsonNode object, JsonNode invoice, Period invoiceSubscriptionPeriod) {
     }
 
     private void requireCheckoutConfig() {
@@ -710,9 +623,7 @@ public class StripeBillingService {
     private String checkoutPriceId(String billingCycle) {
         requireSecretKey();
         String normalized = normalizeBillingCycle(billingCycle);
-        String priceId = "yearly".equals(normalized)
-                ? stripeProperties.getProYearlyPriceId()
-                : stripeProperties.getProPriceId();
+        String priceId = "yearly".equals(normalized) ? stripeProperties.getProYearlyPriceId() : stripeProperties.getProPriceId();
         if (!StringUtils.hasText(priceId)) {
             throw new StripeNotConfiguredException();
         }
@@ -727,5 +638,18 @@ public class StripeBillingService {
         if (!StringUtils.hasText(stripeProperties.getSecretKey())) {
             throw new StripeNotConfiguredException();
         }
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public StripeBillingService(final StripeProperties stripeProperties, final UserRepository userRepository, final ObjectMapper objectMapper, final StripeApiClient stripeApiClient, final TransactionTemplate transactionTemplate, final ObservabilityService observabilityService, final ProcessedStripeEventRepository processedStripeEventRepository, final AiCreditPurchaseRepository aiCreditPurchaseRepository, final UsageLimitService usageLimitService) {
+        this.stripeProperties = stripeProperties;
+        this.userRepository = userRepository;
+        this.objectMapper = objectMapper;
+        this.stripeApiClient = stripeApiClient;
+        this.transactionTemplate = transactionTemplate;
+        this.observabilityService = observabilityService;
+        this.processedStripeEventRepository = processedStripeEventRepository;
+        this.aiCreditPurchaseRepository = aiCreditPurchaseRepository;
+        this.usageLimitService = usageLimitService;
     }
 }

@@ -3,14 +3,11 @@ package com.tradepilot.featureusage;
 import com.tradepilot.featureusage.dto.FeatureUsageSummaryResponse;
 import com.tradepilot.featureusage.dto.FeatureUsageTrendsResponse;
 import com.tradepilot.featureusage.dto.FeatureUsageUserResponse;
-import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/feature-usage")
-@RequiredArgsConstructor
 public class AdminFeatureUsageController {
     private final FeatureUsageService featureUsageService;
 
@@ -27,5 +24,10 @@ public class AdminFeatureUsageController {
     @GetMapping("/users")
     public List<FeatureUsageUserResponse> users() {
         return featureUsageService.users();
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public AdminFeatureUsageController(final FeatureUsageService featureUsageService) {
+        this.featureUsageService = featureUsageService;
     }
 }

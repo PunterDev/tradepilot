@@ -5,15 +5,11 @@ import com.tradepilot.coach.dto.CoachSnapshotDto;
 import com.tradepilot.coach.entity.AiCoachSnapshot;
 import com.tradepilot.coach.entity.CoachSnapshotStatus;
 import com.tradepilot.coach.entity.CoachSnapshotType;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-
 import java.math.BigDecimal;
 
 @Component
-@RequiredArgsConstructor
 public class CoachSnapshotMapper {
-
     private final ObjectMapper objectMapper;
 
     public CoachSnapshotDto toDto(AiCoachSnapshot snapshot) {
@@ -38,9 +34,7 @@ public class CoachSnapshotMapper {
         response.setErrorMessage(snapshot.getErrorMessage());
         applyDeterministicSummary(response, snapshot.getDeterministicSummaryJson());
         response.setAiGenerated(snapshot.getAiResponseJson() != null && !snapshot.getAiResponseJson().isBlank());
-        boolean completedNoTrades = snapshot.getStatus() == CoachSnapshotStatus.COMPLETED
-                && snapshot.getTotalTrades() != null
-                && snapshot.getTotalTrades() == 0;
+        boolean completedNoTrades = snapshot.getStatus() == CoachSnapshotStatus.COMPLETED && snapshot.getTotalTrades() != null && snapshot.getTotalTrades() == 0;
         response.setNoTradeDay(completedNoTrades && snapshot.getSnapshotType() == CoachSnapshotType.DAILY);
         response.setNoTradeWeek(completedNoTrades && snapshot.getSnapshotType() == CoachSnapshotType.WEEKLY);
         response.setCreditsConsumed(response.getAiGenerated() ? creditsFor(snapshot) : 0);
@@ -75,8 +69,8 @@ public class CoachSnapshotMapper {
             response.setDataQualityReason(text(summary, "dataQualityReason"));
             response.setNextSessionRule(text(summary, "nextSessionRule"));
         } catch (Exception ignored) {
-            // Legacy snapshots may contain older summary JSON. Keep the snapshot viewable.
         }
+        // Legacy snapshots may contain older summary JSON. Keep the snapshot viewable.
     }
 
     private String text(com.fasterxml.jackson.databind.JsonNode node, String field) {
@@ -89,5 +83,10 @@ public class CoachSnapshotMapper {
 
     private BigDecimal decimal(com.fasterxml.jackson.databind.JsonNode node, String field) {
         return node.hasNonNull(field) ? node.get(field).decimalValue() : null;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public CoachSnapshotMapper(final ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
     }
 }

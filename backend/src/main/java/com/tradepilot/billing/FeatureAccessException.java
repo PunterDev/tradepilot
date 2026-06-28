@@ -1,8 +1,5 @@
 package com.tradepilot.billing;
 
-import lombok.Getter;
-
-@Getter
 public class FeatureAccessException extends RuntimeException {
     private final Feature feature;
     private final String requiredPlan;
@@ -11,5 +8,15 @@ public class FeatureAccessException extends RuntimeException {
         super(message);
         this.feature = feature;
         this.requiredPlan = "PRO";
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public Feature getFeature() {
+        return this.feature;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getRequiredPlan() {
+        return this.requiredPlan;
     }
 }

@@ -33,8 +33,22 @@ type Props = {
   saving: boolean;
   fileName: string;
   parsedImportCount: number;
+  showAccountForm: boolean;
+  creatingAccount: boolean;
+  newAccountName: string;
+  newPropFirm: string;
+  newAccountType: string;
+  newStartingBalance: string;
+  newDefaultRiskAmount: string;
   billingResult?: string | null;
   onSelectAccount: (accountId: SelectedAccountId) => void;
+  onToggleAccountForm: () => void;
+  onCreateAccount: () => void;
+  onAccountNameChange: (value: string) => void;
+  onPropFirmChange: (value: string) => void;
+  onAccountTypeChange: (value: string) => void;
+  onStartingBalanceChange: (value: string) => void;
+  onDefaultRiskAmountChange: (value: string) => void;
   onCsvUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onSaveToDatabase: () => void;
 };
@@ -52,8 +66,22 @@ export default function DashboardHome({
   saving,
   fileName,
   parsedImportCount,
+  showAccountForm,
+  creatingAccount,
+  newAccountName,
+  newPropFirm,
+  newAccountType,
+  newStartingBalance,
+  newDefaultRiskAmount,
   billingResult,
   onSelectAccount,
+  onToggleAccountForm,
+  onCreateAccount,
+  onAccountNameChange,
+  onPropFirmChange,
+  onAccountTypeChange,
+  onStartingBalanceChange,
+  onDefaultRiskAmountChange,
   onCsvUpload,
   onSaveToDatabase,
 }: Props) {
@@ -78,7 +106,21 @@ export default function DashboardHome({
         saving={saving}
         fileName={fileName}
         tradeCount={parsedImportCount}
+        showAccountForm={showAccountForm}
+        creatingAccount={creatingAccount}
+        newAccountName={newAccountName}
+        newPropFirm={newPropFirm}
+        newAccountType={newAccountType}
+        newStartingBalance={newStartingBalance}
+        newDefaultRiskAmount={newDefaultRiskAmount}
         onSelectAccount={onSelectAccount}
+        onToggleAccountForm={onToggleAccountForm}
+        onCreateAccount={onCreateAccount}
+        onAccountNameChange={onAccountNameChange}
+        onPropFirmChange={onPropFirmChange}
+        onAccountTypeChange={onAccountTypeChange}
+        onStartingBalanceChange={onStartingBalanceChange}
+        onDefaultRiskAmountChange={onDefaultRiskAmountChange}
         onCsvUpload={onCsvUpload}
         onSaveToDatabase={onSaveToDatabase}
       />

@@ -3,8 +3,6 @@ package com.tradepilot.observability;
 import com.tradepilot.entity.User;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -16,16 +14,13 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
-@RequiredArgsConstructor
-@Slf4j
 public class RequestMetricsInterceptor implements HandlerInterceptor {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RequestMetricsInterceptor.class);
     private static final String START_ATTRIBUTE = "tradepilot.request.start";
-
     private final ObservabilityService observabilityService;
-
     @Value("${app.observability.slow-request-warn-ms:1000}")
     private long slowRequestWarnMs;
-
     @Value("${app.observability.slow-request-error-ms:5000}")
     private long slowRequestErrorMs;
 
@@ -41,7 +36,6 @@ public class RequestMetricsInterceptor implements HandlerInterceptor {
         if (!(start instanceof Long startMs) || shouldSkip(request)) {
             return;
         }
-
         String endpoint = endpoint(request);
         long durationMs = System.currentTimeMillis() - startMs;
         Long userId = currentUserId();
@@ -52,10 +46,7 @@ public class RequestMetricsInterceptor implements HandlerInterceptor {
 
     private boolean shouldSkip(HttpServletRequest request) {
         String uri = request.getRequestURI();
-        return uri == null
-                || uri.startsWith("/actuator")
-                || uri.startsWith("/h2-console")
-                || uri.startsWith("/error");
+        return uri == null || uri.startsWith("/actuator") || uri.startsWith("/h2-console") || uri.startsWith("/error");
     }
 
     private String endpoint(HttpServletRequest request) {
@@ -81,33 +72,24 @@ public class RequestMetricsInterceptor implements HandlerInterceptor {
     private void logRequest(String method, String endpoint, int status, long durationMs, Long userId, Exception ex) {
         if (ex != null) {
             if (isExpectedRequestException(ex)) {
-                log.info("Request rejected. method={}, endpoint={}, status={}, durationMs={}, userId={}, reason={}",
-                        method, endpoint, status, durationMs, userId, ex.getClass().getSimpleName());
+                log.info("Request rejected. method={}, endpoint={}, status={}, durationMs={}, userId={}, reason={}", method, endpoint, status, durationMs, userId, ex.getClass().getSimpleName());
             } else {
-                log.error("Request failed. method={}, endpoint={}, status={}, durationMs={}, userId={}",
-                        method, endpoint, status, durationMs, userId, ex);
+                log.error("Request failed. method={}, endpoint={}, status={}, durationMs={}, userId={}", method, endpoint, status, durationMs, userId, ex);
             }
             return;
         }
-
         if (durationMs >= slowRequestErrorMs) {
-            log.error("Critical slow request. method={}, endpoint={}, status={}, durationMs={}, userId={}",
-                    method, endpoint, status, durationMs, userId);
+            log.error("Critical slow request. method={}, endpoint={}, status={}, durationMs={}, userId={}", method, endpoint, status, durationMs, userId);
         } else if (durationMs >= slowRequestWarnMs) {
-            log.warn("Slow request. method={}, endpoint={}, status={}, durationMs={}, userId={}",
-                    method, endpoint, status, durationMs, userId);
+            log.warn("Slow request. method={}, endpoint={}, status={}, durationMs={}, userId={}", method, endpoint, status, durationMs, userId);
         } else if (status >= 400) {
-            log.info("Request completed with error status. method={}, endpoint={}, status={}, durationMs={}, userId={}",
-                    method, endpoint, status, durationMs, userId);
+            log.info("Request completed with error status. method={}, endpoint={}, status={}, durationMs={}, userId={}", method, endpoint, status, durationMs, userId);
         }
     }
 
     private boolean isExpectedRequestException(Exception ex) {
         String exceptionName = ex.getClass().getName();
-        return exceptionName.contains("AccessDeniedException")
-                || exceptionName.contains("AuthenticationException")
-                || exceptionName.contains("AuthorizationDeniedException")
-                || exceptionName.contains("ResponseStatusException");
+        return exceptionName.contains("AccessDeniedException") || exceptionName.contains("AuthenticationException") || exceptionName.contains("AuthorizationDeniedException") || exceptionName.contains("ResponseStatusException");
     }
 
     private int effectiveStatus(int responseStatus, Exception ex) {
@@ -124,5 +106,10 @@ public class RequestMetricsInterceptor implements HandlerInterceptor {
             return responseStatusException.getStatusCode().value();
         }
         return responseStatus >= 400 ? responseStatus : HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public RequestMetricsInterceptor(final ObservabilityService observabilityService) {
+        this.observabilityService = observabilityService;
     }
 }

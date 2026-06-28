@@ -3,8 +3,6 @@ package com.tradepilot.security;
 import com.tradepilot.entity.User;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -13,16 +11,14 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 @Component
-@RequiredArgsConstructor
-@Slf4j
 public class RateLimitInterceptor implements HandlerInterceptor {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RateLimitInterceptor.class);
     private final InMemoryRateLimiter rateLimiter;
-
     @Value("${app.rate-limit.auth-login.max-requests:8}")
     private int authLoginMax;
     @Value("${app.rate-limit.auth-login.window-seconds:60}")
@@ -50,17 +46,13 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         if (rule == null) {
             return true;
         }
-
         String subject = rule.authenticated ? authenticatedSubject() : ipAddress(request);
         String key = "%s:%s".formatted(rule.name, subject);
-        InMemoryRateLimiter.RateLimitResult result =
-                rateLimiter.check(key, rule.maxRequests, rule.windowSeconds);
+        RateLimitResult result = rateLimiter.check(key, rule.maxRequests, rule.windowSeconds);
         if (result.allowed()) {
             return true;
         }
-
-        log.warn("Rate limit blocked request. rule={}, subject={}, path={}, retryAfterSeconds={}",
-                rule.name, safeSubject(rule.authenticated, subject), request.getRequestURI(), result.retryAfterSeconds());
+        log.warn("Rate limit blocked request. rule={}, subject={}, path={}, retryAfterSeconds={}", rule.name, safeSubject(rule.authenticated, subject), request.getRequestURI(), result.retryAfterSeconds());
         response.setStatus(429);
         response.setHeader("Retry-After", String.valueOf(result.retryAfterSeconds()));
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -78,8 +70,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         if (HttpMethod.POST.matches(method) && "/api/auth/register".equals(path)) {
             return new RateLimitRule("auth-register", authRegisterMax, authRegisterWindowSeconds, false);
         }
-        if (HttpMethod.POST.matches(method)
-                && ("/api/auth/forgot-password".equals(path) || "/api/auth/resend-verification".equals(path))) {
+        if (HttpMethod.POST.matches(method) && ("/api/auth/forgot-password".equals(path) || "/api/auth/resend-verification".equals(path))) {
             return new RateLimitRule("auth-email", authEmailMax, authEmailWindowSeconds, false);
         }
         if (HttpMethod.POST.matches(method) && "/api/contact".equals(path)) {
@@ -92,19 +83,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     }
 
     private boolean isAiGenerationRequest(String method, String path) {
-        return (HttpMethod.POST.matches(method)
-                && ("/api/ai/trade-review".equals(path)
-                || "/api/ai/trade-review/async".equals(path)
-                || "/api/ai/weekly-review".equals(path)
-                || "/api/ai/chart-review".equals(path)
-                || "/api/ai/trade-analysis/async".equals(path)
-                || "/api/coach/daily/generate".equals(path)
-                || "/api/coach/weekly/generate".equals(path)
-                || "/api/sessions/review/generate".equals(path)
-                || "/api/ai/leak-detector/regenerate".equals(path)))
-                || (HttpMethod.GET.matches(method)
-                && ("/api/ai/trading-dna".equals(path)
-                || "/api/ai/leak-detector".equals(path)));
+        return (HttpMethod.POST.matches(method) && ("/api/ai/trade-review".equals(path) || "/api/ai/trade-review/async".equals(path) || "/api/ai/weekly-review".equals(path) || "/api/ai/chart-review".equals(path) || "/api/ai/trade-analysis/async".equals(path) || "/api/coach/daily/generate".equals(path) || "/api/coach/weekly/generate".equals(path) || "/api/sessions/review/generate".equals(path) || "/api/ai/leak-detector/regenerate".equals(path))) || (HttpMethod.GET.matches(method) && ("/api/ai/trading-dna".equals(path) || "/api/ai/leak-detector".equals(path)));
     }
 
     private String aiFeature(String path) {
@@ -131,6 +110,12 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         return authenticated ? subject : "ip-hash-" + Integer.toHexString(subject.hashCode());
     }
 
+
     private record RateLimitRule(String name, int maxRequests, long windowSeconds, boolean authenticated) {
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public RateLimitInterceptor(final InMemoryRateLimiter rateLimiter) {
+        this.rateLimiter = rateLimiter;
     }
 }

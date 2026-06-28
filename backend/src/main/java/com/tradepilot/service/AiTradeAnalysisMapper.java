@@ -7,16 +7,12 @@ import com.tradepilot.dto.discipline.RuleViolationDto;
 import com.tradepilot.entity.AiTradeAnalysis;
 import com.tradepilot.entity.TradeRuleViolation;
 import com.tradepilot.repository.TradeRuleViolationRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-
 import java.util.ArrayList;
 import java.util.List;
 
 @Component
-@RequiredArgsConstructor
 public class AiTradeAnalysisMapper {
-
     private final ObjectMapper objectMapper;
     private final TradeRuleViolationRepository violationRepository;
 
@@ -70,7 +66,8 @@ public class AiTradeAnalysisMapper {
     private List<String> readList(String json) {
         if (json == null || json.isBlank()) return new ArrayList<>();
         try {
-            return objectMapper.readValue(json, new TypeReference<>() {});
+            return objectMapper.readValue(json, new TypeReference<>() {
+            });
         } catch (Exception e) {
             return new ArrayList<>();
         }
@@ -85,15 +82,12 @@ public class AiTradeAnalysisMapper {
     }
 
     private RuleViolationDto toDto(TradeRuleViolation entity) {
-        return RuleViolationDto.builder()
-                .id(entity.getId())
-                .tradeId(entity.getTradeId())
-                .ruleCode(entity.getRuleCode())
-                .ruleTitle(entity.getRuleTitle())
-                .category(entity.getCategory())
-                .severity(entity.getSeverity())
-                .reason(entity.getReason())
-                .source(entity.getSource())
-                .build();
+        return RuleViolationDto.builder().id(entity.getId()).tradeId(entity.getTradeId()).ruleCode(entity.getRuleCode()).ruleTitle(entity.getRuleTitle()).category(entity.getCategory()).severity(entity.getSeverity()).reason(entity.getReason()).source(entity.getSource()).build();
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public AiTradeAnalysisMapper(final ObjectMapper objectMapper, final TradeRuleViolationRepository violationRepository) {
+        this.objectMapper = objectMapper;
+        this.violationRepository = violationRepository;
     }
 }

@@ -16,21 +16,18 @@ import com.tradepilot.repository.TradeRuleViolationRepository;
 import com.tradepilot.repository.TradingAccountRepository;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.tradingdna.repository.TradingDnaSnapshotRepository;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class AdminTradeCleanupService {
+    @java.lang.SuppressWarnings("all")
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AdminTradeCleanupService.class);
     private final UserRepository userRepository;
     private final TradingAccountRepository tradingAccountRepository;
     private final TradeRepository tradeRepository;
@@ -45,14 +42,7 @@ public class AdminTradeCleanupService {
     private final PerformanceCacheInvalidationService cacheInvalidationService;
 
     @Transactional
-    public AdminTradeCleanupResponse cleanupRange(
-            User admin,
-            Long userId,
-            Long accountId,
-            LocalDate startDate,
-            LocalDate endDate,
-            boolean dryRun
-    ) {
+    public AdminTradeCleanupResponse cleanupRange(User admin, Long userId, Long accountId, LocalDate startDate, LocalDate endDate, boolean dryRun) {
         if (admin == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
         }
@@ -62,23 +52,12 @@ public class AdminTradeCleanupService {
         if (endDate.isBefore(startDate)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate cannot be before startDate");
         }
-
-        User targetUser = userRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Target user not found"));
-        TradingAccount account = tradingAccountRepository.findByIdAndUser_Id(accountId, userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found for target user"));
-
-        List<Trade> trades = tradeRepository.findByUser_IdAndAccount_IdAndTradeDateBetweenOrderByTradeDateAscEntryTimeAscIdAsc(
-                targetUser.getId(),
-                account.getId(),
-                startDate,
-                endDate
-        );
+        User targetUser = userRepository.findById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Target user not found"));
+        TradingAccount account = tradingAccountRepository.findByIdAndUser_Id(accountId, userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found for target user"));
+        List<Trade> trades = tradeRepository.findByUser_IdAndAccount_IdAndTradeDateBetweenOrderByTradeDateAscEntryTimeAscIdAsc(targetUser.getId(), account.getId(), startDate, endDate);
         List<Long> tradeIds = trades.stream().map(Trade::getId).toList();
-
         Counts counts = countAffectedRows(targetUser.getId(), account.getId(), startDate, endDate, tradeIds);
         long sessionCacheCount = ChronoUnit.DAYS.between(startDate, endDate) + 1;
-
         if (!dryRun && !tradeIds.isEmpty()) {
             deleteAffectedRows(targetUser.getId(), account.getId(), startDate, endDate, tradeIds);
             tradeRepository.deleteAllInBatch(trades);
@@ -86,10 +65,7 @@ public class AdminTradeCleanupService {
         } else if (!dryRun) {
             cacheInvalidationService.invalidateUserTradeDerivedCaches(targetUser.getId());
         }
-
-        log.warn("Admin trade cleanup completed. adminUserId={}, targetUserId={}, accountId={}, startDate={}, endDate={}, dryRun={}, tradesMatched={}, tradesDeleted={}",
-                admin.getId(), targetUser.getId(), account.getId(), startDate, endDate, dryRun, trades.size(), dryRun ? 0 : trades.size());
-
+        log.warn("Admin trade cleanup completed. adminUserId={}, targetUserId={}, accountId={}, startDate={}, endDate={}, dryRun={}, tradesMatched={}, tradesDeleted={}", admin.getId(), targetUser.getId(), account.getId(), startDate, endDate, dryRun, trades.size(), dryRun ? 0 : trades.size());
         AdminTradeCleanupResponse response = new AdminTradeCleanupResponse();
         response.setUserId(targetUser.getId());
         response.setAccountId(account.getId());
@@ -119,20 +95,8 @@ public class AdminTradeCleanupService {
         long sessionReviews = aiSessionReviewRepository.countByUserIdAndAccountIdAndSessionDateBetween(userId, accountId, startDate, endDate);
         long leakSnapshots = leakDetectorSnapshotRepository.countByUserIdAndAccountId(userId, accountId);
         long tradingDnaSnapshots = tradingDnaSnapshotRepository.countAffectedByAccountHistory(userId, accountId);
-        long dailyCoachSnapshots = coachSnapshotRepository.countByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartLessThanEqualAndPeriodEndGreaterThanEqual(
-                userId,
-                accountId,
-                CoachSnapshotType.DAILY,
-                endDate,
-                startDate
-        );
-        long weeklyCoachSnapshots = coachSnapshotRepository.countByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartLessThanEqualAndPeriodEndGreaterThanEqual(
-                userId,
-                accountId,
-                CoachSnapshotType.WEEKLY,
-                endDate,
-                startDate
-        );
+        long dailyCoachSnapshots = coachSnapshotRepository.countByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartLessThanEqualAndPeriodEndGreaterThanEqual(userId, accountId, CoachSnapshotType.DAILY, endDate, startDate);
+        long weeklyCoachSnapshots = coachSnapshotRepository.countByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartLessThanEqualAndPeriodEndGreaterThanEqual(userId, accountId, CoachSnapshotType.WEEKLY, endDate, startDate);
         return new Counts(tradeReviews, tradeAnalyses, tradeRuleViolations, dailyScores, sessionReviews, leakSnapshots, tradingDnaSnapshots, dailyCoachSnapshots, weeklyCoachSnapshots);
     }
 
@@ -146,32 +110,27 @@ public class AdminTradeCleanupService {
         aiSessionReviewRepository.deleteByUserIdAndAccountIdAndSessionDateBetween(userId, accountId, startDate, endDate);
         leakDetectorSnapshotRepository.deleteByUserIdAndAccountId(userId, accountId);
         tradingDnaSnapshotRepository.deleteAffectedByAccountHistory(userId, accountId);
-        coachSnapshotRepository.deleteByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartLessThanEqualAndPeriodEndGreaterThanEqual(
-                userId,
-                accountId,
-                CoachSnapshotType.DAILY,
-                endDate,
-                startDate
-        );
-        coachSnapshotRepository.deleteByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartLessThanEqualAndPeriodEndGreaterThanEqual(
-                userId,
-                accountId,
-                CoachSnapshotType.WEEKLY,
-                endDate,
-                startDate
-        );
+        coachSnapshotRepository.deleteByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartLessThanEqualAndPeriodEndGreaterThanEqual(userId, accountId, CoachSnapshotType.DAILY, endDate, startDate);
+        coachSnapshotRepository.deleteByUserIdAndAccountIdAndSnapshotTypeAndPeriodStartLessThanEqualAndPeriodEndGreaterThanEqual(userId, accountId, CoachSnapshotType.WEEKLY, endDate, startDate);
     }
 
-    private record Counts(
-            long tradeReviews,
-            long tradeAnalyses,
-            long tradeRuleViolations,
-            long dailyDisciplineScores,
-            long sessionReviews,
-            long leakSnapshots,
-            long tradingDnaSnapshots,
-            long dailyCoachSnapshots,
-            long weeklyCoachSnapshots
-    ) {
+
+    private record Counts(long tradeReviews, long tradeAnalyses, long tradeRuleViolations, long dailyDisciplineScores, long sessionReviews, long leakSnapshots, long tradingDnaSnapshots, long dailyCoachSnapshots, long weeklyCoachSnapshots) {
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public AdminTradeCleanupService(final UserRepository userRepository, final TradingAccountRepository tradingAccountRepository, final TradeRepository tradeRepository, final AiTradeReviewRepository aiTradeReviewRepository, final AiTradeAnalysisRepository aiTradeAnalysisRepository, final TradeRuleViolationRepository tradeRuleViolationRepository, final DailyDisciplineScoreRepository dailyDisciplineScoreRepository, final AiSessionReviewRepository aiSessionReviewRepository, final AiLeakDetectorSnapshotRepository leakDetectorSnapshotRepository, final TradingDnaSnapshotRepository tradingDnaSnapshotRepository, final AiCoachSnapshotRepository coachSnapshotRepository, final PerformanceCacheInvalidationService cacheInvalidationService) {
+        this.userRepository = userRepository;
+        this.tradingAccountRepository = tradingAccountRepository;
+        this.tradeRepository = tradeRepository;
+        this.aiTradeReviewRepository = aiTradeReviewRepository;
+        this.aiTradeAnalysisRepository = aiTradeAnalysisRepository;
+        this.tradeRuleViolationRepository = tradeRuleViolationRepository;
+        this.dailyDisciplineScoreRepository = dailyDisciplineScoreRepository;
+        this.aiSessionReviewRepository = aiSessionReviewRepository;
+        this.leakDetectorSnapshotRepository = leakDetectorSnapshotRepository;
+        this.tradingDnaSnapshotRepository = tradingDnaSnapshotRepository;
+        this.coachSnapshotRepository = coachSnapshotRepository;
+        this.cacheInvalidationService = cacheInvalidationService;
     }
 }
