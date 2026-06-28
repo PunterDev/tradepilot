@@ -82,6 +82,7 @@ class UserDataIsolationTests {
                         "A-001",
                         null,
                         BigDecimal.valueOf(50_000),
+                        null,
                         TradingAccountStatus.ACTIVE
                 )
         );
@@ -137,6 +138,7 @@ class UserDataIsolationTests {
                         "B-001",
                         null,
                         BigDecimal.valueOf(50_000),
+                        null,
                         TradingAccountStatus.ACTIVE
                 )
         );
