@@ -9,6 +9,8 @@ Render-style setup:
 - Java version: 17
 - Set all backend env vars from [ENVIRONMENT_VARIABLES.md](./ENVIRONMENT_VARIABLES.md).
 - Use `JPA_DDL_AUTO=validate` after Supabase SQL migrations are applied.
+- Set `APP_ALLOWED_ORIGINS` to deployed frontend origins only. Production startup rejects localhost CORS origins.
+- Set `APP_FRONTEND_URL` to the deployed frontend URL so email and billing redirects never point at localhost.
 
 Health check:
 
@@ -28,7 +30,9 @@ Vercel-style setup:
 - Build command: `npm run build`
 - Output directory: `dist`
 - Required env: `VITE_API_BASE_URL=https://your-backend.example.com/api`
+- Production frontend runtime requires `VITE_API_BASE_URL`; localhost fallback is development-only.
 - Optional idle envs: `VITE_IDLE_TIMEOUT_MINUTES`, `VITE_IDLE_WARNING_MINUTES`
+- Keep dependency versions pinned to known-good versions in `package.json` and `package-lock.json`; do not use `"latest"` for production installs.
 
 Routing:
 
@@ -83,9 +87,12 @@ After deploy:
 2. Register and verify a test user.
 3. Log in and create an account.
 4. Import a small CSV.
-5. Open Analytics, Calendar, Session Review, Trading DNA, Coach, and Billing.
-6. Start monthly checkout and cancel.
-7. Start yearly checkout and verify the Stripe price in test mode.
-8. Submit the contact form.
-9. Log in as admin and verify admin pages.
-10. Confirm backend logs contain no secrets, JWTs, reset tokens, webhook signatures, raw prompts, or Resend credentials.
+5. Open Analytics, Calendar, Session Review, Coach, and Billing.
+6. If V2/V3 are enabled, open Trading DNA, Journey, Playbook, Trading Memory, and AI Trade Replay.
+7. Generate one AI review, one Trading Memory result, and one Replay for a single valid trade.
+8. Regenerate that Replay once and confirm no persistence conflict.
+9. Start monthly checkout and cancel.
+10. Start yearly checkout and verify the Stripe price in test mode.
+11. Submit the contact form.
+12. Log in as admin and verify admin pages.
+13. Confirm backend logs contain no secrets, JWTs, reset tokens, webhook signatures, raw prompts, or Resend credentials.

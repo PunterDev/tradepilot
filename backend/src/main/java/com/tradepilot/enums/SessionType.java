@@ -1,2 +1,2 @@
 package com.tradepilot.enums;
-public enum SessionType { ASIA, LONDON, NY_AM, NY_PM }
+public enum SessionType { ASIA, LONDON, NY_AM, NY_PM, UNKNOWN }

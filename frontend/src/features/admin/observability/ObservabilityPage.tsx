@@ -72,7 +72,7 @@ export default function ObservabilityPage() {
       <PageHeader
         label="Admin Observability"
         title="Production Monitoring"
-        description="API latency, AI spend, cache health, email delivery, Stripe events, and system alerts."
+        description="API latency, categorized failures, AI spend, cache health, email delivery, Stripe events, and system alerts."
         actions={<button type="button" onClick={load} style={refreshButton}>Refresh</button>}
       />
 
@@ -116,12 +116,14 @@ export default function ObservabilityPage() {
       <section style={grid4}>
         <Kpi label="Requests Today" value={summary?.requestsToday ?? 0} loading={loading} accent="#38bdf8" />
         <Kpi label="Avg API Response" value={latency(summary?.avgResponseTime, 1)} loading={loading} accent="#22c55e" />
-        <Kpi label="P95 Response" value={latency(summary?.p95ResponseTime, 0)} loading={loading} accent="#f59e0b" />
-        <Kpi label="Error Rate" value={percent(summary?.errorRate)} loading={loading} accent="#fb7185" />
+        <Kpi label="Combined P95 Response" value={latency(summary?.p95ResponseTime, 0)} loading={loading} accent="#f59e0b" />
+        <Kpi label="Error Rate" value={percent(summary?.errorRate)} loading={loading} accent={severityColor(summary?.errorRateSeverity, "#fb7185")} meta={summary?.errorRateSeverity} />
         <Kpi label="AI Cost Today" value={money(summary?.aiCostToday)} loading={loading} accent="#a78bfa" />
         <Kpi label="AI Cost Month" value={money(summary?.aiCostMonth)} loading={loading} accent="#c084fc" />
-        <Kpi label="Cache Hit Rate" value={percent(summary?.cacheHitRate)} loading={loading} accent="#2dd4bf" />
-        <Kpi label="Email Success" value={percent(summary?.emailSuccessRate)} loading={loading} accent="#86efac" />
+        <Kpi label="Cache Hit Rate" value={percent(summary?.cacheHitRate)} loading={loading} accent={severityColor(summary?.cacheHitRateSeverity, "#2dd4bf")} meta={summary?.cacheHitRateSeverity} />
+        <Kpi label="Email Success" value={summary?.emailSuccessRateDisplay ?? percent(summary?.emailSuccessRate)} loading={loading} accent={severityColor(summary?.emailHealthSeverity, "#86efac")} meta={summary?.emailHasAttempts === false ? "No emails attempted" : summary?.emailHealthSeverity} />
+        <Kpi label="Standard API P95" value={latency(summary?.standardApiP95ResponseTime, 0)} loading={loading} accent={severityColor(summary?.standardApiP95Severity, "#22c55e")} meta={summary?.standardApiP95Severity} />
+        <Kpi label="AI Generation P95" value={latency(summary?.aiGenerationP95ResponseTime, 0)} loading={loading} accent={severityColor(summary?.aiGenerationP95Severity, "#a78bfa")} meta={summary?.aiGenerationP95Severity} />
       </section>
 
       <section style={grid2}>
@@ -132,7 +134,9 @@ export default function ObservabilityPage() {
       <section style={grid3}>
         <InfoCard title="AI Costs">
           <Detail label="Total AI Calls Today" value={summary?.aiCallsToday ?? 0} />
+          <Detail label="Failures Today" value={summary?.aiFailuresToday ?? 0} />
           <Detail label="Tokens Today" value={summary?.aiTokensToday ?? 0} />
+          <Detail label="Avg AI Duration" value={latency(summary?.aiAvgResponseTime, 0)} />
           <Detail label="Most Expensive Feature" value={summary?.mostExpensiveFeature ?? "No AI calls yet"} />
           <Detail label="Most Used Model" value={summary?.mostUsedModel ?? "No model usage yet"} />
         </InfoCard>
@@ -146,8 +150,27 @@ export default function ObservabilityPage() {
         <InfoCard title="Stripe Health">
           <Detail label="Successful Events" value={summary?.stripeSuccesses ?? 0} />
           <Detail label="Failures" value={summary?.stripeFailures ?? 0} />
-          <Detail label="Success Rate" value={percent(summary?.stripeSuccessRate)} />
+          <Detail label="Success Rate" value={summary?.stripeSuccessRateDisplay ?? percent(summary?.stripeSuccessRate)} />
+          <Detail label="Last Event" value={summary?.lastStripeEventType ? `${summary.lastStripeEventType} · ${formatDate(summary.lastStripeEventTime)}` : "No events yet"} />
+          <Detail label="Credit Packs Today" value={summary?.creditPackPurchasesCompletedToday ?? 0} />
         </InfoCard>
+      </section>
+
+      <section style={grid3}>
+        {(summary?.latencyCategories ?? []).map((row) => (
+          <InfoCard key={row.category} title={row.category}>
+            <Detail label="Requests" value={row.requestCount} />
+            <Detail label="Avg Duration" value={latency(row.avgDurationMs, 1)} />
+            <Detail label="P95 Duration" value={latency(row.p95DurationMs, 0)} />
+          </InfoCard>
+        ))}
+      </section>
+
+      <section style={grid4}>
+        <FailureCard title="Last API Failure" failure={summary?.lastApiFailure} empty="No API failures in this range." />
+        <FailureCard title="Last Stripe Failure" failure={summary?.lastStripeFailure} empty="No Stripe failures in this range." />
+        <FailureCard title="Last Email Failure" failure={summary?.lastEmailFailure} empty="No email failures in this range." />
+        <FailureCard title="Last AI Failure" failure={summary?.lastAiFailure} empty="No AI failures in this range." />
       </section>
 
       <section style={grid2}>
@@ -164,12 +187,30 @@ export default function ObservabilityPage() {
       <section style={grid2}>
         <TableCard title="Slowest Endpoints" empty="No request traffic yet.">
           {(summary?.slowestEndpoints ?? []).map((row) => (
-            <Row key={row.endpoint} left={row.endpoint} middle={`${formatNumber(row.avgDurationMs, 1)} ms avg`} right={`${formatNumber(row.maxDurationMs, 0)} ms max`} />
+            <Row key={row.endpoint} left={row.endpoint} middle={`${row.category ?? "Standard API"} · ${row.requestCount} req`} right={`${formatNumber(row.avgDurationMs, 1)} avg / ${formatNumber(row.maxDurationMs, 0)} max`} />
           ))}
         </TableCard>
         <TableCard title="Slow Requests" empty="No slow requests recorded.">
           {(summary?.slowRequests ?? []).map((row) => (
             <Row key={`${row.endpoint}-${row.createdAt}`} left={row.endpoint} middle={`${row.durationMs} ms`} right={row.severity} />
+          ))}
+        </TableCard>
+      </section>
+
+      <section style={grid2}>
+        <TableCard title="Errors by Status" empty="No API errors in this range.">
+          {(summary?.errorsByStatus ?? []).map((row) => (
+            <Row key={row.status} left={`HTTP ${row.status}`} middle={`${row.count} requests`} right={statusLabel(row.status)} />
+          ))}
+        </TableCard>
+        <TableCard title="Errors by Endpoint" empty="No endpoint errors in this range.">
+          {(summary?.errorsByEndpoint ?? []).map((row) => (
+            <Row
+              key={`${row.endpoint}-${row.latestTimestamp ?? row.count}`}
+              left={row.endpoint}
+              middle={`${row.category ?? "Standard API"} · ${row.count} errors`}
+              right={`${row.latestErrorCode ?? "ERROR"} · ${row.latestRequestId ?? "no requestId"}`}
+            />
           ))}
         </TableCard>
       </section>
@@ -198,11 +239,12 @@ export default function ObservabilityPage() {
   );
 }
 
-function Kpi({ label, value, loading, accent }: { label: string; value: string | number; loading: boolean; accent: string }) {
+function Kpi({ label, value, loading, accent, meta }: { label: string; value: string | number; loading: boolean; accent: string; meta?: string | null }) {
   return (
     <div style={kpiCard}>
       <div style={{ ...mutedText, fontSize: 12 }}>{label}</div>
       <div style={kpiValue}>{loading ? "..." : value}</div>
+      {meta && !loading && <div style={kpiMeta}>{meta}</div>}
       <div style={{ height: 3, borderRadius: 999, background: accent, marginTop: 16, opacity: 0.85 }} />
     </div>
   );
@@ -251,6 +293,26 @@ function Detail({ label, value }: { label: string; value: string | number }) {
     <div style={detailRow}>
       <span style={mutedText}>{label}</span>
       <strong style={detailValue}>{value}</strong>
+    </div>
+  );
+}
+
+function FailureCard({ title, failure, empty }: { title: string; failure?: ObservabilitySummary["lastApiFailure"]; empty: string }) {
+  return (
+    <div style={card}>
+      <h2 style={sectionTitle}>{title}</h2>
+      {failure ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <span style={severityBadge("WARNING")}>{failure.errorCode ?? "FAILURE"}</span>
+          <p style={{ ...mutedText, margin: 0 }}>{failure.userMessage ?? "Failure recorded."}</p>
+          <Detail label="When" value={formatDate(failure.timestamp)} />
+          <Detail label="Request ID" value={failure.requestId ?? "N/A"} />
+          <Detail label="User" value={failure.userId ?? "N/A"} />
+          <Detail label="Endpoint / Feature" value={failure.endpoint ?? failure.feature ?? "N/A"} />
+        </div>
+      ) : (
+        <p style={mutedText}>{empty}</p>
+      )}
     </div>
   );
 }
@@ -366,6 +428,23 @@ function percent(value?: number | null) {
   return `${formatNumber(value, 1)}%`;
 }
 
+function statusLabel(status: number) {
+  if (status === 401) return "Auth";
+  if (status === 403) return "Forbidden";
+  if (status === 404) return "Missing";
+  if (status === 409) return "Conflict";
+  if (status === 429) return "Limited";
+  if (status >= 500) return "Server";
+  return "Client";
+}
+
+function severityColor(severity?: string | null, fallback = "#38bdf8") {
+  if (severity === "CRITICAL") return "#fb7185";
+  if (severity === "WARNING") return "#f59e0b";
+  if (severity === "HEALTHY") return "#22c55e";
+  return fallback;
+}
+
 function formatNumber(value?: number | null, maximumFractionDigits = 1) {
   return Number(value ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: 0,
@@ -397,6 +476,15 @@ const kpiValue: CSSProperties = {
   minWidth: 0,
   overflowWrap: "anywhere",
   wordBreak: "break-word",
+};
+
+const kpiMeta: CSSProperties = {
+  ...mutedText,
+  fontSize: 11,
+  marginTop: 6,
+  textTransform: "uppercase",
+  letterSpacing: 0,
+  fontWeight: 800,
 };
 
 const grid3: CSSProperties = {

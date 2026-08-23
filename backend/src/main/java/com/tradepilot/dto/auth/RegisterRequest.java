@@ -89,6 +89,6 @@ public class RegisterRequest {
     @java.lang.Override
     @java.lang.SuppressWarnings("all")
     public java.lang.String toString() {
-        return "RegisterRequest(name=" + this.getName() + ", email=" + this.getEmail() + ", password=" + this.getPassword() + ")";
+        return "RegisterRequest(name=" + this.getName() + ", email=" + this.getEmail() + ", password=[REDACTED])";
     }
 }

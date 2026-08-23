@@ -212,7 +212,9 @@ public class UsageLimitService {
             case WEEKLY_COACH -> Feature.WEEKLY_COACH;
             case TRADING_DNA -> Feature.TRADING_DNA;
             case AI_LEAK_DETECTOR -> Feature.AI_LEAK_DETECTOR;
+            case PERFORMANCE_TIMELINE -> Feature.PERFORMANCE_TIMELINE;
             case SESSION_REVIEW -> Feature.SESSION_REVIEW;
+            case PLAYBOOK_AI_DRAFT, PLAYBOOK_AI_REVIEW -> Feature.PLAYBOOK;
         };
     }
 
@@ -220,7 +222,7 @@ public class UsageLimitService {
         return switch (feature) {
             case AI_TRADE_REVIEW -> 1;
             case SESSION_REVIEW, DAILY_COACH -> 2;
-            case TRADING_DNA, AI_LEAK_DETECTOR -> 3;
+            case TRADING_DNA, AI_LEAK_DETECTOR, PERFORMANCE_TIMELINE, PLAYBOOK -> 3;
             case WEEKLY_COACH -> 4;
             default -> 0;
         };
@@ -237,7 +239,9 @@ public class UsageLimitService {
             case WEEKLY_COACH -> "You have reached your free plan limit for Weekly Coach generations.";
             case TRADING_DNA -> "You have reached your free plan limit for Trading DNA generations.";
             case AI_LEAK_DETECTOR -> "You have reached your free plan limit for AI Leak Detector generations.";
+            case PERFORMANCE_TIMELINE -> "You have reached your free plan limit for AI Performance Timeline generations.";
             case SESSION_REVIEW -> "You have reached your free plan limit for Session Review generations.";
+            case PLAYBOOK_AI_DRAFT, PLAYBOOK_AI_REVIEW -> "You have reached your AI Trading Playbook generation limit.";
         };
     }
 

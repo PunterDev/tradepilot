@@ -109,14 +109,14 @@ export default function ImportTradesSection({
         </div>
 
         <div>
-          <label style={label}>Tradovate CSV</label>
+          <label style={label}>Trade CSV</label>
           <input
             ref={fileInputRef}
             type="file"
             accept=".csv"
             onChange={onCsvUpload}
             hidden
-            aria-label="Choose Tradovate CSV file"
+            aria-label="Choose Tradovate or Topstep CSV file"
             disabled={pickerDisabled}
           />
           <div style={filePickerRow}>
@@ -160,6 +160,10 @@ export default function ImportTradesSection({
       </div>
 
       {parsing && <p style={mutedText}>Parsing CSV...</p>}
+
+      <p style={mutedText}>
+        Supports Tradovate trade exports and Topstep order-history CSV exports.
+      </p>
 
       {hasParsedFile && (
         <p style={mutedText}>

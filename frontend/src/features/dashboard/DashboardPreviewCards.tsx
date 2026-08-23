@@ -12,6 +12,7 @@ type Props = {
   totalTrades: number;
   winRate: number;
   worstDay: number;
+  showTradingDnaEntryPoint: boolean;
 };
 
 export default function DashboardPreviewCards({
@@ -21,6 +22,7 @@ export default function DashboardPreviewCards({
   totalTrades,
   winRate,
   worstDay,
+  showTradingDnaEntryPoint,
 }: Props) {
   const latest = dailyPnl[dailyPnl.length - 1];
   const monthPnl = dailyPnl.reduce((sum, day) => sum + day.totalPnl, 0);
@@ -33,12 +35,14 @@ export default function DashboardPreviewCards({
         meta="Replay the full day"
         to="/session-review"
       />
-      <PreviewCard
-        title="Trading DNA Snapshot"
-        body={totalTrades >= 5 ? `${totalTrades} trades available for behavior analysis.` : "Import at least 5 trades for stronger DNA."}
-        meta={`Win rate ${winRate}%`}
-        to="/trading-dna"
-      />
+      {showTradingDnaEntryPoint && (
+        <PreviewCard
+          title="Trading DNA Snapshot"
+          body={totalTrades >= 5 ? `${totalTrades} trades available for behavior analysis.` : "Import at least 5 trades for stronger DNA."}
+          meta={`Win rate ${winRate}%`}
+          to="/trading-dna"
+        />
+      )}
       <PreviewCard
         title="Calendar Preview"
         body={latest ? `Latest day: ${formatCurrency(latest.totalPnl)} across ${latest.tradeCount} trades.` : "No calendar data yet."}

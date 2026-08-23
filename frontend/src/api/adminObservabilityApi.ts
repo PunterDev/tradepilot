@@ -2,9 +2,11 @@ import { api } from "./api";
 
 export type EndpointMetric = {
   endpoint: string;
+  category?: string | null;
   requestCount: number;
   avgDurationMs: number;
   maxDurationMs: number;
+  latestRequestId?: string | null;
 };
 
 export type SlowRequest = {
@@ -56,28 +58,77 @@ export type SystemAlert = {
   resolvedBy?: number | null;
 };
 
+export type ErrorStatusBreakdown = {
+  status: number;
+  count: number;
+};
+
+export type ErrorEndpointBreakdown = {
+  endpoint: string;
+  category?: string | null;
+  count: number;
+  latestRequestId?: string | null;
+  latestTimestamp?: string | null;
+  latestErrorCode?: string | null;
+};
+
+export type LatencyCategory = {
+  category: string;
+  requestCount: number;
+  avgDurationMs: number;
+  p95DurationMs: number;
+};
+
+export type FailureSummary = {
+  source: string;
+  timestamp?: string | null;
+  requestId?: string | null;
+  userId?: number | null;
+  endpoint?: string | null;
+  feature?: string | null;
+  errorCode?: string | null;
+  userMessage?: string | null;
+};
+
 export type ObservabilitySummary = {
   requestsToday: number;
   avgResponseTime: number;
   p95ResponseTime: number;
   slowestEndpoint: string;
   errorRate: number;
+  errorRateSeverity?: string | null;
   aiCallsToday: number;
+  aiFailuresToday?: number;
   aiTokensToday: number;
   aiCostToday: number;
   aiCostMonth: number;
   aiAvgResponseTime: number;
+  aiGenerationP95ResponseTime?: number;
+  aiGenerationP95Severity?: string | null;
   mostExpensiveFeature: string;
   mostUsedModel: string;
   cacheHits: number;
   cacheMisses: number;
   cacheHitRate: number;
+  cacheHitRateSeverity?: string | null;
   emailsSent: number;
   emailsFailed: number;
   emailSuccessRate: number;
+  emailHasAttempts?: boolean;
+  emailSuccessRateDisplay?: string | null;
+  emailHealthSeverity?: string | null;
   stripeSuccesses: number;
   stripeFailures: number;
   stripeSuccessRate: number;
+  stripeHasEvents?: boolean;
+  stripeSuccessRateDisplay?: string | null;
+  stripeHealthSeverity?: string | null;
+  lastStripeEventType?: string | null;
+  lastStripeEventTime?: string | null;
+  creditPackPurchasesCompletedToday?: number;
+  standardApiP95ResponseTime?: number;
+  standardApiP95Severity?: string | null;
+  adminApiP95ResponseTime?: number;
   slowestEndpoints: EndpointMetric[];
   slowRequests: SlowRequest[];
   aiFeatureCosts: AiFeatureCost[];
@@ -86,6 +137,13 @@ export type ObservabilitySummary = {
   recentStripeEvents: StripeEvent[];
   alerts: SystemAlert[];
   resolvedAlerts: SystemAlert[];
+  errorsByStatus?: ErrorStatusBreakdown[];
+  errorsByEndpoint?: ErrorEndpointBreakdown[];
+  latencyCategories?: LatencyCategory[];
+  lastApiFailure?: FailureSummary | null;
+  lastStripeFailure?: FailureSummary | null;
+  lastEmailFailure?: FailureSummary | null;
+  lastAiFailure?: FailureSummary | null;
 };
 
 export type ApiTrendPoint = {

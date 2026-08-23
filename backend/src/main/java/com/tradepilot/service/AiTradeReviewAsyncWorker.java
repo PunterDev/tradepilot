@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradepilot.dto.ai.AiTradeReviewRequest;
 import com.tradepilot.dto.ai.AiTradeReviewResponse;
 import com.tradepilot.entity.AiTradeReview;
+import com.tradepilot.ai.memory.service.TradeMemoryIndexPublisher;
 import com.tradepilot.repository.AiTradeReviewRepository;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,7 @@ public class AiTradeReviewAsyncWorker {
     private final AiTradeReviewRepository aiTradeReviewRepository;
     private final AiTradeReviewGeneratorService generatorService;
     private final ObjectMapper objectMapper;
+    private final TradeMemoryIndexPublisher tradeMemoryIndexPublisher;
 
     @Async("aiTaskExecutor")
     public void generateAsync(Long reviewId, AiTradeReviewRequest request, String reviewHash) {
@@ -28,6 +30,7 @@ public class AiTradeReviewAsyncWorker {
             review.setStatus("COMPLETED");
             review.setErrorMessage(null);
             aiTradeReviewRepository.save(review);
+            tradeMemoryIndexPublisher.requestIndexAfterCommit(review.getUserId(), review.getTradeId());
             log.info("Async AI trade review completed. reviewId={}, tradeId={}, grade={}", reviewId, request.getTradeId(), response.getGrade());
         } catch (Exception e) {
             log.error("Async AI trade review failed. reviewId={}, tradeId={}", reviewId, request.getTradeId(), e);
@@ -55,9 +58,10 @@ public class AiTradeReviewAsyncWorker {
     }
 
     @java.lang.SuppressWarnings("all")
-    public AiTradeReviewAsyncWorker(final AiTradeReviewRepository aiTradeReviewRepository, final AiTradeReviewGeneratorService generatorService, final ObjectMapper objectMapper) {
+    public AiTradeReviewAsyncWorker(final AiTradeReviewRepository aiTradeReviewRepository, final AiTradeReviewGeneratorService generatorService, final ObjectMapper objectMapper, final TradeMemoryIndexPublisher tradeMemoryIndexPublisher) {
         this.aiTradeReviewRepository = aiTradeReviewRepository;
         this.generatorService = generatorService;
         this.objectMapper = objectMapper;
+        this.tradeMemoryIndexPublisher = tradeMemoryIndexPublisher;
     }
 }

@@ -26,6 +26,9 @@ public interface StripeEventMetricRepository extends JpaRepository<StripeEventMe
     @Query("select s from StripeEventMetric s where s.createdAt >= :start and s.createdAt < :end order by s.createdAt desc")
     List<StripeEventMetric> findBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end, Pageable pageable);
 
+    @Query("select s from StripeEventMetric s where s.success = false and s.createdAt >= :start and s.createdAt < :end order by s.createdAt desc")
+    List<StripeEventMetric> findFailuresBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end, Pageable pageable);
+
     @org.springframework.data.jpa.repository.Modifying
     @Query("delete from StripeEventMetric s where s.createdAt < :cutoff")
     int deleteOlderThan(@Param("cutoff") LocalDateTime cutoff);

@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import com.tradepilot.entity.User;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -38,13 +39,43 @@ public class JwtService {
     public <T> T extractClaim(String token, Function<Claims,T> resolver){ return resolver.apply(extractAllClaims(token)); }
     public String generateToken(UserDetails userDetails){ return generateToken(new HashMap<>(), userDetails); }
     public String generateToken(Map<String,Object> extraClaims, UserDetails userDetails){
+        if (userDetails instanceof User user) {
+            extraClaims = new HashMap<>(extraClaims);
+            extraClaims.put("tokenVersion", tokenVersion(user));
+        }
         Date now = new Date(); Date expiry = new Date(now.getTime() + jwtExpirationMinutes * 60_000L);
         return Jwts.builder().setClaims(extraClaims).setSubject(userDetails.getUsername()).setIssuedAt(now).setExpiration(expiry).signWith(getSigningKey(), SignatureAlgorithm.HS256).compact();
     }
-    public boolean isTokenValid(String token, UserDetails userDetails){ return extractUsername(token).equals(userDetails.getUsername()) && !isTokenExpired(token); }
+    public boolean isTokenValid(String token, UserDetails userDetails){ return extractUsername(token).equals(userDetails.getUsername()) && !isTokenExpired(token) && tokenVersionMatches(token, userDetails); }
     private boolean isTokenExpired(String token){ return extractClaim(token, Claims::getExpiration).before(new Date()); }
     private Claims extractAllClaims(String token){ return Jwts.parserBuilder().setSigningKey(getSigningKey()).build().parseClaimsJws(token).getBody(); }
     private Key getSigningKey(){ return signingKey; }
+
+    private boolean tokenVersionMatches(String token, UserDetails userDetails) {
+        if (!(userDetails instanceof User user)) {
+            return true;
+        }
+        Integer claimVersion = extractClaim(token, claims -> {
+            Object value = claims.get("tokenVersion");
+            if (value == null) {
+                return 0;
+            }
+            if (value instanceof Number number) {
+                return number.intValue();
+            }
+            try {
+                return Integer.parseInt(String.valueOf(value));
+            } catch (NumberFormatException ex) {
+                return -1;
+            }
+        });
+        return tokenVersion(user) == claimVersion;
+    }
+
+    private int tokenVersion(User user) {
+        Integer tokenVersion = user.getTokenVersion();
+        return tokenVersion == null ? 0 : tokenVersion;
+    }
 
     private byte[] decodeAndValidateSecret(String jwtSecret) {
         if (!StringUtils.hasText(jwtSecret)) {

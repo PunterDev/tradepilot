@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import type { DailyPnl } from "../utils/dashboardUtils";
 import type { TradovateTrade } from "../utils/tradovateCsv";
 import { getJournalByDate } from "../api/journalApi";
@@ -210,15 +211,7 @@ export default function PnlCalendar({
 
   function getTradeSide(trade: TradovateTrade): "LONG" | "SHORT" | "UNKNOWN" {
     if (trade.side === "LONG" || trade.side === "SHORT") return trade.side;
-
-    const boughtTime = new Date(trade.boughtTimestamp).getTime();
-    const soldTime = new Date(trade.soldTimestamp).getTime();
-
-    if (!Number.isFinite(boughtTime) || !Number.isFinite(soldTime) || boughtTime === soldTime) {
-      return "UNKNOWN";
-    }
-
-    return boughtTime < soldTime ? "LONG" : "SHORT";
+    return "UNKNOWN";
   }
 
   async function openDay(date: string) {
@@ -248,6 +241,65 @@ export default function PnlCalendar({
 
   return (
     <>
+      <style>
+        {`
+          .journal-trades-table {
+            min-width: 880px;
+          }
+
+          .journal-direction-cell {
+            min-width: 118px;
+          }
+
+          @media (max-width: 700px) {
+            .journal-trades-table {
+              min-width: 0;
+            }
+
+            .journal-trades-table thead {
+              display: none;
+            }
+
+            .journal-trades-table,
+            .journal-trades-table tbody,
+            .journal-trades-table tr,
+            .journal-trades-table td {
+              display: block;
+              width: 100%;
+            }
+
+            .journal-trades-table tr {
+              margin: 12px;
+              padding: 12px;
+              border: 1px solid rgba(148, 163, 184, 0.14);
+              border-radius: 18px;
+              background: rgba(15, 23, 42, 0.68);
+            }
+
+            .journal-trades-table td {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 14px;
+              padding: 9px 0 !important;
+              border-bottom: 1px solid rgba(148, 163, 184, 0.09) !important;
+            }
+
+            .journal-trades-table td:last-child {
+              border-bottom: 0 !important;
+            }
+
+            .journal-trades-table td::before {
+              content: attr(data-label);
+              color: #94a3b8;
+              font-size: 11px;
+              font-weight: 900;
+              text-transform: uppercase;
+              letter-spacing: 0.06em;
+            }
+          }
+        `}
+      </style>
       <div style={{ ...card, marginTop: 32 }}>
         <div style={sectionHeader}>
           <div>
@@ -516,12 +568,13 @@ export default function PnlCalendar({
               </button>
             </div>
 
-            <div style={{ ...tableCard, marginTop: 20 }}>
-              <table style={table}>
+            <div style={{ ...tableCard, ...journalTradesTableCard, marginTop: 20 }}>
+              <table style={table} className="journal-trades-table">
                 <thead>
                   <tr>
                     <th style={th}>Sold Time</th>
                     <th style={th}>Symbol</th>
+                    <th style={th}>Direction</th>
                     <th style={th}>Qty</th>
                     <th style={th}>Buy</th>
                     <th style={th}>Sell</th>
@@ -532,40 +585,49 @@ export default function PnlCalendar({
                 <tbody>
                   {selectedDayTrades.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={td}>
+                      <td colSpan={8} style={td}>
                         No trades found for this day.
                       </td>
                     </tr>
                   ) : (
-                    selectedDayTrades.map((trade, index) => (
-                      <tr
-                        key={`${trade.soldTimestamp}-${index}`}
-                        onClick={() => {
-                          if (trade.id) {
-                            setSelectedDate(null);
-                            onTradeSelect?.(trade.id);
-                          }
-                        }}
-                        title={trade.id ? "Open trade detail" : undefined}
-                        style={{ cursor: trade.id ? "pointer" : "default" }}
-                      >
-                        <td style={td}>{trade.soldTimestamp}</td>
-                        <td style={td}>{trade.symbol}</td>
-                        <td style={td}>{trade.qty}</td>
-                        <td style={td}>{trade.buyPrice}</td>
-                        <td style={td}>{trade.sellPrice}</td>
-                        <td
-                          style={{
-                            ...td,
-                            color: trade.pnl >= 0 ? "#34d399" : "#fb7185",
-                            fontWeight: 900,
+                    selectedDayTrades.map((trade, index) => {
+                      const side = getTradeSide(trade);
+
+                      return (
+                        <tr
+                          key={`${trade.soldTimestamp}-${index}`}
+                          data-testid={trade.id ? `trade-row-${trade.id}` : undefined}
+                          onClick={() => {
+                            if (trade.id) {
+                              setSelectedDate(null);
+                              onTradeSelect?.(trade.id);
+                            }
                           }}
+                          title={trade.id ? "Open trade detail" : undefined}
+                          style={{ cursor: trade.id ? "pointer" : "default" }}
                         >
-                          {formatCurrency(trade.pnl)}
-                        </td>
-                        <td style={td}>{trade.duration || "-"}</td>
-                      </tr>
-                    ))
+                          <td style={td} data-label="Sold Time">{trade.soldTimestamp}</td>
+                          <td style={td} data-label="Symbol">{trade.symbol}</td>
+                          <td style={td} data-label="Direction" className="journal-direction-cell">
+                            <DirectionBadge side={side} />
+                          </td>
+                          <td style={td} data-label="Qty">{trade.qty}</td>
+                          <td style={{ ...td, ...priceAccent(side, "BUY") }} data-label="Buy">{trade.buyPrice}</td>
+                          <td style={{ ...td, ...priceAccent(side, "SELL") }} data-label="Sell">{trade.sellPrice}</td>
+                          <td
+                            style={{
+                              ...td,
+                              color: trade.pnl >= 0 ? "#34d399" : "#fb7185",
+                              fontWeight: 900,
+                            }}
+                            data-label="PnL"
+                          >
+                            {formatCurrency(trade.pnl)}
+                          </td>
+                          <td style={td} data-label="Duration">{trade.duration || "-"}</td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -700,3 +762,94 @@ export default function PnlCalendar({
     </>
   );
 }
+
+function DirectionBadge({ side }: { side: "LONG" | "SHORT" | "UNKNOWN" }) {
+  return (
+    <span style={directionBadge(side)} title={directionTooltip(side)} data-testid={`trade-direction-${side.toLowerCase()}`}>
+      <span aria-hidden="true" style={directionIcon(side)}>
+        {side === "LONG" ? "↑" : side === "SHORT" ? "↓" : "?"}
+      </span>
+      {side}
+    </span>
+  );
+}
+
+function directionTooltip(side: "LONG" | "SHORT" | "UNKNOWN") {
+  if (side === "LONG") return "Position direction recorded as long.";
+  if (side === "SHORT") return "Position direction recorded as short.";
+  return "Trade direction was not available in the imported trade data.";
+}
+
+function directionBadge(side: "LONG" | "SHORT" | "UNKNOWN"): CSSProperties {
+  if (side === "LONG") {
+    return {
+      ...directionBadgeBase,
+      borderColor: "rgba(45,212,191,0.46)",
+      background: "linear-gradient(135deg, rgba(20,184,166,0.18), rgba(34,197,94,0.13))",
+      color: "#99f6e4",
+    };
+  }
+  if (side === "SHORT") {
+    return {
+      ...directionBadgeBase,
+      borderColor: "rgba(251,113,133,0.48)",
+      background: "linear-gradient(135deg, rgba(244,63,94,0.17), rgba(245,158,11,0.09))",
+      color: "#fda4af",
+    };
+  }
+  return {
+    ...directionBadgeBase,
+    borderColor: "rgba(148,163,184,0.28)",
+    background: "rgba(100,116,139,0.14)",
+    color: "#cbd5e1",
+  };
+}
+
+function directionIcon(side: "LONG" | "SHORT" | "UNKNOWN"): CSSProperties {
+  const accent = side === "LONG" ? "#2dd4bf" : side === "SHORT" ? "#fb7185" : "#94a3b8";
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    background: side === "UNKNOWN" ? "rgba(148,163,184,0.13)" : "rgba(255,255,255,0.08)",
+    color: accent,
+    fontSize: 13,
+    fontWeight: 950,
+    lineHeight: 1,
+  };
+}
+
+function priceAccent(side: "LONG" | "SHORT" | "UNKNOWN", leg: "BUY" | "SELL"): CSSProperties {
+  if (side === "LONG" && leg === "BUY") {
+    return { color: "#bbf7d0", fontWeight: 800 };
+  }
+  if (side === "SHORT" && leg === "SELL") {
+    return { color: "#fecdd3", fontWeight: 800 };
+  }
+  return {};
+}
+
+const journalTradesTableCard: CSSProperties = {
+  overflowX: "auto",
+  overflowY: "hidden",
+};
+
+const directionBadgeBase: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  width: "fit-content",
+  minWidth: 96,
+  padding: "8px 12px",
+  borderRadius: 999,
+  border: "1px solid",
+  fontSize: 12,
+  lineHeight: 1,
+  fontWeight: 950,
+  letterSpacing: 0,
+  whiteSpace: "nowrap",
+};

@@ -1,5 +1,7 @@
 package com.tradepilot.featureusage;
 
+import com.tradepilot.billing.PlanType;
+import com.tradepilot.enums.UserRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -24,6 +26,34 @@ public interface FeatureUsageRepository extends JpaRepository<FeatureUsageEvent,
     List<FeatureUsageEvent> findByCreatedAtGreaterThanEqual(LocalDateTime start);
 
     List<FeatureUsageEvent> findByUserIdInAndCreatedAtGreaterThanEqual(List<Long> userIds, LocalDateTime start);
+
+    @Query("""
+            select e
+            from FeatureUsageEvent e
+            join User u on u.id = e.userId
+            where coalesce(e.occurredAt, e.createdAt) >= :start
+              and coalesce(e.occurredAt, e.createdAt) < :end
+              and (:plan is null or u.plan = :plan)
+              and (:excludeAdmins = false or u.role <> :adminRole)
+              and (:includeTestUsers = true or (
+                    lower(u.email) not like '%test%'
+                and lower(u.email) not like '%demo%'
+                and lower(u.email) not like '%sample%'
+                and lower(u.email) not like '%fake%'
+                and lower(u.email) not like '%qa%'
+                and lower(u.email) not like '%dev%'
+                and lower(u.email) not like '%example%'
+              ))
+            order by e.userId asc, coalesce(e.occurredAt, e.createdAt) asc, e.id asc
+            """)
+    List<FeatureUsageEvent> findFunnelEventsBetween(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end,
+            @Param("plan") PlanType plan,
+            @Param("excludeAdmins") boolean excludeAdmins,
+            @Param("includeTestUsers") boolean includeTestUsers,
+            @Param("adminRole") UserRole adminRole
+    );
 
     void deleteByUserId(Long userId);
 
@@ -72,4 +102,51 @@ public interface FeatureUsageRepository extends JpaRepository<FeatureUsageEvent,
             group by e.userId
             """)
     List<Object[]> userActivitySummariesSince(@Param("start") LocalDateTime start);
+
+    @Query("""
+            select count(distinct u.id)
+            from User u
+            where (:plan is null or u.plan = :plan)
+              and (:excludeAdmins = false or u.role <> :adminRole)
+            """)
+    long countEligibleUsers(
+            @Param("plan") PlanType plan,
+            @Param("excludeAdmins") boolean excludeAdmins,
+            @Param("adminRole") UserRole adminRole
+    );
+
+    @Query("""
+            select e.feature, e.userId, count(e), min(e.createdAt), max(e.createdAt)
+            from FeatureUsageEvent e
+            join User u on u.id = e.userId
+            where e.createdAt >= :start and e.createdAt < :end
+              and (:plan is null or u.plan = :plan)
+              and (:excludeAdmins = false or u.role <> :adminRole)
+            group by e.feature, e.userId
+            """)
+    List<Object[]> countByFeatureAndUserBetween(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end,
+            @Param("plan") PlanType plan,
+            @Param("excludeAdmins") boolean excludeAdmins,
+            @Param("adminRole") UserRole adminRole
+    );
+
+    @Query("""
+            select cast(e.createdAt as LocalDate), e.feature, count(e)
+            from FeatureUsageEvent e
+            join User u on u.id = e.userId
+            where e.createdAt >= :start and e.createdAt < :end
+              and (:plan is null or u.plan = :plan)
+              and (:excludeAdmins = false or u.role <> :adminRole)
+            group by cast(e.createdAt as LocalDate), e.feature
+            order by cast(e.createdAt as LocalDate)
+            """)
+    List<Object[]> countByDateAndFeatureBetween(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end,
+            @Param("plan") PlanType plan,
+            @Param("excludeAdmins") boolean excludeAdmins,
+            @Param("adminRole") UserRole adminRole
+    );
 }

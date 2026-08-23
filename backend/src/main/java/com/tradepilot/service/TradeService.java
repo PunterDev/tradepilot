@@ -1,6 +1,7 @@
 package com.tradepilot.service;
 
 import com.tradepilot.billing.UsageLimitService;
+import com.tradepilot.ai.memory.service.TradeMemoryIndexService;
 import com.tradepilot.dto.common.PagedResponse;
 import com.tradepilot.dto.trade.*;
 import com.tradepilot.entity.Trade;
@@ -23,19 +24,26 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import com.tradepilot.entity.ImportBatch;
 import com.tradepilot.entity.TradingAccount;
+import com.tradepilot.tradereplay.service.ContractSymbolNormalizationResult;
+import com.tradepilot.tradereplay.service.ContractSymbolSource;
+import com.tradepilot.tradereplay.service.FuturesContractSymbolNormalizer;
 
 @Service
 public class TradeService {
     @java.lang.SuppressWarnings("all")
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TradeService.class);
+    private static final int MAX_IMPORT_ROWS = 5000;
     private static final List<DateTimeFormatter> TRADOVATE_TIMESTAMP_FORMATTERS = List.of(new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy h:mm:ss a").toFormatter(Locale.US), new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy h:mm a").toFormatter(Locale.US), new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy h:mm:ss a").toFormatter(Locale.US), new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy h:mm a").toFormatter(Locale.US));
     private final TradeRepository tradeRepository;
     private final TradingAccountService tradingAccountService;
     private final ImportBatchRepository importBatchRepository;
     private final UsageLimitService usageLimitService;
     private final PerformanceCacheInvalidationService cacheInvalidationService;
+    private final TradeMemoryIndexService tradeMemoryIndexService;
+    private final FuturesContractSymbolNormalizer contractSymbolNormalizer;
 
     @Transactional
     public TradeResponse createTrade(User user, TradeRequest request) {
@@ -76,6 +84,7 @@ public class TradeService {
         applyRequest(t, request);
         Trade saved = tradeRepository.save(t);
         cacheInvalidationService.invalidateUserTradeDerivedCaches(user.getId());
+        tradeMemoryIndexService.markStale(user.getId(), tradeId);
         log.info("Trade updated. userId={}, tradeId={}", user.getId(), tradeId);
         return mapToResponse(saved);
     }
@@ -91,16 +100,31 @@ public class TradeService {
         trade.setNotes(cleanText(request.notes()));
         Trade saved = tradeRepository.save(trade);
         cacheInvalidationService.invalidateUserTradeDerivedCaches(user.getId());
+        tradeMemoryIndexService.markStale(user.getId(), tradeId);
         log.info("Trade journal updated. userId={}, tradeId={}", user.getId(), tradeId);
         return mapToResponse(saved);
     }
 
     @Transactional
     public List<TradeResponse> importTrades(User user, List<TradeImportRequest> requests) {
+        return importTrades(user, requests, false);
+    }
+
+    @Transactional
+    public List<TradeResponse> importBrokerTrades(User user, List<TradeImportRequest> requests) {
+        return importTrades(user, requests, true);
+    }
+
+    private List<TradeResponse> importTrades(User user, List<TradeImportRequest> requests, boolean trustContractSource) {
         requireUser(user);
         if (requests == null || requests.isEmpty()) {
             log.warn("Trade import skipped because request list is empty. userId={}", user.getId());
             return List.of();
+        }
+        long startedAt = System.currentTimeMillis();
+        if (requests.size() > MAX_IMPORT_ROWS) {
+            log.warn("Trade import rejected because row count exceeds limit. userId={}, requestedRows={}, maxRows={}", user.getId(), requests.size(), MAX_IMPORT_ROWS);
+            throw new IllegalArgumentException("CSV import is limited to " + MAX_IMPORT_ROWS + " rows per upload.");
         }
         Long accountId = requests.get(0).accountId();
         log.info("Trade import started. userId={}, accountId={}, requestedRows={}", user.getId(), accountId, requests.size());
@@ -112,6 +136,13 @@ public class TradeService {
         ImportBatch batch = ImportBatch.builder().user(user).account(account).fileName(requests.get(0).fileName()).totalRows(requests.size()).importedRows(0).skippedDuplicates(0).build();
         batch = importBatchRepository.save(batch);
         List<Trade> tradesToSave = new java.util.ArrayList<>();
+        Set<String> importKeys = requests.stream()
+                .map(TradeImportRequest::externalTradeKey)
+                .filter(key -> key != null)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        Set<String> existingKeys = importKeys.isEmpty()
+                ? Set.of()
+                : new java.util.HashSet<>(tradeRepository.findExistingExternalTradeKeys(user, accountId, List.copyOf(importKeys)));
         java.util.Set<String> seenKeys = new java.util.HashSet<>();
         int skippedDuplicates = 0;
         for (TradeImportRequest request : requests) {
@@ -120,7 +151,7 @@ public class TradeService {
                 skippedDuplicates++;
                 continue;
             }
-            if (key != null && tradeRepository.existsByUserAndAccount_IdAndExternalTradeKey(user, accountId, key)) {
+            if (key != null && existingKeys.contains(key)) {
                 skippedDuplicates++;
                 continue;
             }
@@ -146,6 +177,7 @@ public class TradeService {
                 exitPrice = repairData.exitPrice() == null ? request.exitPrice() : repairData.exitPrice();
             }
             Trade trade = Trade.builder().user(user).account(account).importBatch(batch).externalTradeKey(request.externalTradeKey()).symbol(request.symbol()).market(request.market()).tradeDate(tradeDate).entryTime(entryTime).exitTime(exitTime).side(finalSide.name()).setup(request.setup()).session(request.session()).entryPrice(entryPrice).exitPrice(exitPrice).quantity(request.quantity()).pnlAmount(request.pnlAmount()).pnlR(request.pnlR()).outcome(request.outcome()).build();
+            applyImportedContractFields(trade, request, entryTime, trustContractSource);
             tradesToSave.add(trade);
         }
         List<Trade> saved = tradeRepository.saveAll(tradesToSave);
@@ -153,7 +185,7 @@ public class TradeService {
         batch.setSkippedDuplicates(skippedDuplicates);
         importBatchRepository.save(batch);
         cacheInvalidationService.invalidateUserTradeDerivedCaches(user.getId());
-        log.info("Trade import completed. userId={}, accountId={}, batchId={}, importedRows={}, skippedDuplicates={}", user.getId(), accountId, batch.getId(), saved.size(), skippedDuplicates);
+        log.info("Trade import completed. userId={}, accountId={}, batchId={}, requestedRows={}, importedRows={}, skippedDuplicates={}, existingKeyCount={}, durationMs={}", user.getId(), accountId, batch.getId(), requests.size(), saved.size(), skippedDuplicates, existingKeys.size(), System.currentTimeMillis() - startedAt);
         return saved.stream().map(this::mapToResponse).toList();
     }
 
@@ -218,6 +250,7 @@ public class TradeService {
     public void deleteTrade(User user, Long tradeId) {
         requireUser(user);
         Trade t = tradeRepository.findByIdAndUser(tradeId, user).orElseThrow(() -> new ResourceNotFoundException("Trade not found"));
+        tradeMemoryIndexService.deleteMemory(user.getId(), tradeId);
         tradeRepository.delete(t);
         cacheInvalidationService.invalidateUserTradeDerivedCaches(user.getId());
         log.info("Trade deleted. userId={}, tradeId={}", user.getId(), tradeId);
@@ -227,6 +260,13 @@ public class TradeService {
     public Trade getOwnedTrade(User user, Long tradeId) {
         requireUser(user);
         return tradeRepository.findByIdAndUser(tradeId, user).orElseThrow(() -> new ResourceNotFoundException("Trade not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public List<Trade> getImportedTradesForReplayInitialization(User user, List<Long> tradeIds) {
+        requireUser(user);
+        if (tradeIds == null || tradeIds.isEmpty()) return List.of();
+        return tradeRepository.findByUser_IdAndIdIn(user.getId(), tradeIds);
     }
 
     private String sanitizeSortBy(String sortBy) {
@@ -245,6 +285,7 @@ public class TradeService {
 
     private void applyRequest(Trade t, TradeRequest r) {
         t.setSymbol(r.getSymbol() == null ? null : r.getSymbol().trim().toUpperCase());
+        applyContractFields(t, r.getSymbol(), null, false);
         t.setMarket(r.getMarket());
         t.setTradeDate(r.getTradeDate());
         t.setEntryTime(r.getEntryTime());
@@ -279,6 +320,10 @@ public class TradeService {
         response.setAccountName(account == null ? null : account.getName());
         response.setAccountType(account == null || account.getAccountType() == null ? null : account.getAccountType().name());
         response.setSymbol(t.getSymbol());
+        response.setOriginalBrokerSymbol(t.getOriginalBrokerSymbol());
+        response.setContractSymbol(t.getContractSymbol());
+        response.setContractSymbolSource(t.getContractSymbolSource());
+        response.setContractSymbolConfirmedAt(t.getContractSymbolConfirmedAt());
         response.setMarket(parseMarket(t.getMarket()));
         response.setTradeDate(t.getTradeDate());
         response.setEntryTime(t.getEntryTime());
@@ -429,11 +474,63 @@ public class TradeService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public TradeService(final TradeRepository tradeRepository, final TradingAccountService tradingAccountService, final ImportBatchRepository importBatchRepository, final UsageLimitService usageLimitService, final PerformanceCacheInvalidationService cacheInvalidationService) {
+    private void applyContractFields(Trade trade, String submittedSymbol, LocalDateTime executionTime, boolean imported) {
+        if (submittedSymbol == null || submittedSymbol.isBlank()) return;
+        ContractSymbolNormalizationResult normalized = contractSymbolNormalizer.normalize(submittedSymbol, executionTime == null ? trade.getEntryTime() : executionTime);
+        trade.setOriginalBrokerSymbol(submittedSymbol.trim());
+        if (normalized.valid()) {
+            trade.setSymbol(normalized.rootInstrument());
+            trade.setContractSymbol(normalized.normalizedContractSymbol());
+            trade.setContractSymbolSource(imported ? ContractSymbolSource.IMPORTED.name() : ContractSymbolSource.NORMALIZED.name());
+        } else {
+            String root = contractSymbolNormalizer.rootInstrument(submittedSymbol);
+            if (root != null) {
+                trade.setSymbol(root);
+            }
+        }
+    }
+
+    private void applyImportedContractFields(Trade trade, TradeImportRequest request, LocalDateTime executionTime, boolean trustContractSource) {
+        String submittedSymbol = cleanText(request.symbol());
+        String originalBrokerSymbol = cleanText(request.originalBrokerSymbol());
+        String submittedContract = cleanText(request.contractSymbol());
+        if (originalBrokerSymbol == null) {
+            originalBrokerSymbol = submittedSymbol;
+        }
+        trade.setOriginalBrokerSymbol(originalBrokerSymbol);
+        ContractSymbolNormalizationResult explicitContract = contractSymbolNormalizer.normalize(submittedContract, executionTime);
+        ContractSymbolNormalizationResult brokerContract = contractSymbolNormalizer.normalize(originalBrokerSymbol, executionTime);
+        ContractSymbolNormalizationResult normalized = explicitContract.valid() ? explicitContract : brokerContract;
+        if (normalized.valid()) {
+            trade.setSymbol(normalized.rootInstrument());
+            trade.setContractSymbol(normalized.normalizedContractSymbol());
+            trade.setContractSymbolSource(contractSymbolSourceForImport(request, trustContractSource));
+            return;
+        }
+        String root = contractSymbolNormalizer.rootInstrument(submittedSymbol);
+        if (root == null) {
+            root = contractSymbolNormalizer.rootInstrument(originalBrokerSymbol);
+        }
+        if (root != null) {
+            trade.setSymbol(root);
+        }
+    }
+
+    private String contractSymbolSourceForImport(TradeImportRequest request, boolean trustContractSource) {
+        if (!trustContractSource) {
+            return ContractSymbolSource.NORMALIZED.name();
+        }
+        String source = cleanText(request.contractSymbolSource());
+        return source == null ? ContractSymbolSource.IMPORTED.name() : source;
+    }
+
+    public TradeService(final TradeRepository tradeRepository, final TradingAccountService tradingAccountService, final ImportBatchRepository importBatchRepository, final UsageLimitService usageLimitService, final PerformanceCacheInvalidationService cacheInvalidationService, final TradeMemoryIndexService tradeMemoryIndexService, final FuturesContractSymbolNormalizer contractSymbolNormalizer) {
         this.tradeRepository = tradeRepository;
         this.tradingAccountService = tradingAccountService;
         this.importBatchRepository = importBatchRepository;
         this.usageLimitService = usageLimitService;
         this.cacheInvalidationService = cacheInvalidationService;
+        this.tradeMemoryIndexService = tradeMemoryIndexService;
+        this.contractSymbolNormalizer = contractSymbolNormalizer;
     }
 }

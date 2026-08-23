@@ -9,4 +9,8 @@ public record ResetPasswordRequest(
         @Size(min = 8, max = 100)
         String newPassword
 ) {
+    @Override
+    public String toString() {
+        return "ResetPasswordRequest[token=[REDACTED], newPassword=[REDACTED]]";
+    }
 }

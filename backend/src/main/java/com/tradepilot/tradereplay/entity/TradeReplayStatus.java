@@ -1,0 +1,15 @@
+package com.tradepilot.tradereplay.entity;
+
+public enum TradeReplayStatus {
+    PENDING,
+    WAITING_FOR_MARKET_DATA,
+    FETCHING_DATA,
+    ANALYZING,
+    READY,
+    PROVIDER_NOT_CONFIGURED,
+    UNSUPPORTED_INSTRUMENT,
+    CONTRACT_RESOLUTION_FAILED,
+    NOT_ENOUGH_DATA,
+    DEMO_REPLAY_UNAVAILABLE,
+    FAILED
+}

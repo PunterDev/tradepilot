@@ -221,6 +221,7 @@ export default function AuthPage({ onAuthenticated, initialMode = "login", sessi
               <input
                 required
                 type="email"
+                data-testid="login-email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 autoComplete="email"
@@ -234,6 +235,7 @@ export default function AuthPage({ onAuthenticated, initialMode = "login", sessi
               <input
                 required
                 type="password"
+                data-testid="login-password"
                 minLength={isRegister ? 8 : undefined}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -262,6 +264,7 @@ export default function AuthPage({ onAuthenticated, initialMode = "login", sessi
             {error && (
               <div
                 role="alert"
+                data-testid="login-error"
                 style={authErrorStyle}
               >
                 {error}
@@ -280,7 +283,7 @@ export default function AuthPage({ onAuthenticated, initialMode = "login", sessi
               </div>
             )}
 
-            <button type="submit" disabled={submitting} style={{ ...authButtonStyle, opacity: submitting ? 0.7 : 1 }}>
+            <button type="submit" data-testid="login-submit" disabled={submitting} style={{ ...authButtonStyle, opacity: submitting ? 0.7 : 1 }}>
               {submitting ? "Please wait..." : copy.action}
             </button>
           </form>

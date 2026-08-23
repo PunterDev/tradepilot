@@ -2,6 +2,7 @@ package com.tradepilot.repository;
 
 import com.tradepilot.entity.AiTradeReview;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -52,6 +53,14 @@ public interface AiTradeReviewRepository extends JpaRepository<AiTradeReview, Lo
     List<Object[]> countByUserIds(@Param("userIds") List<Long> userIds);
 
     List<AiTradeReview> findByUserId(Long userId);
+
+    @Query("""
+            select r from AiTradeReview r
+            where r.status = 'COMPLETED'
+              and r.tradeId is not null
+            order by r.createdAt desc
+            """)
+    List<AiTradeReview> findCompletedReviewedTrades(Pageable pageable);
 
     long countByUserIdAndTradeIdIn(Long userId, List<Long> tradeIds);
 

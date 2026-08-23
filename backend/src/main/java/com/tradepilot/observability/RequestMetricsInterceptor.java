@@ -3,6 +3,7 @@ package com.tradepilot.observability;
 import com.tradepilot.entity.User;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -40,7 +41,7 @@ public class RequestMetricsInterceptor implements HandlerInterceptor {
         long durationMs = System.currentTimeMillis() - startMs;
         Long userId = currentUserId();
         int status = effectiveStatus(response.getStatus(), ex);
-        observabilityService.recordRequest(endpoint, request.getMethod(), status, durationMs, userId);
+        observabilityService.recordRequest(endpoint, request.getMethod(), status, durationMs, userId, MDC.get(RequestCorrelationFilter.MDC_REQUEST_ID));
         logRequest(request.getMethod(), endpoint, status, durationMs, userId, ex);
     }
 

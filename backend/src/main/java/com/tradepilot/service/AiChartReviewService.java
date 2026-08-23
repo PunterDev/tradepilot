@@ -2,6 +2,8 @@ package com.tradepilot.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradepilot.dto.ai.AiChartReviewResponse;
+import com.tradepilot.entity.User;
+import com.tradepilot.security.OwnershipGuard;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,10 +17,15 @@ public class AiChartReviewService {
     @java.lang.SuppressWarnings("all")
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AiChartReviewService.class);
     private final ObjectMapper objectMapper;
+    private final OwnershipGuard ownershipGuard;
     private final RestTemplate restTemplate = new RestTemplate();
 
-    public AiChartReviewResponse reviewChart(MultipartFile file, Long tradeId, String journalText) {
+    public AiChartReviewResponse reviewChart(User user, MultipartFile file, Long tradeId, String journalText) {
         try {
+            ownershipGuard.requireCurrentUserId(user);
+            if (tradeId != null) {
+                ownershipGuard.requireTradeOwner(user, tradeId);
+            }
             String base64Image = Base64.getEncoder().encodeToString(file.getBytes());
             String mimeType = file.getContentType();
             String prompt = buildPrompt(tradeId, journalText);
@@ -32,6 +39,8 @@ public class AiChartReviewService {
             Map message = (Map) choice.get("message");
             String content = (String) message.get("content");
             return objectMapper.readValue(content, AiChartReviewResponse.class);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             log.error("AI chart review failed", e);
             throw new RuntimeException("AI chart review failed: " + e.getMessage());
@@ -78,7 +87,8 @@ public class AiChartReviewService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public AiChartReviewService(final ObjectMapper objectMapper) {
+    public AiChartReviewService(final ObjectMapper objectMapper, final OwnershipGuard ownershipGuard) {
         this.objectMapper = objectMapper;
+        this.ownershipGuard = ownershipGuard;
     }
 }

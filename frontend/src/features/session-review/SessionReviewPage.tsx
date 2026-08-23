@@ -17,6 +17,7 @@ export default function SessionReviewPage({ accounts, selectedAccountId, trades,
       <PageHeader
         label="Trade Replay"
         title="Session Review"
+        titleTestId="session-review-heading"
         description="Replay a full trading day, inspect the execution timeline, and generate day-level AI coaching."
       />
       <SessionReviewPanel

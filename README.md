@@ -39,7 +39,7 @@ Screenshots will be added as the beta UI is finalized.
 | Session Review | Reviews complete trading sessions and patterns. |
 | Advanced Analytics | Analyze performance by setup, day, session, confidence, and behavior. |
 | Trade Calendar | Visualize historical trading performance. |
-| CSV Import | Import Tradovate and other broker trade history. |
+| CSV Import | Import supported Tradovate trade exports and Topstep order-history CSV exports. |
 | Multi Account Support | Manage multiple prop and live trading accounts. |
 
 ## AI Leak Detector
@@ -113,6 +113,7 @@ Cached AI results do not consume credits. Regeneration or force refresh consumes
 - [Environment Variables](docs/ENVIRONMENT_VARIABLES.md)
 - [Database Migration Order](docs/DB_MIGRATION_ORDER.md)
 - [Deployment Notes](docs/DEPLOYMENT_NOTES.md)
+- [AI Trading Memory](docs/TRADING_MEMORY.md)
 - [Safe Test Data Cleanup SQL](docs/SAFE_TEST_DATA_CLEANUP.sql)
 
 ## Local Development
@@ -232,7 +233,8 @@ Deployment essentials:
 
 - Configure `VITE_API_BASE_URL` in Vercel.
 - Configure backend secrets in Render.
-- Set `APP_ALLOWED_ORIGINS` to the deployed frontend origin.
+- Set `APP_ALLOWED_ORIGINS` to deployed frontend origins only; production rejects localhost CORS origins.
+- Set `APP_FRONTEND_URL` to the deployed frontend URL for email and billing redirects.
 - Apply Supabase migrations in the documented order.
 - Configure Stripe webhooks to point at `/api/stripe/webhook`.
 - Configure Resend for verification, password reset, contact, and admin reply emails.

@@ -8,6 +8,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
@@ -30,6 +31,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final CustomUserDetailsService userDetailsService;
     private final Environment environment;
+    private final SecurityErrorResponseWriter securityErrorResponseWriter;
     @Value("${app.dev-auth.enabled:false}")
     private boolean devAuthEnabled;
 
@@ -54,9 +56,10 @@ public class SecurityConfig {
                 headers.frameOptions(frame -> frame.deny());
                 headers.contentSecurityPolicy(csp -> csp.policyDirectives("frame-ancestors \'none\'"));
             }
-        }).sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).exceptionHandling(exceptions -> exceptions.authenticationEntryPoint((request, response, authException) -> response.sendError(401, "Authentication required"))).authorizeHttpRequests(auth -> {
+        }).sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS)).exceptionHandling(exceptions -> exceptions.authenticationEntryPoint((request, response, authException) -> securityErrorResponseWriter.write(response, HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED", "Authentication required", request.getRequestURI())).accessDeniedHandler((request, response, accessDeniedException) -> securityErrorResponseWriter.write(response, HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Access denied", request.getRequestURI()))).authorizeHttpRequests(auth -> {
             auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
             auth.requestMatchers("/api/auth/**", "/api/v1/auth/**").permitAll();
+            auth.requestMatchers(HttpMethod.GET, "/api/features", "/api/v1/features").permitAll();
             auth.requestMatchers(HttpMethod.POST, "/api/contact", "/api/v1/contact").permitAll();
             auth.requestMatchers(HttpMethod.POST, "/api/stripe/webhook", "/api/v1/stripe/webhook").permitAll();
             auth.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll();
@@ -100,9 +103,10 @@ public class SecurityConfig {
     }
 
     @java.lang.SuppressWarnings("all")
-    public SecurityConfig(final JwtAuthenticationFilter jwtAuthenticationFilter, final CustomUserDetailsService userDetailsService, final Environment environment) {
+    public SecurityConfig(final JwtAuthenticationFilter jwtAuthenticationFilter, final CustomUserDetailsService userDetailsService, final Environment environment, final SecurityErrorResponseWriter securityErrorResponseWriter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.userDetailsService = userDetailsService;
         this.environment = environment;
+        this.securityErrorResponseWriter = securityErrorResponseWriter;
     }
 }

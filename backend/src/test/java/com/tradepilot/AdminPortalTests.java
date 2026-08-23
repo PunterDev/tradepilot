@@ -153,11 +153,24 @@ class AdminPortalTests {
 
     @Test
     void adminCanViewFeatureUsageAndUserCannot() throws Exception {
+        featureUsageRepository.deleteAll();
         User admin = createUser("admin-feature@example.com", UserRole.ADMIN, PlanType.PRO);
         User normal = createUser("normal-feature@example.com", UserRole.USER, PlanType.FREE);
         featureUsageRepository.save(FeatureUsageEvent.builder()
                 .userId(normal.getId())
                 .feature(FeatureKey.AI_REVIEW)
+                .build());
+        featureUsageRepository.save(FeatureUsageEvent.builder()
+                .userId(normal.getId())
+                .feature(FeatureKey.AI_REVIEW)
+                .build());
+        featureUsageRepository.save(FeatureUsageEvent.builder()
+                .userId(normal.getId())
+                .feature(FeatureKey.PERFORMANCE_TIMELINE)
+                .build());
+        featureUsageRepository.save(FeatureUsageEvent.builder()
+                .userId(normal.getId())
+                .feature(FeatureKey.PLAYBOOK)
                 .build());
 
         String response = mockMvc.perform(get("/api/admin/feature-usage/summary")
@@ -179,8 +192,11 @@ class AdminPortalTests {
             }
         }
         assertThat(aiReviewFeature).isNotNull();
+        assertThat(aiReviewFeature.get("displayName").asText()).isEqualTo("AI Trade Review");
         assertThat(aiReviewFeature.get("overallAdoptionRate").asDouble()).isGreaterThan(0);
         assertThat(aiReviewFeature.get("activeUserAdoptionRate").asDouble()).isEqualTo(100.0);
+        assertFeatureHasDisplayName(json, FeatureKey.PERFORMANCE_TIMELINE, "AI Performance Timeline");
+        assertFeatureHasDisplayName(json, FeatureKey.PLAYBOOK, "AI Trading Playbook");
 
         mockMvc.perform(get("/api/admin/feature-usage/summary")
                         .header("Authorization", "Bearer " + tokenFor(normal)))
@@ -343,6 +359,63 @@ class AdminPortalTests {
         assertThat(requestMetricRepository.findAll())
                 .extracting(RequestMetric::getEndpoint)
                 .doesNotContain("/api/old");
+    }
+
+    @Test
+    void observabilitySummaryShowsNoEventStatesAndDiagnosticBreakdowns() throws Exception {
+        User admin = createUser("admin-observability-diagnostics@example.com", UserRole.ADMIN, PlanType.PRO);
+        LocalDateTime sampleTime = LocalDateTime.of(2031, 1, 7, 10, 0);
+        requestMetricRepository.save(RequestMetric.builder()
+                .endpoint("/api/accounts/{id}/risk")
+                .method("PATCH")
+                .status(400)
+                .durationMs(180L)
+                .requestId("req-400")
+                .errorCode("BAD_REQUEST")
+                .createdAt(sampleTime)
+                .build());
+        requestMetricRepository.save(RequestMetric.builder()
+                .endpoint("/api/accounts/{id}/risk")
+                .method("PATCH")
+                .status(500)
+                .durationMs(2400L)
+                .requestId("req-500")
+                .errorCode("SERVER_ERROR")
+                .createdAt(sampleTime.plusMinutes(1))
+                .build());
+        requestMetricRepository.save(RequestMetric.builder()
+                .endpoint("/api/ai/leak-detector")
+                .method("GET")
+                .status(200)
+                .durationMs(31000L)
+                .requestId("req-ai")
+                .createdAt(sampleTime.plusMinutes(2))
+                .build());
+
+        String response = mockMvc.perform(get("/api/v1/admin/observability/summary")
+                        .param("range", "CUSTOM")
+                        .param("startDate", "2031-01-07")
+                        .param("endDate", "2031-01-07")
+                        .header("Authorization", "Bearer " + tokenFor(admin)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode json = objectMapper.readTree(response);
+        assertThat(json.get("emailHasAttempts").asBoolean()).isFalse();
+        assertThat(json.get("emailSuccessRateDisplay").asText()).isEqualTo("N/A");
+        assertThat(json.get("stripeHasEvents").asBoolean()).isFalse();
+        assertThat(json.get("stripeSuccessRateDisplay").asText()).isEqualTo("N/A");
+        assertThat(json.get("errorsByStatus")).anyMatch(node -> node.get("status").asInt() == 400 && node.get("count").asLong() == 1);
+        assertThat(json.get("errorsByStatus")).anyMatch(node -> node.get("status").asInt() == 500 && node.get("count").asLong() == 1);
+        assertThat(json.get("errorsByEndpoint").get(0).get("latestRequestId").asText()).isEqualTo("req-500");
+        assertThat(json.get("slowestEndpoints")).anyMatch(node ->
+                "/api/ai/leak-detector".equals(node.get("endpoint").asText())
+                        && "AI Generation".equals(node.get("category").asText())
+                        && node.get("requestCount").asLong() == 1
+                        && node.get("maxDurationMs").asLong() == 31000L);
+        assertThat(json.get("lastApiFailure").get("requestId").asText()).isEqualTo("req-500");
     }
 
     @Test
@@ -549,5 +622,18 @@ class AdminPortalTests {
 
         JsonNode json = objectMapper.readTree(response);
         return json.get("token").asText();
+    }
+
+    private void assertFeatureHasDisplayName(JsonNode summary, FeatureKey featureKey, String expectedDisplayName) {
+        JsonNode features = summary.get("features");
+        assertThat(features.isArray()).isTrue();
+        for (JsonNode feature : features) {
+            if (featureKey.name().equals(feature.get("feature").asText())) {
+                assertThat(feature.get("displayName").asText()).isEqualTo(expectedDisplayName);
+                assertThat(feature.get("displayName").asText()).isNotBlank();
+                return;
+            }
+        }
+        throw new AssertionError("Feature not found in summary: " + featureKey);
     }
 }

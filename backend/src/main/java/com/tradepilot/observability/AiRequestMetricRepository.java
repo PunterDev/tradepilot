@@ -32,6 +32,20 @@ public interface AiRequestMetricRepository extends JpaRepository<AiRequestMetric
     @Query("select coalesce(avg(a.durationMs), 0) from AiRequestMetric a where a.createdAt >= :start and a.createdAt < :end")
     double averageDurationBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
+    @Query("select count(a) from AiRequestMetric a where a.createdAt >= :start and a.createdAt < :end and a.success = false")
+    long failuresBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("select a.durationMs from AiRequestMetric a where a.createdAt >= :start and a.createdAt < :end order by a.durationMs asc")
+    List<Long> durationPageBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end, Pageable pageable);
+
+    @Query("""
+            select a
+            from AiRequestMetric a
+            where a.createdAt >= :start and a.createdAt < :end and a.success = false
+            order by a.createdAt desc
+            """)
+    List<AiRequestMetric> findFailuresBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end, Pageable pageable);
+
     @Query("""
             select a.feature, count(a), coalesce(sum(a.totalTokens), 0), coalesce(sum(a.estimatedCost), 0)
             from AiRequestMetric a

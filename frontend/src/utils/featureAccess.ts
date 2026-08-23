@@ -11,6 +11,8 @@ export type Feature =
   | "WEEKLY_COACH"
   | "TRADING_DNA"
   | "AI_LEAK_DETECTOR"
+  | "PERFORMANCE_TIMELINE"
+  | "PLAYBOOK"
   | "ADVANCED_ANALYTICS";
 
 const freeFeatures = new Set<Feature>([

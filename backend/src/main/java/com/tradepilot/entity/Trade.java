@@ -17,6 +17,14 @@ public class Trade {
     private User user;
     @Column(nullable = false, length = 20)
     private String symbol;
+    @Column(name = "original_broker_symbol", length = 80)
+    private String originalBrokerSymbol;
+    @Column(name = "contract_symbol", length = 40)
+    private String contractSymbol;
+    @Column(name = "contract_symbol_source", length = 30)
+    private String contractSymbolSource;
+    @Column(name = "contract_symbol_confirmed_at")
+    private LocalDateTime contractSymbolConfirmedAt;
     @Column(nullable = false, length = 20)
     private String market;
     @Column(name = "trade_date", nullable = false)
@@ -511,6 +519,22 @@ public class Trade {
         return this.symbol;
     }
 
+    public String getOriginalBrokerSymbol() {
+        return originalBrokerSymbol;
+    }
+
+    public String getContractSymbol() {
+        return contractSymbol;
+    }
+
+    public String getContractSymbolSource() {
+        return contractSymbolSource;
+    }
+
+    public LocalDateTime getContractSymbolConfirmedAt() {
+        return contractSymbolConfirmedAt;
+    }
+
     @java.lang.SuppressWarnings("all")
     public String getMarket() {
         return this.market;
@@ -679,6 +703,22 @@ public class Trade {
     @java.lang.SuppressWarnings("all")
     public void setSymbol(final String symbol) {
         this.symbol = symbol;
+    }
+
+    public void setOriginalBrokerSymbol(final String originalBrokerSymbol) {
+        this.originalBrokerSymbol = originalBrokerSymbol;
+    }
+
+    public void setContractSymbol(final String contractSymbol) {
+        this.contractSymbol = contractSymbol;
+    }
+
+    public void setContractSymbolSource(final String contractSymbolSource) {
+        this.contractSymbolSource = contractSymbolSource;
+    }
+
+    public void setContractSymbolConfirmedAt(final LocalDateTime contractSymbolConfirmedAt) {
+        this.contractSymbolConfirmedAt = contractSymbolConfirmedAt;
     }
 
     @java.lang.SuppressWarnings("all")

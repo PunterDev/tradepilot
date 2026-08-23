@@ -6,43 +6,53 @@ import MobileNav from "./MobileNav";
 import SidebarNav, { type NavItem } from "./SidebarNav";
 import { UserPill } from "./PageHeader";
 import { hasFeature } from "../utils/featureAccess";
+import { isFeatureEnabled, type FeatureAvailability, type ReleaseFeatureKey } from "../config/featureFlags";
 
 type Props = {
   user: AuthUser;
   accountCount: number;
   usage?: BillingUsage | null;
+  featureAvailability?: FeatureAvailability | null;
   onLogout: () => void;
   children: ReactNode;
 };
 
-const baseNav: NavItem[] = [
+type AppNavItem = NavItem & { feature?: ReleaseFeatureKey };
+
+const baseNav: AppNavItem[] = [
   { label: "Dashboard", to: "/dashboard" },
   { label: "Analytics", to: "/analytics" },
   { label: "Calendar", to: "/calendar" },
   { label: "Session", to: "/session-review" },
-  { label: "Trading DNA", to: "/trading-dna" },
+  { label: "Trading DNA", to: "/trading-dna", feature: "TRADING_DNA" },
   { label: "Leak Detector", to: "/leak-detector" },
+  { label: "Journey", to: "/journey", feature: "JOURNEY" },
+  { label: "Playbook", to: "/playbook", feature: "PLAYBOOK" },
   { label: "Coach", to: "/coach" },
   { label: "Billing", to: "/billing" },
 ];
 
-export default function AppShell({ user, accountCount, usage, onLogout, children }: Props) {
-  const userNav = baseNav.map((item) => {
-    if (item.to === "/analytics") return { ...item, locked: !hasFeature("ADVANCED_ANALYTICS", user, usage) };
-    if (item.to === "/session-review") return { ...item, locked: !hasFeature("SESSION_REVIEW", user, usage) };
-    if (item.to === "/trading-dna") return { ...item, locked: !hasFeature("TRADING_DNA", user, usage) };
-    if (item.to === "/leak-detector") return { ...item, locked: !hasFeature("AI_LEAK_DETECTOR", user, usage) };
-    if (item.to === "/coach") return { ...item, locked: !hasFeature("DAILY_COACH", user, usage) };
-    return item;
+export default function AppShell({ user, accountCount, usage, featureAvailability, onLogout, children }: Props) {
+  const userNav: NavItem[] = baseNav.filter((item) => !item.feature || isFeatureEnabled(item.feature, featureAvailability)).map((item) => {
+    const { feature: _feature, ...navItem } = item;
+    if (navItem.to === "/analytics") return { ...navItem, locked: !hasFeature("ADVANCED_ANALYTICS", user, usage) };
+    if (navItem.to === "/session-review") return { ...navItem, locked: !hasFeature("SESSION_REVIEW", user, usage) };
+    if (navItem.to === "/trading-dna") return { ...navItem, locked: !hasFeature("TRADING_DNA", user, usage) };
+    if (navItem.to === "/leak-detector") return { ...navItem, locked: !hasFeature("AI_LEAK_DETECTOR", user, usage) };
+    if (navItem.to === "/journey") return { ...navItem, locked: !hasFeature("PERFORMANCE_TIMELINE", user, usage) };
+    if (navItem.to === "/playbook") return { ...navItem, locked: !hasFeature("PLAYBOOK", user, usage) };
+    if (navItem.to === "/coach") return { ...navItem, locked: !hasFeature("DAILY_COACH", user, usage) };
+    return navItem;
   });
   const adminBaseNav: NavItem[] = accountCount > 0
-    ? [...userNav, { label: "Admin", to: "/admin" }, { label: "Users", to: "/admin/users" }, { label: "Contact Messages", to: "/admin/contact-messages" }, { label: "Feature Usage", to: "/admin/feature-usage" }, { label: "Retention Analytics", to: "/admin/retention" }, { label: "Observability", to: "/admin/observability" }]
+    ? [...userNav, { label: "Admin", to: "/admin" }, { label: "Users", to: "/admin/users" }, { label: "Contact Messages", to: "/admin/contact-messages" }, { label: "Feature Usage", to: "/admin/feature-usage" }, { label: "Funnels", to: "/admin/feature-funnels" }, { label: "Retention Analytics", to: "/admin/retention" }, { label: "Observability", to: "/admin/observability" }]
     : [
         { label: "Admin", to: "/admin" },
         { label: "Users", to: "/admin/users" },
         { label: "Contact Messages", to: "/admin/contact-messages" },
         { label: "Billing", to: "/billing" },
         { label: "Feature Usage", to: "/admin/feature-usage" },
+        { label: "Funnels", to: "/admin/feature-funnels" },
         { label: "Retention Analytics", to: "/admin/retention" },
         { label: "Observability", to: "/admin/observability" },
       ];

@@ -27,6 +27,7 @@ import com.tradepilot.leakdetector.entity.AiLeakDetectorSnapshot;
 import com.tradepilot.leakdetector.repository.AiLeakDetectorSnapshotRepository;
 import com.tradepilot.leakdetector.service.LeakDetectorService;
 import com.tradepilot.observability.CacheMetricRepository;
+import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.service.AiTradeReviewService;
 import com.tradepilot.service.SessionReviewService;
@@ -67,6 +68,7 @@ class BillingLimitTests {
     @Autowired AiCreditUsageRepository creditUsageRepository;
     @Autowired CacheMetricRepository cacheMetricRepository;
     @Autowired AiLeakDetectorSnapshotRepository leakDetectorSnapshotRepository;
+    @Autowired TradeRepository tradeRepository;
 
     @Test
     void leakResultDtoSerializesWithoutLombokBuilderRuntimeDependency() throws Exception {
@@ -154,6 +156,16 @@ class BillingLimitTests {
         assertThatThrownBy(() -> tradeService.importTrades(user, importTrades(account.getId(), 101, "too-many")))
                 .isInstanceOf(PlanLimitExceededException.class)
                 .hasMessageContaining("imported trades");
+    }
+
+    @Test
+    void oversizedCsvImportIsRejectedBeforeProcessingRows() {
+        User user = createUser("oversized-import@example.com", PlanType.PRO);
+        TradingAccountResponse account = createAccount(user, "Oversized");
+
+        assertThatThrownBy(() -> tradeService.importTrades(user, importTrades(account.getId(), 5001, "oversized")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("5000 rows");
     }
 
     @Test
@@ -381,7 +393,10 @@ class BillingLimitTests {
                 1,
                 new BigDecimal("-76.25"),
                 null,
-                OutcomeType.LOSS
+                OutcomeType.LOSS,
+                "MESU6",
+                "MESU6",
+                "IMPORTED"
         )));
         leakDetectorSnapshotRepository.save(AiLeakDetectorSnapshot.builder()
                 .userId(user.getId())
@@ -415,7 +430,7 @@ class BillingLimitTests {
         aiCoachService.generateDailyCoach(user, coachRequest(account.getId(), date, false));
         CoachSnapshotDto dailyCoach = waitForDailyCoach(user, account.getId(), date);
 
-        assertThat(dailyCoach.getSelectedDaySummary()).contains("MESU6 LONG");
+        assertThat(dailyCoach.getSelectedDaySummary()).contains("MES LONG");
         assertThat(dailyCoach.getPrimaryIssueToday()).contains("not an overtrading day");
         assertThat(dailyCoach.getHistoricalPatternToWatch())
                 .contains("Account-level pattern")
@@ -491,6 +506,12 @@ class BillingLimitTests {
         User user = createUser("dna-pro-cache@example.com", PlanType.PRO);
         TradingAccountResponse account = createAccount(user, "DNA");
         tradeService.importTrades(user, importTrades(account.getId(), 5, "dna-pro"));
+        assertThat(tradeRepository.findByUserAndAccount_IdAndTradeDateBetweenOrderByTradeDateDesc(
+                user,
+                account.getId(),
+                LocalDate.now().minusDays(29),
+                LocalDate.now()
+        )).hasSize(5);
         long cacheHitsBefore = cacheMetricRepository.countByCacheNameAndHit("trading-dna-cache-hit", true);
         long cacheMissesBefore = cacheMetricRepository.countByCacheNameAndHit("trading-dna-cache-miss", false);
 
@@ -533,6 +554,12 @@ class BillingLimitTests {
         User user = createUser("dna-limited-data-skip@example.com", PlanType.PRO);
         TradingAccountResponse account = createAccount(user, "DNA Limited Data");
         tradeService.importTrades(user, importTrades(account.getId(), 4, "dna-limited"));
+        assertThat(tradeRepository.findByUserAndAccount_IdAndTradeDateBetweenOrderByTradeDateDesc(
+                user,
+                account.getId(),
+                LocalDate.now().minusDays(29),
+                LocalDate.now()
+        )).hasSize(4);
 
         TradingDnaResponse limited = tradingDnaService.getTradingDna(user, account.getId(), 30, false, true);
 
@@ -542,6 +569,12 @@ class BillingLimitTests {
         assertThat(usageLimitService.getUsage(user).getMonthlyAiCreditsUsed()).isZero();
 
         tradeService.importTrades(user, importTrades(account.getId(), 1, "dna-limited-extra"));
+        assertThat(tradeRepository.findByUserAndAccount_IdAndTradeDateBetweenOrderByTradeDateDesc(
+                user,
+                account.getId(),
+                LocalDate.now().minusDays(29),
+                LocalDate.now()
+        )).hasSize(5);
         TradingDnaResponse generated = tradingDnaService.getTradingDna(user, account.getId(), 30, false, false);
 
         assertThat(generated.getStatus()).isEqualTo("COMPLETED");
@@ -1037,7 +1070,10 @@ class BillingLimitTests {
                             1,
                             pnl,
                             pnlR,
-                            pnlR.signum() >= 0 ? OutcomeType.WIN : OutcomeType.LOSS
+                            pnlR.signum() >= 0 ? OutcomeType.WIN : OutcomeType.LOSS,
+                            null,
+                            null,
+                            null
                     );
                 })
                 .toList();
@@ -1168,20 +1204,24 @@ class BillingLimitTests {
                 1,
                 pnl,
                 null,
-                pnl.signum() >= 0 ? OutcomeType.WIN : OutcomeType.LOSS
+                pnl.signum() >= 0 ? OutcomeType.WIN : OutcomeType.LOSS,
+                null,
+                null,
+                null
         );
     }
 
     private TradeImportRequest importTrade(Long accountId, String externalTradeKey, BigDecimal pnl) {
+        LocalDate tradeDate = LocalDate.now().minusDays(7);
         return new TradeImportRequest(
                 accountId,
                 "tradovate.csv",
                 externalTradeKey,
                 "NQ",
                 "FUTURES",
-                LocalDate.of(2026, 6, 15),
-                LocalDateTime.of(2026, 6, 15, 9, 30),
-                LocalDateTime.of(2026, 6, 15, 9, 45),
+                tradeDate,
+                tradeDate.atTime(9, 30),
+                tradeDate.atTime(9, 45),
                 "LONG",
                 SetupType.ORB,
                 SessionType.NY_AM,
@@ -1190,7 +1230,10 @@ class BillingLimitTests {
                 1,
                 pnl,
                 BigDecimal.ONE,
-                pnl.signum() >= 0 ? OutcomeType.WIN : OutcomeType.LOSS
+                pnl.signum() >= 0 ? OutcomeType.WIN : OutcomeType.LOSS,
+                null,
+                null,
+                null
         );
     }
 

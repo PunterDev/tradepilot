@@ -4,12 +4,16 @@ import { useAiReviewPolling } from "../hooks/useAiReviewPolling";
 import type { AiTradeReviewResponse } from "../types/ai";
 import type { Trade } from "../types/trade";
 import { formatCurrency } from "../utils/dashboardUtils";
+import TradingMemoryCard from "./trading-memory/TradingMemoryCard";
+import AITradeReplayCard from "./trade-replay/AITradeReplayCard";
 
 type TradeDetailModalProps = {
   tradeId: number;
   onClose: () => void;
   onSelectTrade: (tradeId: number) => void;
   onUsageChanged?: () => void;
+  tradingMemoryEnabled?: boolean;
+  tradeReplayEnabled?: boolean;
 };
 
 const SETUP_OPTIONS = [
@@ -50,6 +54,8 @@ export default function TradeDetailModal({
   onClose,
   onSelectTrade,
   onUsageChanged,
+  tradingMemoryEnabled = false,
+  tradeReplayEnabled = false,
 }: TradeDetailModalProps) {
   const [detail, setDetail] = useState<TradeDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -204,7 +210,7 @@ export default function TradeDetailModal({
 
   return (
     <div style={overlay} onClick={onClose}>
-      <section style={modal} onClick={(event) => event.stopPropagation()}>
+      <section style={modal} data-testid="trade-detail-modal" onClick={(event) => event.stopPropagation()}>
         <div style={header}>
           <div>
             <div style={eyebrow}>Trade Detail</div>
@@ -254,18 +260,19 @@ export default function TradeDetailModal({
             </div>
 
             <div style={metaGrid}>
-              <Metric label="Symbol" value={trade.symbol} />
+              <Metric label="Symbol" value={trade.symbol} testId="trade-detail-symbol" />
               <Metric label="Date / Time" value={formatDateTime(trade.entryTime ?? trade.tradeDate)} />
               <Metric label="Session" value={humanize(trade.session)} />
               <Metric label="Account" value={trade.accountName ?? "-"} />
-              <Metric label="Side" value={trade.side ?? "-"} />
+              <Metric label="Side" value={trade.side ?? "-"} testId="trade-detail-side" />
               <Metric label="Quantity" value={String(trade.quantity ?? "-")} />
-              <Metric label="Entry" value={formatNumber(trade.entryPrice)} />
-              <Metric label="Exit" value={formatNumber(trade.exitPrice)} />
+              <Metric label="Entry" value={formatNumber(trade.entryPrice)} testId="trade-detail-entry" />
+              <Metric label="Exit" value={formatNumber(trade.exitPrice)} testId="trade-detail-exit" />
               <Metric
                 label="P&L"
                 value={formatCurrency(toNumber(trade.pnlAmount))}
                 tone={toNumber(trade.pnlAmount) >= 0 ? "positive" : "negative"}
+                testId="trade-detail-pnl"
               />
               <Metric label="R Multiple" value={trade.pnlR == null ? "-" : `${toNumber(trade.pnlR).toFixed(2)}R`} />
             </div>
@@ -392,6 +399,7 @@ export default function TradeDetailModal({
                   {!displayedReview && (
                     <button
                       type="button"
+                      data-testid="generate-trade-review"
                       onClick={() => void startReview(false)}
                       disabled={reviewPolling.isLoading}
                       style={primaryButton(reviewPolling.isLoading)}
@@ -402,6 +410,7 @@ export default function TradeDetailModal({
                   {displayedReview && (
                     <button
                       type="button"
+                      data-testid="generate-trade-review"
                       onClick={() => void startReview(true)}
                       disabled={reviewPolling.isLoading}
                       style={primaryButton(reviewPolling.isLoading)}
@@ -438,6 +447,14 @@ export default function TradeDetailModal({
                 )}
               </section>
             </div>
+
+            <TradingMemoryCard
+              tradeId={trade.id}
+              enabled={tradingMemoryEnabled}
+              onSelectTrade={onSelectTrade}
+            />
+
+            <AITradeReplayCard tradeId={trade.id} enabled={tradeReplayEnabled} />
           </>
         )}
       </section>
@@ -445,11 +462,11 @@ export default function TradeDetailModal({
   );
 }
 
-function Metric({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) {
+function Metric({ label, value, tone, testId }: { label: string; value: string; tone?: "positive" | "negative"; testId?: string }) {
   return (
     <div style={metricCard}>
       <span style={metricLabel}>{label}</span>
-      <strong style={{ ...metricValue, color: tone === "positive" ? "#6ee7b7" : tone === "negative" ? "#fda4af" : "#f8fafc" }}>
+      <strong data-testid={testId} style={{ ...metricValue, color: tone === "positive" ? "#6ee7b7" : tone === "negative" ? "#fda4af" : "#f8fafc" }}>
         {value}
       </strong>
     </div>

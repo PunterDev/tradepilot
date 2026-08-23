@@ -26,6 +26,7 @@ import com.tradepilot.repository.UserRepository;
 import com.tradepilot.service.StatsService;
 import com.tradepilot.service.TradeService;
 import com.tradepilot.service.TradingAccountService;
+import com.tradepilot.tradereplay.service.ContractSymbolSource;
 import com.tradepilot.tradingdna.dto.TradingDnaResponse;
 import com.tradepilot.tradingdna.service.TradingDnaService;
 import org.junit.jupiter.api.Test;
@@ -184,6 +185,62 @@ class UserDataIsolationTests {
         assertThat(invalidScope.getMessage()).contains("Selected account is no longer available");
     }
 
+    @Test
+    void publicTradeImportCannotForgeAuthoritativeContractSymbolSource() {
+        User user = createUser("Contract Source User", "contract-source-user@example.com");
+        TradingAccountResponse account = tradingAccountService.create(
+                user,
+                new TradingAccountRequest(
+                        "Contract Source Account",
+                        PropFirmType.TOPSTEP,
+                        "CS-001",
+                        null,
+                        BigDecimal.valueOf(50_000),
+                        null,
+                        TradingAccountStatus.ACTIVE
+                )
+        );
+
+        List<TradeResponse> imported = tradeService.importTrades(
+                user,
+                List.of(futuresImportTrade(account.getId(), "public-forged-source", ContractSymbolSource.USER_CONFIRMED.name()))
+        );
+
+        assertThat(imported).hasSize(1);
+        assertThat(imported.get(0).getSymbol()).isEqualTo("MES");
+        assertThat(imported.get(0).getOriginalBrokerSymbol()).isEqualTo("MESU6");
+        assertThat(imported.get(0).getContractSymbol()).isEqualTo("MESU6");
+        assertThat(imported.get(0).getContractSymbolSource()).isEqualTo(ContractSymbolSource.NORMALIZED.name());
+    }
+
+    @Test
+    void trustedBrokerImportPreservesImportedContractSymbolSource() {
+        User user = createUser("Broker Source User", "broker-source-user@example.com");
+        TradingAccountResponse account = tradingAccountService.create(
+                user,
+                new TradingAccountRequest(
+                        "Broker Source Account",
+                        PropFirmType.TOPSTEP,
+                        "BS-001",
+                        null,
+                        BigDecimal.valueOf(50_000),
+                        null,
+                        TradingAccountStatus.ACTIVE
+                )
+        );
+
+        List<TradeResponse> imported = tradeService.importBrokerTrades(
+                user,
+                List.of(futuresImportTrade(account.getId(), "trusted-imported-source", ContractSymbolSource.IMPORTED.name()))
+        );
+
+        assertThat(imported).hasSize(1);
+        assertThat(imported.get(0).getSymbol()).isEqualTo("MES");
+        assertThat(imported.get(0).getOriginalBrokerSymbol()).isEqualTo("MESU6");
+        assertThat(imported.get(0).getContractSymbol()).isEqualTo("MESU6");
+        assertThat(imported.get(0).getContractSymbolSource()).isEqualTo(ContractSymbolSource.IMPORTED.name());
+    }
+
     private User createUser(String name, String email) {
         return userRepository.save(User.builder()
                 .name(name)
@@ -214,7 +271,36 @@ class UserDataIsolationTests {
                 1,
                 pnl,
                 BigDecimal.ONE,
-                pnl.signum() >= 0 ? OutcomeType.WIN : OutcomeType.LOSS
+                pnl.signum() >= 0 ? OutcomeType.WIN : OutcomeType.LOSS,
+                null,
+                null,
+                null
+        );
+    }
+
+    private TradeImportRequest futuresImportTrade(Long accountId, String externalTradeKey, String contractSymbolSource) {
+        LocalDate tradeDate = LocalDate.of(2026, 6, 22);
+        return new TradeImportRequest(
+                accountId,
+                "manual-import.json",
+                externalTradeKey,
+                "MESU6",
+                "FUTURES",
+                tradeDate,
+                tradeDate.atTime(9, 30),
+                tradeDate.atTime(9, 45),
+                "LONG",
+                SetupType.ORB,
+                SessionType.NY_AM,
+                BigDecimal.valueOf(5485),
+                BigDecimal.valueOf(5490),
+                1,
+                BigDecimal.valueOf(50),
+                BigDecimal.ONE,
+                OutcomeType.WIN,
+                "MESU6",
+                "MESU6",
+                contractSymbolSource
         );
     }
 }

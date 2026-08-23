@@ -15,6 +15,12 @@ where schemaname = 'public'
       'idx_trading_dna_user_account_hash',
       'idx_trading_dna_user_account_days_hash',
       'idx_ai_session_reviews_user_account_date_hash',
+      'idx_trades_user_account_external_key_present',
+      'idx_trades_user_account_symbol_date',
+      'idx_trades_user_account_setup_date',
+      'idx_trades_user_account_session_date',
+      'idx_ai_coach_snapshot_user_account_status_updated',
+      'idx_ai_credit_purchases_user_completed_at',
       'idx_users_billing_lookup'
   )
 order by tablename, indexname;
@@ -36,6 +42,12 @@ where t.relkind = 'r'
       'idx_trading_dna_user_account_hash',
       'idx_trading_dna_user_account_days_hash',
       'idx_ai_session_reviews_user_account_date_hash',
+      'idx_trades_user_account_external_key_present',
+      'idx_trades_user_account_symbol_date',
+      'idx_trades_user_account_setup_date',
+      'idx_trades_user_account_session_date',
+      'idx_ai_coach_snapshot_user_account_status_updated',
+      'idx_ai_credit_purchases_user_completed_at',
       'idx_users_billing_lookup'
   )
 group by t.relname, i.relname

@@ -55,6 +55,8 @@ frontend/dist/
 frontend/build/
 frontend/playwright-report/
 frontend/test-results/
+e2e-tests/target/
+e2e-tests/test-output/
 
 # Vite cache
 frontend/.vite/

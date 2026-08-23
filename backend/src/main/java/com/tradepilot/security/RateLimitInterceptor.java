@@ -4,21 +4,21 @@ import com.tradepilot.entity.User;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 
 @Component
 public class RateLimitInterceptor implements HandlerInterceptor {
     @java.lang.SuppressWarnings("all")
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RateLimitInterceptor.class);
     private final InMemoryRateLimiter rateLimiter;
+    private final SecurityErrorResponseWriter securityErrorResponseWriter;
     @Value("${app.rate-limit.auth-login.max-requests:8}")
     private int authLoginMax;
     @Value("${app.rate-limit.auth-login.window-seconds:60}")
@@ -39,6 +39,14 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     private int aiGenerationMax;
     @Value("${app.rate-limit.ai-generation.window-seconds:300}")
     private long aiGenerationWindowSeconds;
+    @Value("${app.rate-limit.csv-import.max-requests:6}")
+    private int csvImportMax;
+    @Value("${app.rate-limit.csv-import.window-seconds:300}")
+    private long csvImportWindowSeconds;
+    @Value("${app.rate-limit.billing-checkout.max-requests:10}")
+    private int billingCheckoutMax;
+    @Value("${app.rate-limit.billing-checkout.window-seconds:300}")
+    private long billingCheckoutWindowSeconds;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws IOException {
@@ -53,11 +61,8 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             return true;
         }
         log.warn("Rate limit blocked request. rule={}, subject={}, path={}, retryAfterSeconds={}", rule.name, safeSubject(rule.authenticated, subject), request.getRequestURI(), result.retryAfterSeconds());
-        response.setStatus(429);
         response.setHeader("Retry-After", String.valueOf(result.retryAfterSeconds()));
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.getWriter().write("{\"error\":\"Too many requests. Please wait and try again.\"}");
+        securityErrorResponseWriter.write(response, HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMIT_EXCEEDED", "Too many requests. Please wait and try again.", request.getRequestURI());
         return false;
     }
 
@@ -70,11 +75,17 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         if (HttpMethod.POST.matches(method) && "/api/auth/register".equals(path)) {
             return new RateLimitRule("auth-register", authRegisterMax, authRegisterWindowSeconds, false);
         }
-        if (HttpMethod.POST.matches(method) && ("/api/auth/forgot-password".equals(path) || "/api/auth/resend-verification".equals(path))) {
+        if (HttpMethod.POST.matches(method) && ("/api/auth/forgot-password".equals(path) || "/api/auth/reset-password".equals(path) || "/api/auth/resend-verification".equals(path) || "/api/auth/verify-email".equals(path))) {
             return new RateLimitRule("auth-email", authEmailMax, authEmailWindowSeconds, false);
         }
         if (HttpMethod.POST.matches(method) && "/api/contact".equals(path)) {
             return new RateLimitRule("contact", contactMax, contactWindowSeconds, false);
+        }
+        if (HttpMethod.POST.matches(method) && ("/api/trades/import".equals(path) || "/api/trades/import/preview".equals(path) || "/api/trades/import/csv".equals(path) || "/api/trades/repair-tradovate-directions".equals(path))) {
+            return new RateLimitRule("csv-import", csvImportMax, csvImportWindowSeconds, true);
+        }
+        if (HttpMethod.POST.matches(method) && ("/api/billing/create-checkout-session".equals(path) || "/api/billing/create-credit-pack-checkout-session".equals(path) || "/api/billing/create-portal-session".equals(path))) {
+            return new RateLimitRule("billing-checkout", billingCheckoutMax, billingCheckoutWindowSeconds, true);
         }
         if (isAiGenerationRequest(method, path)) {
             return new RateLimitRule("ai-generation:" + aiFeature(path), aiGenerationMax, aiGenerationWindowSeconds, true);
@@ -83,7 +94,17 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     }
 
     private boolean isAiGenerationRequest(String method, String path) {
-        return (HttpMethod.POST.matches(method) && ("/api/ai/trade-review".equals(path) || "/api/ai/trade-review/async".equals(path) || "/api/ai/weekly-review".equals(path) || "/api/ai/chart-review".equals(path) || "/api/ai/trade-analysis/async".equals(path) || "/api/coach/daily/generate".equals(path) || "/api/coach/weekly/generate".equals(path) || "/api/sessions/review/generate".equals(path) || "/api/ai/leak-detector/regenerate".equals(path))) || (HttpMethod.GET.matches(method) && ("/api/ai/trading-dna".equals(path) || "/api/ai/leak-detector".equals(path)));
+        return (HttpMethod.POST.matches(method) && ("/api/ai/trade-review".equals(path) || "/api/ai/trade-review/async".equals(path) || "/api/ai/weekly-review".equals(path) || "/api/ai/chart-review".equals(path) || "/api/ai/trade-analysis/async".equals(path) || "/api/coach/daily/generate".equals(path) || "/api/coach/weekly/generate".equals(path) || "/api/sessions/review/generate".equals(path) || "/api/ai/leak-detector/regenerate".equals(path) || "/api/ai/performance-timeline/regenerate".equals(path) || isPlaybookAiGenerationPath(path) || isTradeReplayGenerationPath(path))) || (HttpMethod.GET.matches(method) && ("/api/ai/trading-dna".equals(path) || "/api/ai/leak-detector".equals(path)));
+    }
+
+    private boolean isTradeReplayGenerationPath(String path) {
+        return path != null && path.matches("^/api/trades/\\d+/replay/(generate|regenerate)$");
+    }
+
+    private boolean isPlaybookAiGenerationPath(String path) {
+        return path != null && (path.equals("/api/ai/playbook/draft-from-description")
+                || path.equals("/api/ai/playbook/draft-from-trades")
+                || path.matches("^/api/ai/playbook/\\d+/regenerate$"));
     }
 
     private String normalizedApiPath(String path) {
@@ -122,7 +143,8 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     }
 
     @java.lang.SuppressWarnings("all")
-    public RateLimitInterceptor(final InMemoryRateLimiter rateLimiter) {
+    public RateLimitInterceptor(final InMemoryRateLimiter rateLimiter, final SecurityErrorResponseWriter securityErrorResponseWriter) {
         this.rateLimiter = rateLimiter;
+        this.securityErrorResponseWriter = securityErrorResponseWriter;
     }
 }

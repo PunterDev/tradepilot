@@ -7,7 +7,11 @@ export const API_PREFIX = "/api/v1";
 const DEFAULT_API_ORIGIN = "http://localhost:8080";
 
 function normalizeApiBaseUrl(rawBaseUrl: string | undefined) {
-  const value = rawBaseUrl?.trim() || DEFAULT_API_ORIGIN;
+  const configuredValue = rawBaseUrl?.trim();
+  if (import.meta.env.PROD && !configuredValue) {
+    throw new Error("VITE_API_BASE_URL is required for production builds.");
+  }
+  const value = configuredValue || DEFAULT_API_ORIGIN;
   const withoutTrailingSlash = value.replace(/\/+$/, "");
 
   if (withoutTrailingSlash.endsWith(API_PREFIX)) {

@@ -69,6 +69,6 @@ public class LoginRequest {
     @java.lang.Override
     @java.lang.SuppressWarnings("all")
     public java.lang.String toString() {
-        return "LoginRequest(email=" + this.getEmail() + ", password=" + this.getPassword() + ")";
+        return "LoginRequest(email=" + this.getEmail() + ", password=[REDACTED])";
     }
 }

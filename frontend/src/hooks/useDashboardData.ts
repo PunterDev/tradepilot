@@ -2,14 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getAllTrades,
   getTradesByAccount,
-  importTradesFromCsv,
+  previewCsvImport,
+  saveCsvImport,
+  type TradeImportPreviewResponse,
 } from "../api/tradeApi";
 import { getDashboardStats, type DashboardStats } from "../api/statsApi";
 import { getCalendarSummary, type CalendarSummaryItem } from "../api/analyticsApi";
-import {
-  parseTradovateCsv,
-  type TradovateTrade,
-} from "../utils/tradovateCsv";
+import type { TradovateTrade } from "../utils/tradovateCsv";
 import {
   buildDailyPnlFromDbTrades,
   calculateBestStreak,
@@ -31,6 +30,12 @@ type UseDashboardDataParams = {
   onTradesSaved?: () => void;
 };
 
+export type ImportFeedback = {
+  type: "success" | "error" | "warning";
+  message: string;
+  details?: string[];
+};
+
 export function useDashboardData({
   authReady,
   selectedAccountId,
@@ -38,11 +43,14 @@ export function useDashboardData({
   onTradesSaved,
 }: UseDashboardDataParams) {
   const [fileName, setFileName] = useState("");
+  const [selectedCsvFile, setSelectedCsvFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<TradeImportPreviewResponse | null>(null);
   const [parsedImportCount, setParsedImportCount] = useState(0);
   const [trades, setTrades] = useState<TradovateTrade[]>([]);
   const [dailyPnl, setDailyPnl] = useState<DailyPnl[]>([]);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [importFeedback, setImportFeedback] = useState<ImportFeedback | null>(null);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
 
@@ -92,7 +100,10 @@ export function useDashboardData({
       : buildDailyPnlFromDbTrades(dbTrades);
 
     setTrades(mappedTrades);
+    setSelectedCsvFile(null);
+    setImportPreview(null);
     setParsedImportCount(0);
+    setImportFeedback(null);
     setDailyPnl(rebuiltDailyPnl);
     onDefaultCalendarMonthChange(getDefaultCalendarMonth(rebuiltDailyPnl));
   }
@@ -120,67 +131,96 @@ export function useDashboardData({
   }, [authReady, selectedAccountId]);
 
   async function handleCsvUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    setImportFeedback(null);
     if (!selectedAccountId || selectedAccountId === "ALL") {
       event.target.value = "";
-      alert("Select one trading account before importing CSV trades.");
+      setImportFeedback({
+        type: "warning",
+        message: "Select one trading account before importing CSV trades.",
+      });
       return;
     }
 
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      event.target.value = "";
+      setFileName("");
+      setSelectedCsvFile(null);
+      setParsedImportCount(0);
+      setImportPreview(null);
+      setImportFeedback({
+        type: "error",
+        message: "Upload a CSV file exported from Tradovate or Topstep.",
+      });
+      return;
+    }
 
     setFileName(file.name);
+    setSelectedCsvFile(file);
+    setImportPreview(null);
     setParsing(true);
 
     try {
-      const parsed = await parseTradovateCsv(file);
-      setTrades(parsed.trades);
-      setParsedImportCount(parsed.trades.length);
-      setDailyPnl(parsed.dailyPnl);
-      onDefaultCalendarMonthChange(getDefaultCalendarMonth(parsed.dailyPnl));
+      const preview = await previewCsvImport(Number(selectedAccountId), file);
+      setImportPreview(preview);
+      setParsedImportCount(preview.completedTrades);
+      const previewDailyPnl = buildDailyPnlFromImportPreview(preview);
+      setTrades(mapPreviewTrades(preview));
+      setDailyPnl(previewDailyPnl);
+      onDefaultCalendarMonthChange(getDefaultCalendarMonth(previewDailyPnl));
+      setImportFeedback({
+        type: preview.completedTrades === preview.duplicateTrades ? "warning" : "success",
+        message: importPreviewMessage(preview),
+        details: preview.warnings,
+      });
     } catch (error) {
       console.error(error);
       setParsedImportCount(0);
-      alert("Failed to parse CSV");
+      setSelectedCsvFile(null);
+      setImportPreview(null);
+      setImportFeedback({
+        type: "error",
+        message: importErrorMessage(error),
+        details: importErrorDetails(error),
+      });
     } finally {
       setParsing(false);
+      event.target.value = "";
     }
   }
 
   async function handleSaveToDatabase() {
     if (!selectedAccountId) {
-      alert("Select an account first.");
+      setImportFeedback({ type: "warning", message: "Select an account first." });
       return;
     }
 
     if (selectedAccountId === "ALL") {
-      alert("Select a specific account before importing CSV trades.");
+      setImportFeedback({ type: "warning", message: "Select a specific account before importing CSV trades." });
       return;
     }
 
-    if (trades.length === 0) {
-      alert("Upload and parse a CSV first.");
+    if (!selectedCsvFile || !importPreview) {
+      setImportFeedback({ type: "warning", message: "Upload and preview a CSV before saving imported trades." });
       return;
     }
 
     if (parsedImportCount === 0) {
-      alert("Upload and parse a CSV before saving imported trades.");
+      setImportFeedback({ type: "warning", message: "No completed trades are available to save from this CSV." });
       return;
     }
 
     if (!fileName) {
-      alert("Upload and parse a CSV before saving imported trades.");
+      setImportFeedback({ type: "warning", message: "Upload and preview a CSV before saving imported trades." });
       return;
     }
 
     setSaving(true);
+    setImportFeedback(null);
 
     try {
-      const saved = await importTradesFromCsv(
-        selectedAccountId,
-        fileName,
-        trades
-      );
+      const saved = await saveCsvImport(Number(selectedAccountId), selectedCsvFile);
       const [dbTrades, calendarSummary] = await Promise.all([
         getTradesByAccount(Number(selectedAccountId)),
         getCalendarSummary(Number(selectedAccountId)),
@@ -188,13 +228,26 @@ export function useDashboardData({
 
       applyDbTrades(dbTrades, calendarSummary);
       setFileName("");
+      setSelectedCsvFile(null);
+      setImportPreview(null);
 
-      alert(`Saved ${saved.length} new trades and synced from database ✅`);
+      const savedCount = Array.isArray(saved) ? saved.length : saved.savedCount;
+      setImportFeedback({
+        type: savedCount === 0 ? "warning" : "success",
+        message: savedCount === 0
+          ? "All trades in this file already exist. No new trades were saved."
+          : `Saved ${savedCount} new trades and synced from the database.`,
+        details: saved.preview?.warnings,
+      });
       await loadDashboardStats(selectedAccountId);
       onTradesSaved?.();
     } catch (error) {
       console.error(error);
-      alert("Failed to save trades to database.");
+      setImportFeedback({
+        type: "error",
+        message: importErrorMessage(error) || "Failed to save trades to database.",
+        details: importErrorDetails(error),
+      });
     } finally {
       setSaving(false);
     }
@@ -236,6 +289,8 @@ export function useDashboardData({
     saving,
     dashboardStats,
     loadingStats,
+    importPreview,
+    importFeedback,
     handleCsvUpload,
     handleSaveToDatabase,
     metrics,
@@ -276,4 +331,78 @@ function buildDailyPnlFromCalendarSummary(summary: CalendarSummaryItem[]): Daily
         winRate: tradeCount > 0 ? Number(((winningTrades / tradeCount) * 100).toFixed(2)) : 0,
       };
     });
+}
+
+function buildDailyPnlFromImportPreview(preview: TradeImportPreviewResponse): DailyPnl[] {
+  const dailyMap = new Map<string, DailyPnl>();
+  preview.trades.forEach((trade) => {
+    const date = trade.tradeDate;
+    const pnl = toNumber(trade.pnlAmount);
+    if (!dailyMap.has(date)) {
+      dailyMap.set(date, {
+        date,
+        totalPnl: 0,
+        cumulativePnl: 0,
+        tradeCount: 0,
+        winningTrades: 0,
+        losingTrades: 0,
+        breakevenTrades: 0,
+        winRate: 0,
+      });
+    }
+    const day = dailyMap.get(date)!;
+    day.totalPnl += pnl;
+    day.tradeCount += 1;
+    if (pnl > 0) day.winningTrades += 1;
+    else if (pnl < 0) day.losingTrades += 1;
+    else day.breakevenTrades += 1;
+  });
+
+  let cumulativePnl = 0;
+  return Array.from(dailyMap.values())
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((day) => {
+      cumulativePnl += day.totalPnl;
+      return {
+        ...day,
+        cumulativePnl,
+        winRate: day.tradeCount > 0 ? Number(((day.winningTrades / day.tradeCount) * 100).toFixed(2)) : 0,
+      };
+    });
+}
+
+function mapPreviewTrades(preview: TradeImportPreviewResponse): TradovateTrade[] {
+  return preview.trades.map((trade) => ({
+    symbol: trade.contractSymbol || trade.originalBrokerSymbol || trade.symbol,
+    qty: Number(trade.quantity ?? 0),
+    buyPrice: trade.side === "SHORT" ? Number(trade.exitPrice ?? 0) : Number(trade.entryPrice ?? 0),
+    sellPrice: trade.side === "SHORT" ? Number(trade.entryPrice ?? 0) : Number(trade.exitPrice ?? 0),
+    pnl: toNumber(trade.pnlAmount),
+    boughtTimestamp: trade.side === "SHORT" ? trade.exitTime : trade.entryTime,
+    soldTimestamp: trade.side === "SHORT" ? trade.entryTime : trade.exitTime,
+    duration: "",
+    side: trade.side === "LONG" || trade.side === "SHORT" ? trade.side : "UNKNOWN",
+    setup: "OTHER",
+    session: "UNKNOWN",
+    tradeDate: trade.tradeDate,
+  }));
+}
+
+function importPreviewMessage(preview: TradeImportPreviewResponse): string {
+  const format = preview.detectedFormat === "TOPSTEP" ? "Topstep order history" : "Tradovate trade export";
+  if (preview.completedTrades > 0 && preview.completedTrades === preview.duplicateTrades) {
+    return `${format} detected. All ${preview.completedTrades} completed trades already exist.`;
+  }
+  return `${format} detected. ${preview.completedTrades} completed trades reconstructed.`;
+}
+
+function importErrorMessage(error: any): string {
+  return error?.response?.data?.message
+    || error?.response?.data?.error
+    || "Failed to parse CSV. Upload a supported Tradovate or Topstep export.";
+}
+
+function importErrorDetails(error: any): string[] | undefined {
+  const requestId = error?.response?.data?.requestId;
+  return requestId ? [`Request ID: ${requestId}`] : undefined;
 }

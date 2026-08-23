@@ -4,10 +4,12 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -21,6 +23,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JwtAuthenticationFilter.class);
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
+    private final SecurityErrorResponseWriter securityErrorResponseWriter;
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain) throws ServletException, IOException {
@@ -40,17 +43,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(token);
                 }
             }
-        } catch (JwtException | IllegalArgumentException ex) {
+        } catch (JwtException | IllegalArgumentException | UsernameNotFoundException ex) {
             log.trace("JWT authentication failed. path={}, reason={}", request.getRequestURI(), ex.getClass().getSimpleName());
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
+            securityErrorResponseWriter.write(response, HttpStatus.UNAUTHORIZED, "INVALID_OR_EXPIRED_TOKEN", "Invalid or expired token", request.getRequestURI());
             return;
         }
         filterChain.doFilter(request, response);
     }
 
     @java.lang.SuppressWarnings("all")
-    public JwtAuthenticationFilter(final JwtService jwtService, final CustomUserDetailsService userDetailsService) {
+    public JwtAuthenticationFilter(final JwtService jwtService, final CustomUserDetailsService userDetailsService, final SecurityErrorResponseWriter securityErrorResponseWriter) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
+        this.securityErrorResponseWriter = securityErrorResponseWriter;
     }
 }

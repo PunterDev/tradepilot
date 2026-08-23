@@ -10,11 +10,16 @@ Run this checklist before pushing, deploying, or opening beta access.
 - Confirm frontend env contains no Stripe secret, webhook secret, OpenAI key, Resend API key, JWT secret, or database credential.
 - Confirm backend production env has a unique `JWT_SECRET` with at least 32 random bytes encoded as Base64.
 - Confirm `APP_ALLOWED_ORIGINS` is explicit and does not use `*`.
+- Confirm production `APP_ALLOWED_ORIGINS` contains no localhost or `127.0.0.1` origins.
+- Confirm `APP_FRONTEND_URL` points to the deployed frontend, not localhost.
 - Confirm `APP_ADMIN_BOOTSTRAP_ENABLED=false` after first admin setup.
+- Confirm V1 launch flags are synchronized: `V2_FEATURES_ENABLED=false` and `VITE_V2_FEATURES_ENABLED=false`.
+- Confirm dev flags are explicit: `DEV_AUTH_ENABLED=false` and `DEV_TOOLS_ENABLED=false`.
 
 ## 2. Database Gate
 
 - Run migrations in [DB_MIGRATION_ORDER.md](./DB_MIGRATION_ORDER.md).
+- Confirm `backend/supabase_trade_replay_v3.sql` ran before `backend/supabase_trade_replay_enum_constraint_sync.sql`.
 - Confirm `processed_stripe_events.event_id` is unique.
 - Confirm `uk_ai_trade_reviews_cache` exists.
 - Confirm `trades` has nullable `setup`, `confidence`, `emotion`, and `notes`.
@@ -53,6 +58,7 @@ Run this checklist before pushing, deploying, or opening beta access.
 
 - Configure `OPENAI_API_KEY`.
 - Confirm AI trade review, chart analysis, Daily Coach, Weekly Coach, Trading DNA, and Session Review return safe fallbacks on OpenAI failure.
+- For V1 launch, confirm Playbook, Trading DNA, and Journey return `404 FEATURE_DISABLED`; confirm Coach still works.
 - Confirm cached AI responses return before usage checks.
 - Confirm force refresh consumes AI credits.
 - Confirm Free users have 10 monthly AI credits and Pro users have 100 monthly AI credits.
@@ -64,6 +70,8 @@ Run this checklist before pushing, deploying, or opening beta access.
 ## 7. Frontend Gate
 
 - Confirm `VITE_API_BASE_URL` points to the deployed backend `/api` base.
+- Confirm the frontend build/deploy environment explicitly sets `VITE_API_BASE_URL`.
+- Confirm `GET /api/v1/features` reports Playbook, Trading DNA, and Journey disabled for V1; confirm Coach is enabled.
 - Logged-out `/` shows the homepage.
 - Logged-in USER `/` redirects to `/dashboard`.
 - Logged-in ADMIN `/` redirects to `/admin`.

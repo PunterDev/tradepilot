@@ -41,6 +41,14 @@ class DevToolsDisabledTests {
         mockMvc.perform(post("/api/dev/seed-demo-data")
                         .header("Authorization", "Bearer " + jwtService.generateToken(user)))
                 .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/dev/demo-data/reseed")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(user)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/dev/trades/123/replay")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(user)))
+                .andExpect(status().isForbidden());
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.tradepilot.billing.AiCreditLimitExceededException;
 import com.tradepilot.billing.FeatureAccessException;
 import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.billing.UsageType;
+import com.tradepilot.ai.memory.service.TradeMemoryIndexPublisher;
 import com.tradepilot.dto.ai.AiTradeReviewJobResponse;
 import com.tradepilot.dto.ai.AiTradeReviewRequest;
 import com.tradepilot.dto.ai.AiTradeReviewResponse;
@@ -36,6 +37,7 @@ public class AiTradeReviewService {
     private final TradeService tradeService;
     private final UsageLimitService usageLimitService;
     private final ObservabilityService observabilityService;
+    private final TradeMemoryIndexPublisher tradeMemoryIndexPublisher;
 
     public AiTradeReviewResponse reviewTrade(User user, AiTradeReviewRequest request) {
         Long userId = requireUserId(user);
@@ -58,7 +60,10 @@ public class AiTradeReviewService {
         try {
             usageLimitService.enforceAiUsage(user, UsageType.AI_TRADE_REVIEW);
             AiTradeReviewResponse aiResponse = generatorService.generateFreshReview(request, userId);
-            saveReview(userId, ownedTrade, request, aiResponse, reviewHash);
+            AiTradeReview savedReview = saveReview(userId, ownedTrade, request, aiResponse, reviewHash);
+            if (savedReview != null) {
+                tradeMemoryIndexPublisher.requestIndexAfterCommit(userId, savedReview.getTradeId());
+            }
             usageLimitService.recordAiUsage(user, UsageType.AI_TRADE_REVIEW, tradeId);
             long elapsedMs = Duration.between(start, Instant.now()).toMillis();
             log.info("AI trade review completed. tradeId={}, grade={}, elapsedMs={}", tradeId, aiResponse.getGrade(), elapsedMs);
@@ -128,14 +133,16 @@ public class AiTradeReviewService {
         review.setTagsJson(objectMapper.writeValueAsString(response.getTags() == null ? List.of() : response.getTags()));
     }
 
-    private void saveReview(Long userId, Trade ownedTrade, AiTradeReviewRequest request, AiTradeReviewResponse response, String reviewHash) {
+    private AiTradeReview saveReview(Long userId, Trade ownedTrade, AiTradeReviewRequest request, AiTradeReviewResponse response, String reviewHash) {
         try {
             AiTradeReview review = AiTradeReview.builder().userId(userId).accountId(ownedTrade == null || ownedTrade.getAccount() == null ? null : ownedTrade.getAccount().getId()).status("COMPLETED").createdAt(Instant.now()).build();
             fillReviewEntity(review, request, response, reviewHash);
-            aiTradeReviewRepository.save(review);
+            AiTradeReview saved = aiTradeReviewRepository.save(review);
             log.info("AI trade review saved. tradeId={}, grade={}", request.getTradeId(), response.getGrade());
+            return saved;
         } catch (Exception e) {
             log.error("Failed to save AI trade review. tradeId={}", request.getTradeId(), e);
+            return null;
         }
     }
 
@@ -203,7 +210,7 @@ public class AiTradeReviewService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public AiTradeReviewService(final ObjectMapper objectMapper, final AiTradeReviewRepository aiTradeReviewRepository, final AiTradeReviewGeneratorService generatorService, final AiTradeReviewAsyncWorker asyncWorker, final TradeService tradeService, final UsageLimitService usageLimitService, final ObservabilityService observabilityService) {
+    public AiTradeReviewService(final ObjectMapper objectMapper, final AiTradeReviewRepository aiTradeReviewRepository, final AiTradeReviewGeneratorService generatorService, final AiTradeReviewAsyncWorker asyncWorker, final TradeService tradeService, final UsageLimitService usageLimitService, final ObservabilityService observabilityService, final TradeMemoryIndexPublisher tradeMemoryIndexPublisher) {
         this.objectMapper = objectMapper;
         this.aiTradeReviewRepository = aiTradeReviewRepository;
         this.generatorService = generatorService;
@@ -211,5 +218,6 @@ public class AiTradeReviewService {
         this.tradeService = tradeService;
         this.usageLimitService = usageLimitService;
         this.observabilityService = observabilityService;
+        this.tradeMemoryIndexPublisher = tradeMemoryIndexPublisher;
     }
 }

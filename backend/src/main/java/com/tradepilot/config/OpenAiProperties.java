@@ -69,6 +69,6 @@ public class OpenAiProperties {
     @java.lang.Override
     @java.lang.SuppressWarnings("all")
     public java.lang.String toString() {
-        return "OpenAiProperties(apiKey=" + this.getApiKey() + ", model=" + this.getModel() + ")";
+        return "OpenAiProperties(apiKeyConfigured=" + (this.getApiKey() != null && !this.getApiKey().isBlank()) + ", model=" + this.getModel() + ")";
     }
 }

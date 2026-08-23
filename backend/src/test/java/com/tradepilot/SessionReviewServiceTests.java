@@ -312,25 +312,31 @@ class SessionReviewServiceTests {
                 1,
                 new BigDecimal("-76.25"),
                 new BigDecimal("-0.76"),
-                OutcomeType.LOSS
+                OutcomeType.LOSS,
+                "MESU6",
+                "MESU6",
+                "IMPORTED"
         )));
 
         assertThat(imported).hasSize(1);
+        assertThat(imported.get(0).getSymbol()).isEqualTo("MES");
+        assertThat(imported.get(0).getContractSymbol()).isEqualTo("MESU6");
+        assertThat(imported.get(0).getOriginalBrokerSymbol()).isEqualTo("MESU6");
         assertThat(imported.get(0).getSide()).isEqualTo(Side.LONG);
 
         SessionReviewResponse review = sessionReviewService.getSessionReview(fixture.user(), fixture.account().getId(), LocalDate.of(2026, 6, 22));
         assertThat(review.getTimelineTrades()).first()
                 .satisfies(trade -> {
-                    assertThat(trade.getSymbol()).isEqualTo("MESU6");
+                    assertThat(trade.getSymbol()).isEqualTo("MES");
                     assertThat(trade.getSide()).isEqualTo("LONG");
                 });
         assertThat(review.getWorstTrade()).isNotNull();
         assertThat(review.getWorstTrade().getSide()).isEqualTo(Side.LONG);
         assertThat(review.getReplayInsights().getLargestLoser()).isNotNull();
         assertThat(review.getReplayInsights().getLargestLoser().getSide()).isEqualTo("LONG");
-        assertThat(review.getSessionStory()).contains("MESU6 LONG");
-        assertThat(review.getSessionStory()).doesNotContain("MESU6 UNKNOWN");
-        assertThat(review.getSessionStory()).doesNotContain("MESU6 SHORT");
+        assertThat(review.getSessionStory()).contains("MES LONG");
+        assertThat(review.getSessionStory()).doesNotContain("MES UNKNOWN");
+        assertThat(review.getSessionStory()).doesNotContain("MES SHORT");
     }
 
     @Test

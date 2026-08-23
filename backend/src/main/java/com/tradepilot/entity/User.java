@@ -52,6 +52,8 @@ public class User implements UserDetails {
     private LocalDateTime proUntil;
     @Column(name = "purchased_ai_credits_balance", nullable = false)
     private Integer purchasedAiCreditsBalance;
+    @Column(name = "token_version", nullable = false)
+    private Integer tokenVersion;
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
     @Column(name = "updated_at", nullable = false)
@@ -75,6 +77,9 @@ public class User implements UserDetails {
         }
         if (this.purchasedAiCreditsBalance == null) {
             this.purchasedAiCreditsBalance = 0;
+        }
+        if (this.tokenVersion == null) {
+            this.tokenVersion = 0;
         }
     }
 
@@ -149,6 +154,11 @@ public class User implements UserDetails {
         return 0;
     }
 
+    @java.lang.SuppressWarnings("all")
+    private static Integer $default$tokenVersion() {
+        return 0;
+    }
+
 
     @java.lang.SuppressWarnings("all")
     public static class UserBuilder {
@@ -198,6 +208,10 @@ public class User implements UserDetails {
         private boolean purchasedAiCreditsBalance$set;
         @java.lang.SuppressWarnings("all")
         private Integer purchasedAiCreditsBalance$value;
+        @java.lang.SuppressWarnings("all")
+        private boolean tokenVersion$set;
+        @java.lang.SuppressWarnings("all")
+        private Integer tokenVersion$value;
         @java.lang.SuppressWarnings("all")
         private LocalDateTime createdAt;
         @java.lang.SuppressWarnings("all")
@@ -366,6 +380,13 @@ public class User implements UserDetails {
             return this;
         }
 
+        @java.lang.SuppressWarnings("all")
+        public User.UserBuilder tokenVersion(final Integer tokenVersion) {
+            this.tokenVersion$value = tokenVersion;
+            tokenVersion$set = true;
+            return this;
+        }
+
         /**
          * @return {@code this}.
          */
@@ -398,13 +419,15 @@ public class User implements UserDetails {
             if (!this.stripeCancelAtPeriodEnd$set) stripeCancelAtPeriodEnd$value = User.$default$stripeCancelAtPeriodEnd();
             Integer purchasedAiCreditsBalance$value = this.purchasedAiCreditsBalance$value;
             if (!this.purchasedAiCreditsBalance$set) purchasedAiCreditsBalance$value = User.$default$purchasedAiCreditsBalance();
-            return new User(this.id, this.name, this.email, this.passwordHash, emailVerified$value, plan$value, role$value, subscriptionStatus$value, this.currentPeriodStart, this.currentPeriodEnd, this.stripeCustomerId, this.stripeSubscriptionId, stripeCancelAtPeriodEnd$value, this.stripeCancelAt, this.stripeCanceledAt, this.proUntil, purchasedAiCreditsBalance$value, this.createdAt, this.updatedAt);
+            Integer tokenVersion$value = this.tokenVersion$value;
+            if (!this.tokenVersion$set) tokenVersion$value = User.$default$tokenVersion();
+            return new User(this.id, this.name, this.email, this.passwordHash, emailVerified$value, plan$value, role$value, subscriptionStatus$value, this.currentPeriodStart, this.currentPeriodEnd, this.stripeCustomerId, this.stripeSubscriptionId, stripeCancelAtPeriodEnd$value, this.stripeCancelAt, this.stripeCanceledAt, this.proUntil, purchasedAiCreditsBalance$value, tokenVersion$value, this.createdAt, this.updatedAt);
         }
 
         @java.lang.Override
         @java.lang.SuppressWarnings("all")
         public java.lang.String toString() {
-            return "User.UserBuilder(id=" + this.id + ", name=" + this.name + ", email=" + this.email + ", passwordHash=" + this.passwordHash + ", emailVerified$value=" + this.emailVerified$value + ", plan$value=" + this.plan$value + ", role$value=" + this.role$value + ", subscriptionStatus$value=" + this.subscriptionStatus$value + ", currentPeriodStart=" + this.currentPeriodStart + ", currentPeriodEnd=" + this.currentPeriodEnd + ", stripeCustomerId=" + this.stripeCustomerId + ", stripeSubscriptionId=" + this.stripeSubscriptionId + ", stripeCancelAtPeriodEnd$value=" + this.stripeCancelAtPeriodEnd$value + ", stripeCancelAt=" + this.stripeCancelAt + ", stripeCanceledAt=" + this.stripeCanceledAt + ", proUntil=" + this.proUntil + ", purchasedAiCreditsBalance$value=" + this.purchasedAiCreditsBalance$value + ", createdAt=" + this.createdAt + ", updatedAt=" + this.updatedAt + ")";
+            return "User.UserBuilder(id=" + this.id + ", name=" + this.name + ", email=" + this.email + ", passwordHash=" + this.passwordHash + ", emailVerified$value=" + this.emailVerified$value + ", plan$value=" + this.plan$value + ", role$value=" + this.role$value + ", subscriptionStatus$value=" + this.subscriptionStatus$value + ", currentPeriodStart=" + this.currentPeriodStart + ", currentPeriodEnd=" + this.currentPeriodEnd + ", stripeCustomerId=" + this.stripeCustomerId + ", stripeSubscriptionId=" + this.stripeSubscriptionId + ", stripeCancelAtPeriodEnd$value=" + this.stripeCancelAtPeriodEnd$value + ", stripeCancelAt=" + this.stripeCancelAt + ", stripeCanceledAt=" + this.stripeCanceledAt + ", proUntil=" + this.proUntil + ", purchasedAiCreditsBalance$value=" + this.purchasedAiCreditsBalance$value + ", tokenVersion$value=" + this.tokenVersion$value + ", createdAt=" + this.createdAt + ", updatedAt=" + this.updatedAt + ")";
         }
     }
 
@@ -496,6 +519,11 @@ public class User implements UserDetails {
     @java.lang.SuppressWarnings("all")
     public Integer getPurchasedAiCreditsBalance() {
         return this.purchasedAiCreditsBalance;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public Integer getTokenVersion() {
+        return this.tokenVersion;
     }
 
     @java.lang.SuppressWarnings("all")
@@ -594,6 +622,11 @@ public class User implements UserDetails {
     }
 
     @java.lang.SuppressWarnings("all")
+    public void setTokenVersion(final Integer tokenVersion) {
+        this.tokenVersion = tokenVersion;
+    }
+
+    @java.lang.SuppressWarnings("all")
     public void setCreatedAt(final LocalDateTime createdAt) {
         this.createdAt = createdAt;
     }
@@ -611,10 +644,11 @@ public class User implements UserDetails {
         this.subscriptionStatus = User.$default$subscriptionStatus();
         this.stripeCancelAtPeriodEnd = User.$default$stripeCancelAtPeriodEnd();
         this.purchasedAiCreditsBalance = User.$default$purchasedAiCreditsBalance();
+        this.tokenVersion = User.$default$tokenVersion();
     }
 
     @java.lang.SuppressWarnings("all")
-    public User(final Long id, final String name, final String email, final String passwordHash, final Boolean emailVerified, final PlanType plan, final UserRole role, final SubscriptionStatus subscriptionStatus, final LocalDateTime currentPeriodStart, final LocalDateTime currentPeriodEnd, final String stripeCustomerId, final String stripeSubscriptionId, final Boolean stripeCancelAtPeriodEnd, final LocalDateTime stripeCancelAt, final LocalDateTime stripeCanceledAt, final LocalDateTime proUntil, final Integer purchasedAiCreditsBalance, final LocalDateTime createdAt, final LocalDateTime updatedAt) {
+    public User(final Long id, final String name, final String email, final String passwordHash, final Boolean emailVerified, final PlanType plan, final UserRole role, final SubscriptionStatus subscriptionStatus, final LocalDateTime currentPeriodStart, final LocalDateTime currentPeriodEnd, final String stripeCustomerId, final String stripeSubscriptionId, final Boolean stripeCancelAtPeriodEnd, final LocalDateTime stripeCancelAt, final LocalDateTime stripeCanceledAt, final LocalDateTime proUntil, final Integer purchasedAiCreditsBalance, final Integer tokenVersion, final LocalDateTime createdAt, final LocalDateTime updatedAt) {
         this.id = id;
         this.name = name;
         this.email = email;
@@ -632,6 +666,7 @@ public class User implements UserDetails {
         this.stripeCanceledAt = stripeCanceledAt;
         this.proUntil = proUntil;
         this.purchasedAiCreditsBalance = purchasedAiCreditsBalance;
+        this.tokenVersion = tokenVersion;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }

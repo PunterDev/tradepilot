@@ -116,6 +116,7 @@ public class AuthService {
         User user = token.getUser();
         log.info("Password reset started. userId={}", user.getId());
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        user.setTokenVersion(nextTokenVersion(user));
         userRepository.save(user);
         authTokenService.markUsed(token);
         authTokenService.invalidateActiveTokens(user, AuthTokenType.PASSWORD_RESET);
@@ -144,6 +145,11 @@ public class AuthService {
 
     private String roleName(User user) {
         return (user.getRole() == null ? UserRole.USER : user.getRole()).name();
+    }
+
+    private int nextTokenVersion(User user) {
+        Integer tokenVersion = user.getTokenVersion();
+        return tokenVersion == null ? 1 : tokenVersion + 1;
     }
 
     @java.lang.SuppressWarnings("all")

@@ -11,6 +11,10 @@ public class TradeResponse {
     private String accountName;
     private String accountType;
     private String symbol;
+    private String originalBrokerSymbol;
+    private String contractSymbol;
+    private String contractSymbolSource;
+    private LocalDateTime contractSymbolConfirmedAt;
     private Market market;
     private LocalDate tradeDate;
     private LocalDateTime entryTime;
@@ -65,6 +69,22 @@ public class TradeResponse {
     @java.lang.SuppressWarnings("all")
     public String getSymbol() {
         return this.symbol;
+    }
+
+    public String getOriginalBrokerSymbol() {
+        return this.originalBrokerSymbol;
+    }
+
+    public String getContractSymbol() {
+        return this.contractSymbol;
+    }
+
+    public String getContractSymbolSource() {
+        return this.contractSymbolSource;
+    }
+
+    public LocalDateTime getContractSymbolConfirmedAt() {
+        return this.contractSymbolConfirmedAt;
     }
 
     @java.lang.SuppressWarnings("all")
@@ -220,6 +240,22 @@ public class TradeResponse {
     @java.lang.SuppressWarnings("all")
     public void setSymbol(final String symbol) {
         this.symbol = symbol;
+    }
+
+    public void setOriginalBrokerSymbol(final String originalBrokerSymbol) {
+        this.originalBrokerSymbol = originalBrokerSymbol;
+    }
+
+    public void setContractSymbol(final String contractSymbol) {
+        this.contractSymbol = contractSymbol;
+    }
+
+    public void setContractSymbolSource(final String contractSymbolSource) {
+        this.contractSymbolSource = contractSymbolSource;
+    }
+
+    public void setContractSymbolConfirmedAt(final LocalDateTime contractSymbolConfirmedAt) {
+        this.contractSymbolConfirmedAt = contractSymbolConfirmedAt;
     }
 
     @java.lang.SuppressWarnings("all")

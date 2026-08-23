@@ -24,8 +24,11 @@ public class CorsConfig {
         if (origins.contains("*")) {
             throw new IllegalStateException("CORS wildcard origin cannot be used when credentials are allowed");
         }
+        if (origins.isEmpty()) {
+            throw new IllegalStateException("CORS allowed origins are empty. Configure APP_ALLOWED_ORIGINS.");
+        }
         if (environment.acceptsProfiles(Profiles.of("prod", "production")) && origins.stream().anyMatch(origin -> origin.contains("localhost") || origin.contains("127.0.0.1"))) {
-            log.warn("Production CORS includes localhost origins. Configure APP_ALLOWED_ORIGINS with deployed frontend origins only.");
+            throw new IllegalStateException("Production CORS cannot use localhost origins. Configure APP_ALLOWED_ORIGINS with deployed frontend origins only.");
         }
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));

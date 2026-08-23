@@ -25,5 +25,8 @@ public record TradeImportRequest(
         Integer quantity,
         BigDecimal pnlAmount,
         BigDecimal pnlR,
-        OutcomeType outcome
+        OutcomeType outcome,
+        String originalBrokerSymbol,
+        String contractSymbol,
+        String contractSymbolSource
 ) {}

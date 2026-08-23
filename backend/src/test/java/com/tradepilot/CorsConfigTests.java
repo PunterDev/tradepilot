@@ -12,6 +12,7 @@ import org.springframework.web.filter.CorsFilter;
 import java.io.IOException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CorsConfigTests {
 
@@ -35,5 +36,22 @@ class CorsConfigTests {
         assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN)).isEqualTo("http://localhost:5173");
         assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS)).contains("PATCH");
         assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS)).isEqualTo("true");
+    }
+
+    @Test
+    void productionProfileRejectsLocalhostCorsOrigins() {
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("production");
+
+        assertThatThrownBy(() -> new CorsConfig().corsFilter("https://tradepilot.app,http://localhost:5173", environment))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Production CORS cannot use localhost origins");
+    }
+
+    @Test
+    void wildcardCorsOriginIsRejectedBecauseCredentialsAreAllowed() {
+        assertThatThrownBy(() -> new CorsConfig().corsFilter("*", new MockEnvironment()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("wildcard origin cannot be used");
     }
 }

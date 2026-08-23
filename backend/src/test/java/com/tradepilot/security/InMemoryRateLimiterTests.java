@@ -54,6 +54,20 @@ class InMemoryRateLimiterTests {
                 .doesNotContain("Window");
     }
 
+    @Test
+    void topLevelHelperClassesAreLoadableAtRuntime() throws Exception {
+        assertThat(Class.forName("com.tradepilot.security.RateLimitWindow"))
+                .isSameAs(RateLimitWindow.class);
+        assertThat(Class.forName("com.tradepilot.security.RateLimitResult"))
+                .isSameAs(RateLimitResult.class);
+        assertThat(RateLimitWindow.class.getEnclosingClass()).isNull();
+        assertThat(RateLimitResult.class.getEnclosingClass()).isNull();
+
+        InMemoryRateLimiter limiter = new InMemoryRateLimiter(new MutableClock());
+        assertThat(limiter.check("packaging-login-check", 1, 60).allowed()).isTrue();
+        assertThat(limiter.check("packaging-login-check", 1, 60).allowed()).isFalse();
+    }
+
     private static final class MutableClock extends Clock {
         private Instant instant = Instant.parse("2026-06-28T00:00:00Z");
 

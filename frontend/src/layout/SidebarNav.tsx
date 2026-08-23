@@ -25,6 +25,7 @@ export default function SidebarNav({ items }: Props) {
           <NavLink
             key={item.to}
             to={item.to}
+            data-testid={navTestId(item)}
             style={({ isActive }) => navLink(isActive)}
           >
             <span style={navLabel}>{item.label}</span>
@@ -34,6 +35,13 @@ export default function SidebarNav({ items }: Props) {
       </nav>
     </aside>
   );
+}
+
+function navTestId(item: NavItem) {
+  if (item.to === "/dashboard") return "nav-dashboard";
+  if (item.to === "/calendar") return "nav-calendar";
+  if (item.to === "/billing") return "nav-billing";
+  return undefined;
 }
 
 const sidebar: CSSProperties = {

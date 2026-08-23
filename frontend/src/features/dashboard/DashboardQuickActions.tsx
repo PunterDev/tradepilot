@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties } from "react";
 import type { TradingAccount } from "../../api/accountApi";
+import type { TradeImportPreviewResponse } from "../../api/tradeApi";
+import type { ImportFeedback } from "../../hooks/useDashboardData";
 import type { SelectedAccountId } from "../../types/dashboard";
 import { button, card, input, label, mutedText, sectionTitle } from "../../styles/dashboardStyles";
 
@@ -12,6 +14,8 @@ type Props = {
   saving: boolean;
   fileName: string;
   tradeCount: number;
+  importPreview: TradeImportPreviewResponse | null;
+  importFeedback: ImportFeedback | null;
   showAccountForm: boolean;
   creatingAccount: boolean;
   newAccountName: string;
@@ -29,6 +33,7 @@ type Props = {
   onDefaultRiskAmountChange: (value: string) => void;
   onCsvUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onSaveToDatabase: () => void;
+  showTradingDnaEntryPoint: boolean;
 };
 
 export default function DashboardQuickActions({
@@ -38,6 +43,8 @@ export default function DashboardQuickActions({
   saving,
   fileName,
   tradeCount,
+  importPreview,
+  importFeedback,
   showAccountForm,
   creatingAccount,
   newAccountName,
@@ -55,11 +62,12 @@ export default function DashboardQuickActions({
   onDefaultRiskAmountChange,
   onCsvUpload,
   onSaveToDatabase,
+  showTradingDnaEntryPoint,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isPickerHovered, setIsPickerHovered] = useState(false);
   const canImport = selectedAccountId !== "" && selectedAccountId !== "ALL";
-  const canSave = canImport && tradeCount > 0 && Boolean(fileName) && !saving;
+  const canSave = canImport && tradeCount > 0 && Boolean(fileName) && Boolean(importPreview) && !parsing && !saving;
   const pickerDisabled = !canImport || parsing || saving;
 
   return (
@@ -79,6 +87,7 @@ export default function DashboardQuickActions({
 
           <label style={label}>Viewing</label>
           <select
+            data-testid="import-account-select"
             value={accounts.length > 0 ? selectedAccountId : ""}
             onChange={(event) => {
               const value = event.target.value;
@@ -192,9 +201,13 @@ export default function DashboardQuickActions({
 
       <section style={topCard}>
         <h2 style={sectionTitle}>Import CSV</h2>
+        <p style={{ ...mutedText, marginTop: 0 }}>
+          Supports Tradovate trade exports and Topstep order-history CSV exports.
+        </p>
         <input
           ref={fileInputRef}
           type="file"
+          data-testid="import-file-input"
           accept=".csv"
           disabled={pickerDisabled}
           onChange={onCsvUpload}
@@ -204,6 +217,7 @@ export default function DashboardQuickActions({
         <div style={filePickerRow}>
           <button
             type="button"
+            data-testid="import-file-button"
             disabled={pickerDisabled}
             onClick={() => fileInputRef.current?.click()}
             onMouseEnter={() => setIsPickerHovered(true)}
@@ -223,6 +237,7 @@ export default function DashboardQuickActions({
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
           <button
             type="button"
+            data-testid="import-confirm-button"
             disabled={!canSave}
             onClick={onSaveToDatabase}
             style={{ ...button, width: 170, opacity: canSave ? 1 : 0.55 }}
@@ -233,13 +248,45 @@ export default function DashboardQuickActions({
             {tradeCount > 0 ? `${tradeCount} parsed` : "No file parsed"}
           </span>
         </div>
+        {importFeedback && (
+          <div style={feedbackBox(importFeedback.type)} role={importFeedback.type === "error" ? "alert" : "status"}>
+            <strong>{importFeedback.message}</strong>
+            {importFeedback.details && importFeedback.details.length > 0 && (
+              <ul style={feedbackList}>
+                {importFeedback.details.slice(0, 4).map((detail) => (
+                  <li key={detail}>{detail}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {importPreview && (
+          <div style={previewBox} data-testid="import-preview">
+            <div style={previewHeader}>
+              <span data-testid="import-broker">{importPreview.detectedFormat} detected</span>
+              <span data-testid="import-trade-count">{importPreview.completedTrades} completed trades</span>
+            </div>
+            <div style={previewGrid}>
+              <span>Filled: {importPreview.filledRows}</span>
+              <span data-testid="import-cancelled-ignored">Cancelled ignored: {importPreview.cancelledRowsIgnored}</span>
+              <span data-testid="import-duplicate-count">Duplicates: {importPreview.duplicateTrades}</span>
+              <span>Open positions: {importPreview.incompletePositions}</span>
+            </div>
+            {importPreview.sourceAccountNames.length > 0 && (
+              <p style={previewText}>Source account: {importPreview.sourceAccountNames.join(", ")}</p>
+            )}
+            {importPreview.warnings.length > 0 && (
+              <p style={previewWarning}>{importPreview.warnings.slice(0, 2).join(" ")}</p>
+            )}
+          </div>
+        )}
       </section>
 
       <section style={topCard}>
         <h2 style={sectionTitle}>Quick Actions</h2>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Link to="/session-review" style={linkButton}>Session Review</Link>
-          <Link to="/trading-dna" style={linkButton}>Trading DNA</Link>
+          {showTradingDnaEntryPoint && <Link to="/trading-dna" style={linkButton}>Trading DNA</Link>}
           <Link to="/billing" style={linkButton}>Upgrade</Link>
         </div>
       </section>
@@ -338,4 +385,70 @@ const fileNameText: CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
+};
+
+const feedbackList: CSSProperties = {
+  margin: "8px 0 0",
+  paddingLeft: 18,
+  color: "inherit",
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+
+function feedbackBox(type: ImportFeedback["type"]): CSSProperties {
+  const palette = type === "success"
+    ? { border: "rgba(52,211,153,0.34)", bg: "rgba(16,185,129,0.12)", color: "#bbf7d0" }
+    : type === "warning"
+      ? { border: "rgba(251,191,36,0.34)", bg: "rgba(245,158,11,0.11)", color: "#fde68a" }
+      : { border: "rgba(251,113,133,0.36)", bg: "rgba(244,63,94,0.12)", color: "#fecdd3" };
+  return {
+    marginTop: 12,
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: `1px solid ${palette.border}`,
+    background: palette.bg,
+    color: palette.color,
+    fontSize: 13,
+    fontWeight: 800,
+  };
+}
+
+const previewBox: CSSProperties = {
+  marginTop: 12,
+  border: "1px solid rgba(52,211,153,0.24)",
+  borderRadius: 14,
+  padding: 12,
+  background: "rgba(15,23,42,0.72)",
+};
+
+const previewHeader: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  color: "#ecfeff",
+  fontWeight: 800,
+  fontSize: 13,
+  flexWrap: "wrap",
+};
+
+const previewGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: "6px 10px",
+  marginTop: 10,
+  color: "#94a3b8",
+  fontSize: 12,
+};
+
+const previewText: CSSProperties = {
+  margin: "10px 0 0",
+  color: "#cbd5e1",
+  fontSize: 12,
+};
+
+const previewWarning: CSSProperties = {
+  margin: "8px 0 0",
+  color: "#fbbf24",
+  fontSize: 12,
+  lineHeight: 1.45,
 };

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -6,6 +6,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useParams,
 } from "react-router-dom";
 import {
   createAccount,
@@ -21,6 +22,7 @@ import {
   type AuthSession,
   type AuthUser,
 } from "./api/authApi";
+import { getFeatureAvailability } from "./api/featureAvailabilityApi";
 import { deleteAccount } from "./api/accountApi";
 import { saveJournal } from "./api/journalApi";
 import AccountsSection from "./components/AccountsSection";
@@ -50,9 +52,24 @@ import {
   persistSelectedAccount,
 } from "./utils/accountSelection";
 import { creditsRemaining, hasFeature, type Feature } from "./utils/featureAccess";
+import { isFeatureEnabled, type FeatureAvailability, type ReleaseFeatureKey } from "./config/featureFlags";
+
+const disabledFeatureAvailability: FeatureAvailability = {
+  v2FeaturesEnabled: false,
+  v3FeaturesEnabled: false,
+  features: {
+    playbook: false,
+    tradingDna: false,
+    journey: false,
+    tradingMemory: false,
+    tradeReplay: false,
+    coach: true,
+  },
+};
 
 const AdminContactMessagesPage = lazy(() => import("./features/admin/AdminContactMessagesPage"));
 const AdminDashboardPage = lazy(() => import("./features/admin/AdminDashboardPage"));
+const FeatureFunnelsPage = lazy(() => import("./features/admin/feature-funnels/FeatureFunnelsPage"));
 const FeatureUsagePage = lazy(() => import("./features/admin/feature-usage/FeatureUsagePage"));
 const ObservabilityPage = lazy(() => import("./features/admin/observability/ObservabilityPage"));
 const RetentionAnalyticsPage = lazy(() => import("./features/admin/retention/RetentionAnalyticsPage"));
@@ -64,6 +81,10 @@ const CoachPage = lazy(() => import("./features/coach/CoachPage"));
 const DashboardHome = lazy(() => import("./features/dashboard/DashboardHome"));
 const DevToolsPage = lazy(() => import("./features/dev-tools/DevToolsPage"));
 const LeakDetectorPage = lazy(() => import("./features/leak-detector/LeakDetectorPage"));
+const JourneyPage = lazy(() => import("./features/performance-timeline/JourneyPage"));
+const PlaybookPage = lazy(() => import("./features/playbook/PlaybookPage"));
+const PlaybookFormPage = lazy(() => import("./features/playbook/PlaybookFormPage"));
+const PlaybookDetailPage = lazy(() => import("./features/playbook/PlaybookDetailPage"));
 const HomePage = lazy(() => import("./features/marketing/HomePage"));
 const ContactPage = lazy(() => import("./features/marketing/ContactPage"));
 const PrivacyPage = lazy(() => import("./features/marketing/PrivacyPage"));
@@ -80,7 +101,7 @@ type LockedFeatureContent = {
   ctaText: string;
 };
 
-const lockedFeatureContent: Record<"ADVANCED_ANALYTICS" | "SESSION_REVIEW" | "TRADING_DNA" | "AI_LEAK_DETECTOR" | "DAILY_COACH", LockedFeatureContent> = {
+const lockedFeatureContent: Record<"ADVANCED_ANALYTICS" | "SESSION_REVIEW" | "TRADING_DNA" | "AI_LEAK_DETECTOR" | "PERFORMANCE_TIMELINE" | "PLAYBOOK" | "DAILY_COACH", LockedFeatureContent> = {
   ADVANCED_ANALYTICS: {
     eyebrow: "Advanced Analytics",
     title: "Unlock the data behind your best trades.",
@@ -205,6 +226,68 @@ const lockedFeatureContent: Record<"ADVANCED_ANALYTICS" | "SESSION_REVIEW" | "TR
     ctaText:
       "Pro unlocks AI Leak Detector, Trading DNA, Daily Coach, Weekly Coach, Session Review, Advanced Analytics, and 100 AI credits/month.",
   },
+  PERFORMANCE_TIMELINE: {
+    eyebrow: "AI Performance Timeline",
+    title: "Unlock the story behind your progress.",
+    subtitle:
+      "See how your discipline, risk management, execution, psychology, and consistency evolve month by month.",
+    features: [
+      {
+        title: "Evolution Score",
+        icon: "↗",
+        description: "Track whether your process is actually improving over time.",
+      },
+      {
+        title: "Monthly Chapters",
+        icon: "M",
+        description: "Turn each eligible month into a concise coaching narrative.",
+      },
+      {
+        title: "Behavior Milestones",
+        icon: "✓",
+        description: "Celebrate process milestones without confusing inactivity for progress.",
+      },
+      {
+        title: "Next Focus",
+        icon: "→",
+        description: "Leave each month with one focused adjustment for the next period.",
+      },
+    ],
+    ctaTitle: "Your journal records trades. TradePilot Pro shows whether you are improving.",
+    ctaText:
+      "Pro unlocks Journey, AI Leak Detector, Trading DNA, Daily Coach, Weekly Coach, Session Review, Advanced Analytics, and 100 AI credits/month.",
+  },
+  PLAYBOOK: {
+    eyebrow: "AI Trading Playbook",
+    title: "Turn repeatable setups into a measurable process.",
+    subtitle:
+      "Document setup rules, link historical trades, and compare your playbook against actual execution behavior.",
+    features: [
+      {
+        title: "Structured Rules",
+        icon: "B",
+        description: "Define context, entry, invalidation, risk, management, and review rules.",
+      },
+      {
+        title: "Playbook vs. Actual",
+        icon: "↔",
+        description: "Compare compliant and noncompliant trades using calculated metrics.",
+      },
+      {
+        title: "Health Score",
+        icon: "%",
+        description: "Measure definition quality, evidence, adherence, consistency, and relevance.",
+      },
+      {
+        title: "AI Drafts",
+        icon: "AI",
+        description: "Turn a strategy description into a draft setup you review before saving.",
+      },
+    ],
+    ctaTitle: "Build your trading playbook.",
+    ctaText:
+      "Pro unlocks Playbook, Journey, AI Leak Detector, Trading DNA, Daily Coach, Weekly Coach, and 100 AI credits/month.",
+  },
   DAILY_COACH: {
     eyebrow: "AI Coach",
     title: "Unlock the data behind your best trades.",
@@ -282,10 +365,35 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
   const [journalLesson, setJournalLesson] = useState("");
   const [journalNotes, setJournalNotes] = useState("");
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
+  const [featureAvailability, setFeatureAvailability] = useState<FeatureAvailability>(disabledFeatureAvailability);
   const billing = useBillingUsage(true);
   const billingResult = new URLSearchParams(location.search).get("billing");
   const creditCheckoutResult = new URLSearchParams(location.search).get("credits");
   const canAccess = (feature: Feature) => hasFeature(feature, user, billing.usage);
+  const canAccessReleasedFeature = (feature: Feature, releaseFeature: ReleaseFeatureKey) =>
+    isFeatureEnabled(releaseFeature, featureAvailability) && canAccess(feature);
+
+  function featureRoute(feature: ReleaseFeatureKey, element: ReactNode) {
+    return isFeatureEnabled(feature, featureAvailability) ? element : <Navigate to="/dashboard" replace />;
+  }
+
+  useEffect(() => {
+    let active = true;
+    getFeatureAvailability()
+      .then((availability) => {
+        if (active) {
+          setFeatureAvailability(availability);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setFeatureAvailability(disabledFeatureAvailability);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function renderLockedFeature(feature: keyof typeof lockedFeatureContent) {
     const content = lockedFeatureContent[feature];
@@ -384,6 +492,8 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
     dailyPnl,
     parsing,
     saving,
+    importPreview,
+    importFeedback,
     dashboardStats,
     loadingStats,
     handleCsvUpload,
@@ -591,11 +701,21 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/contact-messages" element={<AdminContactMessagesPage />} />
           <Route path="/admin/feature-usage" element={<FeatureUsagePage />} />
+          <Route path="/admin/feature-funnels" element={<FeatureFunnelsPage />} />
+          <Route path="/admin/feature-funnels/:funnelKey" element={<FeatureFunnelsPage />} />
           <Route path="/admin/retention" element={<RetentionAnalyticsPage />} />
           <Route path="/admin/observability" element={<ObservabilityPage />} />
           <Route
             path="/billing"
-            element={<BillingPage user={user} usage={billing.usage} loading={billing.loading} error={billing.error} />}
+            element={
+              <BillingPage
+                user={user}
+                usage={billing.usage}
+                loading={billing.loading}
+                error={billing.error}
+                featureAvailability={featureAvailability}
+              />
+            }
           />
           <Route
             path="/dev-tools"
@@ -629,7 +749,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
             <div style={eyebrow}>TradePilot AI</div>
             <h1 style={heroTitle}>Prop Firm Performance Dashboard</h1>
             <p style={heroText}>
-              Set up one trading account, then import your Tradovate CSV.
+              Set up one trading account, then import your Tradovate or Topstep CSV.
             </p>
           </div>
           {userHeader}
@@ -665,6 +785,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
       user={user}
       accountCount={accounts.length}
       usage={billing.usage}
+      featureAvailability={featureAvailability}
       onLogout={onLogout}
     >
       <Routes>
@@ -687,6 +808,8 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
                 saving={saving}
                 fileName={fileName}
                 parsedImportCount={parsedImportCount}
+                importPreview={importPreview}
+                importFeedback={importFeedback}
                 showAccountForm={showAccountForm}
                 creatingAccount={creatingAccount}
                 newAccountName={newAccountName}
@@ -705,6 +828,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
                 onDefaultRiskAmountChange={setNewDefaultRiskAmount}
                 onCsvUpload={handleCsvUpload}
                 onSaveToDatabase={handleSaveToDatabase}
+                showTradingDnaEntryPoint={isFeatureEnabled("TRADING_DNA", featureAvailability)}
               />
             )
           }
@@ -773,20 +897,21 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         />
         <Route
           path="/trading-dna"
-          element={
-            canAccess("TRADING_DNA") ? (
-              <TradingDnaPage
-                selectedAccountId={validatedSelectedAccountId}
-                accounts={accounts}
-                accountsLoading={loadingAccounts}
-                onInvalidAccount={recoverInvalidSelectedAccount}
-                usage={billing.usage}
-                onUsageChanged={billing.reload}
-              />
-            ) : (
-              renderLockedFeature("TRADING_DNA")
-            )
-          }
+          element={featureRoute(
+            "TRADING_DNA",
+            canAccessReleasedFeature("TRADING_DNA", "TRADING_DNA") ? (
+                <TradingDnaPage
+                  selectedAccountId={validatedSelectedAccountId}
+                  accounts={accounts}
+                  accountsLoading={loadingAccounts}
+                  onInvalidAccount={recoverInvalidSelectedAccount}
+                  usage={billing.usage}
+                  onUsageChanged={billing.reload}
+                />
+              ) : (
+                renderLockedFeature("TRADING_DNA")
+              )
+          )}
         />
         <Route
           path="/leak-detector"
@@ -806,6 +931,78 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           }
         />
         <Route
+          path="/journey"
+          element={featureRoute(
+            "JOURNEY",
+            canAccessReleasedFeature("PERFORMANCE_TIMELINE", "JOURNEY") ? (
+                <JourneyPage
+                  accounts={accounts}
+                  selectedAccountId={selectedAccountId}
+                  onSelectAccount={setSelectedAccountId}
+                  onUsageChanged={billing.reload}
+                />
+              ) : (
+                renderLockedFeature("PERFORMANCE_TIMELINE")
+              )
+          )}
+        />
+        <Route
+          path="/playbook"
+          element={featureRoute(
+            "PLAYBOOK",
+            canAccessReleasedFeature("PLAYBOOK", "PLAYBOOK") ? (
+                <PlaybookPage
+                  accounts={accounts}
+                  selectedAccountId={selectedAccountId}
+                  onSelectAccount={setSelectedAccountId}
+                />
+              ) : (
+                renderLockedFeature("PLAYBOOK")
+              )
+          )}
+        />
+        <Route
+          path="/playbook/new"
+          element={featureRoute(
+            "PLAYBOOK",
+            canAccessReleasedFeature("PLAYBOOK", "PLAYBOOK") ? (
+                <PlaybookFormPage
+                  accounts={accounts}
+                  selectedAccountId={selectedAccountId}
+                  onUsageChanged={billing.reload}
+                />
+              ) : (
+                renderLockedFeature("PLAYBOOK")
+              )
+          )}
+        />
+        <Route
+          path="/playbook/:setupId"
+          element={featureRoute(
+            "PLAYBOOK",
+            canAccessReleasedFeature("PLAYBOOK", "PLAYBOOK") ? (
+                <PlaybookDetailPage onUsageChanged={billing.reload} />
+              ) : (
+                renderLockedFeature("PLAYBOOK")
+              )
+          )}
+        />
+        <Route
+          path="/playbook/:setupId/edit"
+          element={featureRoute(
+            "PLAYBOOK",
+            canAccessReleasedFeature("PLAYBOOK", "PLAYBOOK") ? (
+                <PlaybookFormPage
+                  accounts={accounts}
+                  selectedAccountId={selectedAccountId}
+                  onUsageChanged={billing.reload}
+                />
+              ) : (
+                renderLockedFeature("PLAYBOOK")
+              )
+          )}
+        />
+        <Route
           path="/coach"
           element={
             canAccess("DAILY_COACH") ? (
@@ -823,7 +1020,13 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           path="/billing"
           element={
             <>
-              <BillingPage user={user} usage={billing.usage} loading={billing.loading} error={billing.error} />
+              <BillingPage
+                user={user}
+                usage={billing.usage}
+                loading={billing.loading}
+                error={billing.error}
+                featureAvailability={featureAvailability}
+              />
               {!isAdmin && (
                 <div style={{ marginTop: 24 }}>
                   <AccountsSection
@@ -905,6 +1108,26 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           }
         />
         <Route
+          path="/admin/feature-funnels"
+          element={
+            user.role === "ADMIN" ? (
+              <FeatureFunnelsPage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route
+          path="/admin/feature-funnels/:funnelKey"
+          element={
+            user.role === "ADMIN" ? (
+              <FeatureFunnelsPage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route
           path="/admin/retention"
           element={
             user.role === "ADMIN" ? (
@@ -913,6 +1136,10 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
               <NotAuthorized />
             )
           }
+        />
+        <Route
+          path="/trades/:tradeId"
+          element={<TradeDetailRoute onOpenTrade={setSelectedTradeId} />}
         />
         <Route
           path="/admin/observability"
@@ -933,10 +1160,25 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           onClose={() => setSelectedTradeId(null)}
           onSelectTrade={setSelectedTradeId}
           onUsageChanged={billing.reload}
+          tradingMemoryEnabled={isFeatureEnabled("TRADING_MEMORY", featureAvailability)}
+          tradeReplayEnabled={isFeatureEnabled("TRADE_REPLAY", featureAvailability)}
         />
       )}
     </AppShell>
   );
+}
+
+function TradeDetailRoute({ onOpenTrade }: { onOpenTrade: (tradeId: number) => void }) {
+  const { tradeId } = useParams();
+
+  useEffect(() => {
+    const parsedTradeId = Number(tradeId);
+    if (Number.isFinite(parsedTradeId) && parsedTradeId > 0) {
+      onOpenTrade(parsedTradeId);
+    }
+  }, [tradeId, onOpenTrade]);
+
+  return null;
 }
 
 function NotAuthorized() {
@@ -1002,7 +1244,7 @@ function FirstUserOnboarding({ onCreateClick }: { onCreateClick: () => void }) {
           Create Trading Account
         </button>
         <p style={onboardingSecondary}>
-          After creating an account, you can import your Tradovate CSV and review performance,
+          After creating an account, you can import your Tradovate or Topstep CSV and review performance,
           mistakes, and AI coaching.
         </p>
       </section>

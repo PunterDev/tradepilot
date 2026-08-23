@@ -8,6 +8,7 @@ import com.tradepilot.entity.User;
 import com.tradepilot.enums.*;
 import com.tradepilot.featureusage.FeatureKey;
 import com.tradepilot.featureusage.FeatureUsageService;
+import com.tradepilot.importing.TradeCsvImportService;
 import com.tradepilot.service.TradeDetailService;
 import com.tradepilot.service.TradeService;
 import jakarta.validation.Valid;
@@ -15,6 +16,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -25,6 +27,7 @@ public class TradeController {
     private final TradeDetailService tradeDetailService;
     private final FeatureUsageService featureUsageService;
     private final FeatureAccessService featureAccessService;
+    private final TradeCsvImportService tradeCsvImportService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -82,6 +85,18 @@ public class TradeController {
         return tradeService.importTrades(user, requests);
     }
 
+    @PostMapping(value = "/import/preview", consumes = "multipart/form-data")
+    public TradeImportPreviewResponse previewCsvImport(@RequestParam Long accountId, @RequestParam("file") MultipartFile file, @AuthenticationPrincipal User user) {
+        featureAccessService.requireFeature(user, Feature.CSV_IMPORT);
+        return tradeCsvImportService.preview(user, accountId, file);
+    }
+
+    @PostMapping(value = "/import/csv", consumes = "multipart/form-data")
+    public TradeImportSaveResponse saveCsvImport(@RequestParam Long accountId, @RequestParam("file") MultipartFile file, @AuthenticationPrincipal User user) {
+        featureAccessService.requireFeature(user, Feature.CSV_IMPORT);
+        return tradeCsvImportService.save(user, accountId, file);
+    }
+
     @PostMapping("/repair-tradovate-directions")
     public java.util.Map<String, Object> repairTradovateDirections(@AuthenticationPrincipal User user, @RequestParam(required = false) Long accountId, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         featureAccessService.requireFeature(user, Feature.CSV_IMPORT);
@@ -89,10 +104,11 @@ public class TradeController {
     }
 
     @java.lang.SuppressWarnings("all")
-    public TradeController(final TradeService tradeService, final TradeDetailService tradeDetailService, final FeatureUsageService featureUsageService, final FeatureAccessService featureAccessService) {
+    public TradeController(final TradeService tradeService, final TradeDetailService tradeDetailService, final FeatureUsageService featureUsageService, final FeatureAccessService featureAccessService, final TradeCsvImportService tradeCsvImportService) {
         this.tradeService = tradeService;
         this.tradeDetailService = tradeDetailService;
         this.featureUsageService = featureUsageService;
         this.featureAccessService = featureAccessService;
+        this.tradeCsvImportService = tradeCsvImportService;
     }
 }

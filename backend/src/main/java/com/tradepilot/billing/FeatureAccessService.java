@@ -44,6 +44,10 @@ public class FeatureAccessService {
             case WEEKLY_COACH -> "Weekly Coach";
             case TRADING_DNA -> "Trading DNA";
             case AI_LEAK_DETECTOR -> "AI Leak Detector";
+            case PERFORMANCE_TIMELINE -> "AI Performance Timeline";
+            case PLAYBOOK -> "AI Trading Playbook";
+            case TRADING_MEMORY -> "AI Trading Memory";
+            case TRADE_REPLAY -> "AI Trade Replay";
             case ADVANCED_ANALYTICS -> "Advanced Analytics";
         };
     }

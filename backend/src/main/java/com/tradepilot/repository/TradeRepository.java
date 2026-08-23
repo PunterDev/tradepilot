@@ -30,6 +30,11 @@ public interface TradeRepository extends JpaRepository<Trade, Long>, JpaSpecific
 
     long countByUser(User user);
 
+    @EntityGraph(attributePaths = {"account"})
+    List<Trade> findByUserAndExternalTradeKeyStartingWithOrderByExternalTradeKeyAsc(User user, String externalTradeKeyPrefix);
+
+    long countByUserAndExternalTradeKeyStartingWith(User user, String externalTradeKeyPrefix);
+
     @Query("""
             select t.user.id, count(t)
             from Trade t
@@ -95,7 +100,26 @@ public interface TradeRepository extends JpaRepository<Trade, Long>, JpaSpecific
     @EntityGraph(attributePaths = {"account"})
     Optional<Trade> findByIdAndUser(Long id, User user);
 
+    @EntityGraph(attributePaths = {"account"})
+    Optional<Trade> findByIdAndUser_Id(Long id, Long userId);
+
+    @EntityGraph(attributePaths = {"account"})
+    List<Trade> findByUser_IdAndIdIn(Long userId, List<Long> ids);
+
     boolean existsByUserAndAccount_IdAndExternalTradeKey(User user, Long accountId, String externalTradeKey);
+
+    @Query("""
+            select t.externalTradeKey
+            from Trade t
+            where t.user = :user
+              and t.account.id = :accountId
+              and t.externalTradeKey in :externalTradeKeys
+            """)
+    List<String> findExistingExternalTradeKeys(
+            @Param("user") User user,
+            @Param("accountId") Long accountId,
+            @Param("externalTradeKeys") List<String> externalTradeKeys
+    );
 
     void deleteByAccountIdAndUser(Long accountId, User user);
 

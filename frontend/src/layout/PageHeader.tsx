@@ -5,15 +5,16 @@ type Props = {
   label: string;
   title: string;
   description?: string;
+  titleTestId?: string;
   actions?: ReactNode;
 };
 
-export default function PageHeader({ label, title, description, actions }: Props) {
+export default function PageHeader({ label, title, description, titleTestId, actions }: Props) {
   return (
     <section style={header}>
       <div>
         <div style={eyebrow}>{label}</div>
-        <h1 style={titleStyle}>{title}</h1>
+        <h1 data-testid={titleTestId} style={titleStyle}>{title}</h1>
         {description && <p style={descriptionStyle}>{description}</p>}
       </div>
       {actions && <div style={actionsStyle}>{actions}</div>}

@@ -33,8 +33,10 @@ export function MarketingNavbar() {
         </Link>
         <div className="marketing-nav-links">
           <a href="/#features">Features</a>
+          <a href="/#how-it-works">How It Works</a>
           <a href="/#ai-coach">AI Coach</a>
           <a href="/#pricing">Pricing</a>
+          <a href="/#faq">FAQ</a>
         </div>
         <div className="marketing-nav-actions">
           <Link className="marketing-button ghost" to="/login">Login</Link>
@@ -52,8 +54,10 @@ export function MarketingNavbar() {
       <div className="marketing-container">
         <div className={`marketing-mobile-panel ${mobileOpen ? "open" : ""}`}>
           <a className="marketing-button ghost" href="/#features">Features</a>
+          <a className="marketing-button ghost" href="/#how-it-works">How It Works</a>
           <a className="marketing-button ghost" href="/#ai-coach">AI Coach</a>
           <a className="marketing-button ghost" href="/#pricing">Pricing</a>
+          <a className="marketing-button ghost" href="/#faq">FAQ</a>
           <Link className="marketing-button ghost" to="/login">Login</Link>
           <Link className="marketing-button primary" to="/register">Get Started</Link>
         </div>
@@ -63,11 +67,15 @@ export function MarketingNavbar() {
 }
 
 export function MarketingFooter() {
+  const year = new Date().getFullYear();
+
   return (
     <footer className="marketing-footer">
       <div className="marketing-container marketing-footer-inner">
-        <div>TradePilot 2026</div>
+        <div>TradePilot {year}</div>
         <div className="marketing-footer-links">
+          <a href="/#features">Features</a>
+          <a href="/#faq">FAQ</a>
           <Link to="/login">Login</Link>
           <Link to="/register">Register</Link>
           <a href="/#pricing">Pricing</a>

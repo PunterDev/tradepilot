@@ -83,11 +83,12 @@ export async function installSession(page: Page, session: DevSession) {
 }
 
 export async function seedDemoData(request: APIRequestContext, session: DevSession) {
-  const response = await request.post(`${apiBaseUrl}/dev/seed-demo-data`, {
+  const response = await request.post(`${apiBaseUrl}/dev/demo-data/reseed?dryRun=false`, {
     headers: {
       Authorization: `Bearer ${session.token}`,
     },
     failOnStatusCode: false,
+    timeout: 15000,
   });
 
   if (!response.ok()) {

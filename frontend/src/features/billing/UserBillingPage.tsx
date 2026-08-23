@@ -4,6 +4,9 @@ import { createCheckoutSession, createCreditPackCheckoutSession, createPortalSes
 import type { AuthUser } from "../../api/authApi";
 import BillingUsageCard from "../../components/BillingUsageCard";
 import { creditPacks, formatCreditPackPrice } from "../../config/creditPacks";
+import type { FeatureAvailability } from "../../config/featureFlags";
+import { marketingPricing } from "../../config/marketingPricing";
+import { getEnabledProBenefits } from "../../config/planBenefits";
 import PageHeader from "../../layout/PageHeader";
 import { button, card, mutedText, sectionTitle } from "../../styles/dashboardStyles";
 import type { BillingUsage } from "../../types/billing";
@@ -13,9 +16,10 @@ type Props = {
   usage: BillingUsage | null;
   loading: boolean;
   error: string;
+  featureAvailability: FeatureAvailability;
 };
 
-export default function UserBillingPage({ user, usage, loading, error }: Props) {
+export default function UserBillingPage({ user, usage, loading, error, featureAvailability }: Props) {
   const location = useLocation();
   const [checkoutLoading, setCheckoutLoading] = useState<"monthly" | "yearly" | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -25,6 +29,8 @@ export default function UserBillingPage({ user, usage, loading, error }: Props) 
   const isPro = usage?.plan === "PRO" || user.plan === "PRO";
   const isActivePro = isPro && (usage?.subscriptionStatus === "ACTIVE" || usage?.subscriptionStatus === "TRIALING");
   const isScheduledCancellation = isPro && usage?.subscriptionStatus === "CANCELED";
+  const freeBenefits = marketingPricing.free.benefits;
+  const proBenefits = getEnabledProBenefits(featureAvailability);
 
   async function startCheckout(plan: "monthly" | "yearly") {
     setCheckoutLoading(plan);
@@ -95,7 +101,7 @@ export default function UserBillingPage({ user, usage, loading, error }: Props) 
           <span style={eyebrow}>Free</span>
           <h2 style={priceTitle}>$0</h2>
           <p style={mutedText}>For getting your journal out of spreadsheets.</p>
-          <FeatureList items={["CSV import", "Limited AI reviews", "PnL calendar", "Basic analytics"]} />
+          <FeatureList items={freeBenefits} />
         </article>
 
         <article style={proCard}>
@@ -113,7 +119,7 @@ export default function UserBillingPage({ user, usage, loading, error }: Props) 
               <span>Save $110/year</span>
             </div>
           </div>
-          <FeatureList items={["More AI reviews", "Daily and weekly coach", "Trading DNA", "Session review", "Advanced analytics", "Priority feature access"]} />
+          <FeatureList items={proBenefits} />
           {isPro ? (
             <div style={currentPlanPanel}>
               <div>

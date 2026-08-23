@@ -265,15 +265,19 @@ public class AdminUserService {
         limits.put(UsageType.WEEKLY_COACH.name(), monthlyCredits);
         limits.put(UsageType.TRADING_DNA.name(), monthlyCredits);
         limits.put(UsageType.AI_LEAK_DETECTOR.name(), monthlyCredits);
+        limits.put(UsageType.PERFORMANCE_TIMELINE.name(), monthlyCredits);
         limits.put(UsageType.SESSION_REVIEW.name(), monthlyCredits);
+        limits.put(UsageType.PLAYBOOK_AI_DRAFT.name(), monthlyCredits);
+        limits.put(UsageType.PLAYBOOK_AI_REVIEW.name(), monthlyCredits);
         return limits;
     }
 
     private int creditsFor(UsageType type) {
         return switch (type) {
             case AI_TRADE_REVIEW -> 1;
+            case PLAYBOOK_AI_DRAFT -> 2;
             case DAILY_COACH, SESSION_REVIEW -> 2;
-            case TRADING_DNA, AI_LEAK_DETECTOR -> 3;
+            case TRADING_DNA, AI_LEAK_DETECTOR, PERFORMANCE_TIMELINE, PLAYBOOK_AI_REVIEW -> 3;
             case WEEKLY_COACH -> 4;
         };
     }

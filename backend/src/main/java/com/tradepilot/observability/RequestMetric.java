@@ -1,10 +1,24 @@
 package com.tradepilot.observability;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "api_request_metrics", indexes = {@Index(name = "idx_api_request_metrics_created_at", columnList = "created_at"), @Index(name = "idx_api_request_metrics_created_duration", columnList = "created_at, duration_ms"), @Index(name = "idx_api_request_metrics_endpoint_created_at", columnList = "endpoint, created_at"), @Index(name = "idx_api_request_metrics_status_created_at", columnList = "status, created_at"), @Index(name = "idx_api_request_metrics_user_id_created_at", columnList = "user_id, created_at")})
+@Table(name = "api_request_metrics", indexes = {
+        @Index(name = "idx_api_request_metrics_created_at", columnList = "created_at"),
+        @Index(name = "idx_api_request_metrics_created_duration", columnList = "created_at, duration_ms"),
+        @Index(name = "idx_api_request_metrics_endpoint_created_at", columnList = "endpoint, created_at"),
+        @Index(name = "idx_api_request_metrics_status_created_at", columnList = "status, created_at"),
+        @Index(name = "idx_api_request_metrics_user_id_created_at", columnList = "user_id, created_at"),
+        @Index(name = "idx_api_request_metrics_request_id", columnList = "request_id")
+})
 public class RequestMetric {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -19,193 +33,72 @@ public class RequestMetric {
     private Long durationMs;
     @Column(name = "user_id")
     private Long userId;
+    @Column(name = "request_id", length = 80)
+    private String requestId;
+    @Column(name = "error_code", length = 80)
+    private String errorCode;
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    public static RequestMetricBuilder builder() {
+        return new RequestMetricBuilder();
+    }
 
-    @java.lang.SuppressWarnings("all")
-    public static class RequestMetricBuilder {
-        @java.lang.SuppressWarnings("all")
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getEndpoint() { return endpoint; }
+    public void setEndpoint(String endpoint) { this.endpoint = endpoint; }
+    public String getMethod() { return method; }
+    public void setMethod(String method) { this.method = method; }
+    public Integer getStatus() { return status; }
+    public void setStatus(Integer status) { this.status = status; }
+    public Long getDurationMs() { return durationMs; }
+    public void setDurationMs(Long durationMs) { this.durationMs = durationMs; }
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
+    public String getRequestId() { return requestId; }
+    public void setRequestId(String requestId) { this.requestId = requestId; }
+    public String getErrorCode() { return errorCode; }
+    public void setErrorCode(String errorCode) { this.errorCode = errorCode; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public static final class RequestMetricBuilder {
         private Long id;
-        @java.lang.SuppressWarnings("all")
         private String endpoint;
-        @java.lang.SuppressWarnings("all")
         private String method;
-        @java.lang.SuppressWarnings("all")
         private Integer status;
-        @java.lang.SuppressWarnings("all")
         private Long durationMs;
-        @java.lang.SuppressWarnings("all")
         private Long userId;
-        @java.lang.SuppressWarnings("all")
+        private String requestId;
+        private String errorCode;
         private LocalDateTime createdAt;
 
-        @java.lang.SuppressWarnings("all")
-        RequestMetricBuilder() {
+        private RequestMetricBuilder() {
         }
 
-        /**
-         * @return {@code this}.
-         */
-        @java.lang.SuppressWarnings("all")
-        public RequestMetric.RequestMetricBuilder id(final Long id) {
-            this.id = id;
-            return this;
-        }
+        public RequestMetricBuilder id(Long id) { this.id = id; return this; }
+        public RequestMetricBuilder endpoint(String endpoint) { this.endpoint = endpoint; return this; }
+        public RequestMetricBuilder method(String method) { this.method = method; return this; }
+        public RequestMetricBuilder status(Integer status) { this.status = status; return this; }
+        public RequestMetricBuilder durationMs(Long durationMs) { this.durationMs = durationMs; return this; }
+        public RequestMetricBuilder userId(Long userId) { this.userId = userId; return this; }
+        public RequestMetricBuilder requestId(String requestId) { this.requestId = requestId; return this; }
+        public RequestMetricBuilder errorCode(String errorCode) { this.errorCode = errorCode; return this; }
+        public RequestMetricBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
 
-        /**
-         * @return {@code this}.
-         */
-        @java.lang.SuppressWarnings("all")
-        public RequestMetric.RequestMetricBuilder endpoint(final String endpoint) {
-            this.endpoint = endpoint;
-            return this;
-        }
-
-        /**
-         * @return {@code this}.
-         */
-        @java.lang.SuppressWarnings("all")
-        public RequestMetric.RequestMetricBuilder method(final String method) {
-            this.method = method;
-            return this;
-        }
-
-        /**
-         * @return {@code this}.
-         */
-        @java.lang.SuppressWarnings("all")
-        public RequestMetric.RequestMetricBuilder status(final Integer status) {
-            this.status = status;
-            return this;
-        }
-
-        /**
-         * @return {@code this}.
-         */
-        @java.lang.SuppressWarnings("all")
-        public RequestMetric.RequestMetricBuilder durationMs(final Long durationMs) {
-            this.durationMs = durationMs;
-            return this;
-        }
-
-        /**
-         * @return {@code this}.
-         */
-        @java.lang.SuppressWarnings("all")
-        public RequestMetric.RequestMetricBuilder userId(final Long userId) {
-            this.userId = userId;
-            return this;
-        }
-
-        /**
-         * @return {@code this}.
-         */
-        @java.lang.SuppressWarnings("all")
-        public RequestMetric.RequestMetricBuilder createdAt(final LocalDateTime createdAt) {
-            this.createdAt = createdAt;
-            return this;
-        }
-
-        @java.lang.SuppressWarnings("all")
         public RequestMetric build() {
-            return new RequestMetric(this.id, this.endpoint, this.method, this.status, this.durationMs, this.userId, this.createdAt);
+            RequestMetric metric = new RequestMetric();
+            metric.setId(id);
+            metric.setEndpoint(endpoint);
+            metric.setMethod(method);
+            metric.setStatus(status);
+            metric.setDurationMs(durationMs);
+            metric.setUserId(userId);
+            metric.setRequestId(requestId);
+            metric.setErrorCode(errorCode);
+            metric.setCreatedAt(createdAt);
+            return metric;
         }
-
-        @java.lang.Override
-        @java.lang.SuppressWarnings("all")
-        public java.lang.String toString() {
-            return "RequestMetric.RequestMetricBuilder(id=" + this.id + ", endpoint=" + this.endpoint + ", method=" + this.method + ", status=" + this.status + ", durationMs=" + this.durationMs + ", userId=" + this.userId + ", createdAt=" + this.createdAt + ")";
-        }
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public static RequestMetric.RequestMetricBuilder builder() {
-        return new RequestMetric.RequestMetricBuilder();
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public Long getId() {
-        return this.id;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public String getEndpoint() {
-        return this.endpoint;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public String getMethod() {
-        return this.method;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public Integer getStatus() {
-        return this.status;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public Long getDurationMs() {
-        return this.durationMs;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public Long getUserId() {
-        return this.userId;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public LocalDateTime getCreatedAt() {
-        return this.createdAt;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public void setId(final Long id) {
-        this.id = id;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public void setEndpoint(final String endpoint) {
-        this.endpoint = endpoint;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public void setMethod(final String method) {
-        this.method = method;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public void setStatus(final Integer status) {
-        this.status = status;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public void setDurationMs(final Long durationMs) {
-        this.durationMs = durationMs;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public void setUserId(final Long userId) {
-        this.userId = userId;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public void setCreatedAt(final LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public RequestMetric() {
-    }
-
-    @java.lang.SuppressWarnings("all")
-    public RequestMetric(final Long id, final String endpoint, final String method, final Integer status, final Long durationMs, final Long userId, final LocalDateTime createdAt) {
-        this.id = id;
-        this.endpoint = endpoint;
-        this.method = method;
-        this.status = status;
-        this.durationMs = durationMs;
-        this.userId = userId;
-        this.createdAt = createdAt;
     }
 }

@@ -86,7 +86,7 @@ export default function LockedFeaturePage({
         ))}
       </div>
 
-      <div className="locked-feature-cta" style={ctaCard}>
+      <div className="locked-feature-cta" data-testid="pro-feature-upgrade-prompt" style={ctaCard}>
         <div>
           <div style={popularBadge}>⭐ Most traders choose Pro</div>
           <h2 style={ctaTitleStyle}>{ctaTitle}</h2>

@@ -28,6 +28,58 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+tradepilot:
+  features:
+    v2-enabled: ${V2_FEATURES_ENABLED:false}
+    v3-enabled: ${V3_FEATURES_ENABLED:false}
+  market-data:
+    provider: ${MARKET_DATA_PROVIDER:disabled}
+
+    databento:
+      api-key: ${DATABENTO_API_KEY:}
+      dataset: ${DATABENTO_DATASET:GLBX.MDP3}
+      schema: ${DATABENTO_SCHEMA:ohlcv-1m}
+
+      # Safety protection for historical data usage
+      cost-check-enabled: ${DATABENTO_COST_CHECK_ENABLED:true}
+      max-request-cost-usd: ${DATABENTO_MAX_REQUEST_COST_USD:0.05}
+
+    replay-delay-hours: ${REPLAY_DELAY_HOURS:24}
+
+    pre-trade-minutes: ${REPLAY_PRE_TRADE_MINUTES:15}
+    post-trade-minutes: ${REPLAY_POST_TRADE_MINUTES:30}
+    max-window-hours: ${REPLAY_MAX_WINDOW_HOURS:2}
+
+    # Default this to false so local development cannot accidentally
+    # generate replay data continuously in the background.
+    worker-enabled: ${REPLAY_WORKER_ENABLED:false}
+
+    worker-initial-delay-ms: ${REPLAY_WORKER_INITIAL_DELAY_MS:60000}
+    worker-fixed-delay-ms: ${REPLAY_WORKER_FIXED_DELAY_MS:300000}
+    cache-enabled: ${REPLAY_CACHE_ENABLED:true}
+  trading-memory:
+    enabled: ${TRADING_MEMORY_ENABLED:true}
+    collection-name: ${QDRANT_COLLECTION_NAME:tradepilot_trade_memories}
+    vector-size: ${TRADING_MEMORY_VECTOR_SIZE:1536}
+    similarity-threshold: ${TRADING_MEMORY_SIMILARITY_THRESHOLD:0.72}
+    default-limit: ${TRADING_MEMORY_DEFAULT_LIMIT:5}
+    max-limit: ${TRADING_MEMORY_MAX_LIMIT:10}
+    min-pattern-sample: ${TRADING_MEMORY_MIN_PATTERN_SAMPLE:5}
+    min-pattern-occurrences: ${TRADING_MEMORY_MIN_PATTERN_OCCURRENCES:3}
+    request-timeout-ms: ${TRADING_MEMORY_REQUEST_TIMEOUT_MS:3000}
+    embedding-model: ${TRADING_MEMORY_EMBEDDING_MODEL:text-embedding-3-small}
+    qdrant-url: ${QDRANT_URL:}
+    qdrant-api-key: ${QDRANT_API_KEY:}
+    qdrant-auto-create-collection: ${TRADING_MEMORY_QDRANT_AUTO_CREATE_COLLECTION:true}
+    qdrant-validate-on-startup: ${TRADING_MEMORY_QDRANT_VALIDATE_ON_STARTUP:true}
+    qdrant-expected-distance: ${TRADING_MEMORY_QDRANT_EXPECTED_DISTANCE:COSINE}
+    qdrant-create-payload-indexes: ${TRADING_MEMORY_QDRANT_CREATE_PAYLOAD_INDEXES:true}
+    retry-enabled: ${TRADING_MEMORY_RETRY_ENABLED:false}
+    retry-max-attempts: ${TRADING_MEMORY_RETRY_MAX_ATTEMPTS:5}
+    retry-initial-delay-seconds: ${TRADING_MEMORY_RETRY_INITIAL_DELAY_SECONDS:60}
+    retry-max-delay-seconds: ${TRADING_MEMORY_RETRY_MAX_DELAY_SECONDS:3600}
+    retry-batch-size: ${TRADING_MEMORY_RETRY_BATCH_SIZE:50}
+
 app:
   cors:
     allowed-origins: ${APP_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:3000}
@@ -41,6 +93,9 @@ app:
   openai:
     api-key: ${OPENAI_API_KEY:}
     model: ${OPENAI_MODEL:gpt-4.1-mini}
+  http-client:
+    connect-timeout: ${APP_HTTP_CLIENT_CONNECT_TIMEOUT:5s}
+    read-timeout: ${APP_HTTP_CLIENT_READ_TIMEOUT:30s}
   ai:
     async:
       core-pool-size: ${APP_AI_ASYNC_CORE_POOL_SIZE:2}
@@ -97,3 +152,9 @@ app:
     ai-generation:
       max-requests: ${RATE_LIMIT_AI_GENERATION_MAX:12}
       window-seconds: ${RATE_LIMIT_AI_GENERATION_WINDOW_SECONDS:300}
+    csv-import:
+      max-requests: ${RATE_LIMIT_CSV_IMPORT_MAX:6}
+      window-seconds: ${RATE_LIMIT_CSV_IMPORT_WINDOW_SECONDS:300}
+    billing-checkout:
+      max-requests: ${RATE_LIMIT_BILLING_CHECKOUT_MAX:10}
+      window-seconds: ${RATE_LIMIT_BILLING_CHECKOUT_WINDOW_SECONDS:300}

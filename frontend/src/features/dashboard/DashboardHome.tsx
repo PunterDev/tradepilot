@@ -1,6 +1,8 @@
 import type { ChangeEvent, CSSProperties } from "react";
 import type { TradingAccount } from "../../api/accountApi";
 import type { BillingUsage } from "../../types/billing";
+import type { TradeImportPreviewResponse } from "../../api/tradeApi";
+import type { ImportFeedback } from "../../hooks/useDashboardData";
 import type { SelectedAccountId } from "../../types/dashboard";
 import type { DailyPnl } from "../../utils/dashboardUtils";
 import type { TradovateTrade } from "../../utils/tradovateCsv";
@@ -33,6 +35,8 @@ type Props = {
   saving: boolean;
   fileName: string;
   parsedImportCount: number;
+  importPreview: TradeImportPreviewResponse | null;
+  importFeedback: ImportFeedback | null;
   showAccountForm: boolean;
   creatingAccount: boolean;
   newAccountName: string;
@@ -51,6 +55,7 @@ type Props = {
   onDefaultRiskAmountChange: (value: string) => void;
   onCsvUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onSaveToDatabase: () => void;
+  showTradingDnaEntryPoint: boolean;
 };
 
 export default function DashboardHome({
@@ -66,6 +71,8 @@ export default function DashboardHome({
   saving,
   fileName,
   parsedImportCount,
+  importPreview,
+  importFeedback,
   showAccountForm,
   creatingAccount,
   newAccountName,
@@ -84,6 +91,7 @@ export default function DashboardHome({
   onDefaultRiskAmountChange,
   onCsvUpload,
   onSaveToDatabase,
+  showTradingDnaEntryPoint,
 }: Props) {
   const latestTrade = trades[0];
   const latestDate = latestTrade ? getTradeCalendarDate(latestTrade) : null;
@@ -93,6 +101,7 @@ export default function DashboardHome({
       <PageHeader
         label="TradePilot AI"
         title="Dashboard"
+        titleTestId="dashboard-heading"
         description="A fast overview of account performance, import status, and the next places worth reviewing."
       />
 
@@ -106,6 +115,8 @@ export default function DashboardHome({
         saving={saving}
         fileName={fileName}
         tradeCount={parsedImportCount}
+        importPreview={importPreview}
+        importFeedback={importFeedback}
         showAccountForm={showAccountForm}
         creatingAccount={creatingAccount}
         newAccountName={newAccountName}
@@ -123,6 +134,7 @@ export default function DashboardHome({
         onDefaultRiskAmountChange={onDefaultRiskAmountChange}
         onCsvUpload={onCsvUpload}
         onSaveToDatabase={onSaveToDatabase}
+        showTradingDnaEntryPoint={showTradingDnaEntryPoint}
       />
 
       <CompactUsageWidget usage={billingUsage} loading={billingLoading} error={billingError} />
@@ -140,6 +152,7 @@ export default function DashboardHome({
         totalTrades={metrics.totalTrades}
         winRate={metrics.overallWinRate}
         worstDay={metrics.worstDay}
+        showTradingDnaEntryPoint={showTradingDnaEntryPoint}
       />
     </>
   );
