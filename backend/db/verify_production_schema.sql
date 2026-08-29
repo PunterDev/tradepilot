@@ -52,13 +52,13 @@ with required_tables(table_name) as (
         ('trade_memories')
 )
 select 'required_table' as check_name,
-       table_name,
+       r.table_name,
        case when t.table_name is null then 'MISSING' else 'OK' end as result
 from required_tables r
 left join information_schema.tables t
     on t.table_schema = 'public'
    and t.table_name = r.table_name
-order by table_name;
+order by r.table_name;
 
 with required_columns(table_name, column_name) as (
     values
