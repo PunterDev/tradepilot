@@ -7,6 +7,7 @@ on:
       - ".github/workflows/postgres-flyway-baseline.yml"
   push:
     branches:
+      - master
       - main
     paths:
       - "backend/**"
