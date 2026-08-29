@@ -194,9 +194,10 @@ class FlywayPostgresBaselineIntegrationTest {
 
     private static void assertHibernateValidatesMigratedSchema(PostgreSQLContainer<?> postgres) {
         try (ConfigurableApplicationContext ignored = new SpringApplicationBuilder(TradePilotApplication.class)
-                .web(WebApplicationType.NONE)
+                .web(WebApplicationType.SERVLET)
                 .profiles("test")
                 .properties(
+                        "server.port=0",
                         "spring.datasource.url=" + postgres.getJdbcUrl(),
                         "spring.datasource.username=" + postgres.getUsername(),
                         "spring.datasource.password=" + postgres.getPassword(),

@@ -266,6 +266,12 @@ class AdminPortalTests {
 
     @Test
     void observabilityCreatesDedupesAndResolvesAlerts() throws Exception {
+        systemAlertRepository.deleteAll();
+        requestMetricRepository.deleteAll();
+        cacheMetricRepository.deleteAll();
+        emailDeliveryEventRepository.deleteAll();
+        stripeEventMetricRepository.deleteAll();
+
         User admin = createUser("admin-observability@example.com", UserRole.ADMIN, PlanType.PRO);
         LocalDateTime now = LocalDateTime.now();
 
