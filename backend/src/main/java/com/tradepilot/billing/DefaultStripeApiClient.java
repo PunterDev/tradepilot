@@ -69,7 +69,7 @@ public class DefaultStripeApiClient implements StripeApiClient {
                 .addLineItem(SessionCreateParams.LineItem.builder()
                         .setQuantity(1L)
                         .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
-                                .setCurrency("usd")
+                                .setCurrency(pack.currency())
                                 .setUnitAmount((long) pack.amountCents())
                                 .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
                                         .setName("TradePilot AI Credit Pack - " + pack.credits() + " credits")

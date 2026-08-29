@@ -1,0 +1,103 @@
+name: PostgreSQL Flyway Baseline
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/postgres-flyway-baseline.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/postgres-flyway-baseline.yml"
+  workflow_dispatch:
+
+jobs:
+  backend-tests:
+    name: backend-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run backend tests
+        run: mvn test
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-tests-surefire-reports
+          path: backend/target/surefire-reports/
+
+  postgres-flyway-baseline:
+    name: postgres-flyway-baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Verify Docker is available
+        run: docker version
+
+      - name: Run PostgreSQL Flyway baseline integration test
+        run: mvn -Ppostgres-integration test -Dtest=FlywayPostgresBaselineIntegrationTest
+
+      - name: Require PostgreSQL baseline test executed without skips
+        run: |
+          python3 - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          report = Path("target/surefire-reports/TEST-com.tradepilot.FlywayPostgresBaselineIntegrationTest.xml")
+          if not report.exists():
+              sys.exit(f"Missing Surefire report: {report}")
+
+          root = ET.parse(report).getroot()
+          actual = {
+              "tests": int(root.attrib.get("tests", "-1")),
+              "failures": int(root.attrib.get("failures", "-1")),
+              "errors": int(root.attrib.get("errors", "-1")),
+              "skipped": int(root.attrib.get("skipped", "-1")),
+          }
+          expected = {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}
+          if actual != expected:
+              sys.exit(f"PostgreSQL baseline test did not complete cleanly: expected {expected}, got {actual}")
+
+          print("PostgreSQL baseline CI gate verified: 1 run, 0 failures, 0 errors, 0 skipped")
+          PY
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-flyway-baseline-surefire-reports
+          path: backend/target/surefire-reports/

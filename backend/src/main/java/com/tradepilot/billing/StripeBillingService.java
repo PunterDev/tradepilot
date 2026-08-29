@@ -16,10 +16,15 @@ import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.util.LogSanitizer;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -33,18 +38,28 @@ public class StripeBillingService {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
     private final StripeApiClient stripeApiClient;
+    private final Environment environment;
     private final TransactionTemplate transactionTemplate;
     private final ObservabilityService observabilityService;
     private final ProcessedStripeEventRepository processedStripeEventRepository;
+    private final StripeSubscriptionStateRepository stripeSubscriptionStateRepository;
+    private final StripeCheckoutAttemptRepository stripeCheckoutAttemptRepository;
     private final AiCreditPurchaseRepository aiCreditPurchaseRepository;
     private final UsageLimitService usageLimitService;
+    private static final Duration SUBSCRIPTION_CHECKOUT_LOCK_TTL = Duration.ofMinutes(30);
+    private Runnable afterCreditPackFulfillmentClaimed = () -> {
+    };
+    private Runnable afterCreditPackCreditsIncremented = () -> {
+    };
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
 
+    @Transactional(rollbackFor = StripeException.class, noRollbackFor = PlanLimitExceededException.class)
     public String createCheckoutSession(User user) throws StripeException {
         return createCheckoutSession(user, "monthly");
     }
 
+    @Transactional(rollbackFor = StripeException.class, noRollbackFor = PlanLimitExceededException.class)
     public String createCheckoutSession(User user, String billingCycle) throws StripeException {
         long start = System.currentTimeMillis();
         String priceId = checkoutPriceId(billingCycle);
@@ -52,24 +67,31 @@ public class StripeBillingService {
         String normalizedBillingCycle = normalizeBillingCycle(billingCycle);
         log.info("Stripe checkout session creation started. userId={}, billingCycle={}", user.getId(), normalizedBillingCycle);
         try {
-            String customerId = ensureStripeCustomer(user);
+            User lockedUser = userRepository.findByIdForUpdate(user.getId()).orElse(user);
+            preventDuplicateSubscriptionCheckout(lockedUser);
+            StripeCheckoutAttempt checkoutAttempt = claimSubscriptionCheckoutAttempt(lockedUser.getId());
+            String customerId = ensureStripeCustomer(lockedUser);
             Session session;
             try {
-                session = stripeApiClient.createCheckoutSession(user, customerId, priceId, frontendUrl);
+                session = stripeApiClient.createCheckoutSession(lockedUser, customerId, priceId, frontendUrl);
             } catch (InvalidRequestException ex) {
                 if (!isNoSuchCustomer(ex)) {
                     throw ex;
                 }
-                clearStripeCustomer(user);
-                customerId = createStripeCustomer(user);
-                session = stripeApiClient.createCheckoutSession(user, customerId, priceId, frontendUrl);
+                clearStripeCustomer(lockedUser);
+                customerId = createStripeCustomer(lockedUser);
+                session = stripeApiClient.createCheckoutSession(lockedUser, customerId, priceId, frontendUrl);
             }
-            if (StringUtils.hasText(session.getCustomer()) && !session.getCustomer().equals(user.getStripeCustomerId())) {
-                user.setStripeCustomerId(session.getCustomer());
-                transactionTemplate.executeWithoutResult(status -> userRepository.save(user));
+            if (StringUtils.hasText(session.getCustomer()) && !session.getCustomer().equals(lockedUser.getStripeCustomerId())) {
+                lockedUser.setStripeCustomerId(session.getCustomer());
+                userRepository.save(lockedUser);
             }
+            checkoutAttempt.setStripeCheckoutSessionId(session.getId());
+            checkoutAttempt.setStatus(StripeCheckoutAttemptStatus.PENDING);
+            checkoutAttempt.setExpiresAt(LocalDateTime.now().plus(SUBSCRIPTION_CHECKOUT_LOCK_TTL));
+            stripeCheckoutAttemptRepository.save(checkoutAttempt);
             observabilityService.recordStripeEvent("checkout.session.create", true, System.currentTimeMillis() - start, null);
-            log.info("Stripe checkout session creation completed. userId={}, billingCycle={}, durationMs={}", user.getId(), normalizedBillingCycle, System.currentTimeMillis() - start);
+            log.info("Stripe checkout session creation completed. userId={}, billingCycle={}, durationMs={}", lockedUser.getId(), normalizedBillingCycle, System.currentTimeMillis() - start);
             return session.getUrl();
         } catch (RuntimeException | StripeException ex) {
             observabilityService.recordStripeEvent("checkout.session.create", false, System.currentTimeMillis() - start, LogSanitizer.summarizeError(ex.getMessage()));
@@ -153,9 +175,14 @@ public class StripeBillingService {
             JsonNode root = objectMapper.readTree(payload);
             String type = root.path("type").asText();
             String eventId = root.path("id").asText(null);
+            LocalDateTime stripeEventCreated = stripeEventCreated(root);
             if (!StringUtils.hasText(eventId)) {
                 log.warn("Stripe webhook rejected because event id is missing. type={}", type);
                 throw new IOException("Stripe event id is missing");
+            }
+            if (!isWebhookLiveModeAllowed(root)) {
+                log.warn("Stripe webhook rejected because production received a test-mode event. eventId={}, type={}", eventId, type);
+                throw new IOException("Production Stripe webhook events must be live mode");
             }
             log.info("Stripe webhook processing started. eventId={}, type={}", eventId, type);
             if (processedStripeEventRepository.existsByEventId(eventId)) {
@@ -164,24 +191,38 @@ public class StripeBillingService {
                 return;
             }
             StripeWebhookCommand command = normalizeWebhookCommand(eventId, type, root.path("data").path("object"));
-            transactionTemplate.executeWithoutResult(status -> {
+            try {
+                transactionTemplate.executeWithoutResult(status -> {
+                    if (processedStripeEventRepository.existsByEventId(eventId)) {
+                        log.warn("Duplicate Stripe webhook ignored inside transaction. eventId={}, type={}", eventId, type);
+                        return;
+                    }
+                    processedStripeEventRepository.saveAndFlush(ProcessedStripeEvent.of(eventId, type, stripeEventCreated));
+                    if (!claimSubscriptionStateEvent(command, stripeEventCreated)) {
+                        return;
+                    }
+                    switch (command.type()) {
+                        case "checkout.session.completed" -> handleCheckoutCompleted(command.object());
+                        case "customer.subscription.updated" -> handleSubscriptionUpdated(command.object(), command.currentSubscription());
+                        case "customer.subscription.deleted" -> handleSubscriptionDeleted(command.object(), command.currentSubscription());
+                        case "invoice_payment.paid", "invoice.payment_succeeded" -> handleInvoicePaymentSucceeded(command.eventId(), command.invoice(), command.invoiceSubscriptionPeriod(), command.currentSubscription());
+                        case "invoice_payment.payment_failed", "invoice.payment_failed" -> handleInvoicePaymentFailed(command.eventId(), command.invoice(), command.invoiceSubscriptionPeriod(), command.currentSubscription());
+                        case "charge.refunded" -> handleChargeRefunded(command.object());
+                        case "charge.dispute.created", "charge.dispute.closed" -> handleChargeDispute(command.object());
+                        default -> {
+                            // Ignore Stripe events this app does not need yet.
+                            log.warn("Unsupported Stripe webhook event ignored. eventId={}, type={}", eventId, type);
+                        }
+                    }
+                });
+            } catch (DataIntegrityViolationException ex) {
                 if (processedStripeEventRepository.existsByEventId(eventId)) {
-                    log.warn("Duplicate Stripe webhook ignored inside transaction. eventId={}, type={}", eventId, type);
+                    observabilityService.recordStripeEvent(type + ".duplicate", true, System.currentTimeMillis() - start, null);
+                    log.warn("Concurrent duplicate Stripe webhook ignored. eventId={}, type={}", eventId, type);
                     return;
                 }
-                processedStripeEventRepository.save(ProcessedStripeEvent.of(eventId, type));
-                switch (command.type()) {
-                    case "checkout.session.completed" -> handleCheckoutCompleted(command.object());
-                    case "customer.subscription.updated" -> handleSubscriptionUpdated(command.object());
-                    case "customer.subscription.deleted" -> handleSubscriptionDeleted(command.object());
-                    case "invoice_payment.paid", "invoice.payment_succeeded" -> handleInvoicePaymentSucceeded(command.eventId(), command.invoice(), command.invoiceSubscriptionPeriod());
-                    case "invoice_payment.payment_failed", "invoice.payment_failed" -> handleInvoicePaymentFailed(command.eventId(), command.invoice(), command.invoiceSubscriptionPeriod());
-                    default -> {
-                        // Ignore Stripe events this app does not need yet.
-                        log.warn("Unsupported Stripe webhook event ignored. eventId={}, type={}", eventId, type);
-                    }
-                }
-            });
+                throw ex;
+            }
             observabilityService.recordStripeEvent(type, true, System.currentTimeMillis() - start, null);
             log.info("Stripe webhook processing completed. eventId={}, type={}, durationMs={}", eventId, type, System.currentTimeMillis() - start);
         } catch (SignatureVerificationException ex) {
@@ -200,13 +241,110 @@ public class StripeBillingService {
     }
 
     private StripeWebhookCommand normalizeWebhookCommand(String eventId, String type, JsonNode object) throws IOException {
-        return switch (type) {
+        StripeWebhookCommand command = switch (type) {
             case "invoice_payment.paid", "invoice_payment.payment_failed" -> {
                 JsonNode invoice = resolveInvoiceFromPaymentEvent(eventId, type, object);
-                yield new StripeWebhookCommand(eventId, type, object, invoice, lookupInvoiceSubscriptionPeriod(invoice, eventId));
+                yield new StripeWebhookCommand(eventId, type, object, invoice, lookupInvoiceSubscriptionPeriod(invoice, eventId), null);
             }
-            case "invoice.payment_succeeded", "invoice.payment_failed" -> new StripeWebhookCommand(eventId, type, object, object, lookupInvoiceSubscriptionPeriod(object, eventId));
-            default -> new StripeWebhookCommand(eventId, type, object, object, null);
+            case "invoice.payment_succeeded", "invoice.payment_failed" -> new StripeWebhookCommand(eventId, type, object, object, lookupInvoiceSubscriptionPeriod(object, eventId), null);
+            default -> new StripeWebhookCommand(eventId, type, object, object, null, null);
+        };
+        return command.withCurrentSubscription(retrieveCurrentSubscriptionForSensitiveEvent(command));
+    }
+
+    private boolean isWebhookLiveModeAllowed(JsonNode root) {
+        if (!environment.acceptsProfiles(Profiles.of("prod", "production"))) {
+            return true;
+        }
+        return root.path("livemode").asBoolean(false);
+    }
+
+    private Subscription retrieveCurrentSubscriptionForSensitiveEvent(StripeWebhookCommand command) {
+        String subscriptionId = subscriptionIdForCommand(command);
+        if (!isSensitiveSubscriptionEvent(command.type()) || !StringUtils.hasText(subscriptionId)) {
+            return null;
+        }
+        try {
+            Subscription subscription = stripeApiClient.retrieveSubscription(subscriptionId);
+            if (subscription == null) {
+                log.warn("Stripe subscription reconciliation returned no subscription; falling back to signed payload. eventId={}, type={}, subscriptionId={}", command.eventId(), command.type(), subscriptionId);
+                return null;
+            }
+            if (StringUtils.hasText(subscription.getId()) && !subscriptionId.equals(subscription.getId())) {
+                log.warn("Stripe subscription reconciliation id mismatch. eventId={}, type={}, expectedSubscriptionId={}, actualSubscriptionId={}", command.eventId(), command.type(), subscriptionId, subscription.getId());
+                Subscription rejected = new Subscription();
+                rejected.setId(subscriptionId);
+                rejected.setCustomer("__stripe_reconciliation_mismatch__");
+                return rejected;
+            }
+            String eventCustomerId = expectedCustomerId(command);
+            if (StringUtils.hasText(eventCustomerId) && StringUtils.hasText(subscription.getCustomer()) && !eventCustomerId.equals(subscription.getCustomer())) {
+                log.warn("Stripe subscription reconciliation customer mismatch. eventId={}, type={}, subscriptionId={}", command.eventId(), command.type(), subscriptionId);
+            }
+            return subscription;
+        } catch (StripeException ex) {
+            log.warn("Stripe subscription reconciliation failed. eventId={}, type={}, subscriptionId={}, reason={}", command.eventId(), command.type(), subscriptionId, LogSanitizer.summarizeError(ex.getMessage()));
+            throw new StripeReconciliationException("Stripe subscription reconciliation failed", ex);
+        }
+    }
+
+    private boolean isSensitiveSubscriptionEvent(String type) {
+        return switch (type) {
+            case "customer.subscription.updated", "customer.subscription.deleted", "invoice_payment.paid", "invoice.payment_succeeded", "invoice_payment.payment_failed", "invoice.payment_failed" -> true;
+            default -> false;
+        };
+    }
+
+    private String expectedCustomerId(StripeWebhookCommand command) {
+        if (command.invoice() != null && !command.invoice().isMissingNode() && !command.invoice().isTextual()) {
+            return textField(command.invoice(), "customer");
+        }
+        return textField(command.object(), "customer");
+    }
+
+    private boolean claimSubscriptionStateEvent(StripeWebhookCommand command, LocalDateTime stripeEventCreated) {
+        String subscriptionId = subscriptionIdForCommand(command);
+        if (!StringUtils.hasText(subscriptionId)) {
+            return true;
+        }
+        if (stripeEventCreated == null) {
+            log.warn("Stripe state event missing created timestamp; applying without stale check. eventId={}, type={}, subscriptionId={}", command.eventId(), command.type(), subscriptionId);
+            return true;
+        }
+        Optional<StripeSubscriptionState> existing = stripeSubscriptionStateRepository.findBySubscriptionId(subscriptionId);
+        if (existing.isPresent()) {
+            StripeSubscriptionState state = existing.get();
+            if (state.getLastEventCreated() != null && stripeEventCreated.isBefore(state.getLastEventCreated())) {
+                log.warn("Stale Stripe state event ignored. eventId={}, type={}, subscriptionId={}, eventCreated={}, lastEventId={}, lastEventType={}, lastEventCreated={}", command.eventId(), command.type(), subscriptionId, stripeEventCreated, state.getLastEventId(), state.getLastEventType(), state.getLastEventCreated());
+                return false;
+            }
+            state.setLastEventId(command.eventId());
+            state.setLastEventType(command.type());
+            state.setLastEventCreated(stripeEventCreated);
+            stripeSubscriptionStateRepository.save(state);
+            return true;
+        }
+        try {
+            stripeSubscriptionStateRepository.saveAndFlush(StripeSubscriptionState.create(subscriptionId, command.eventId(), command.type(), stripeEventCreated));
+            return true;
+        } catch (DataIntegrityViolationException ex) {
+            Optional<StripeSubscriptionState> recovered = stripeSubscriptionStateRepository.findBySubscriptionId(subscriptionId);
+            if (recovered.isPresent() && recovered.get().getLastEventCreated() != null && stripeEventCreated.isBefore(recovered.get().getLastEventCreated())) {
+                log.warn("Stale Stripe state event ignored after concurrent state insert. eventId={}, type={}, subscriptionId={}", command.eventId(), command.type(), subscriptionId);
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    private String subscriptionIdForCommand(StripeWebhookCommand command) {
+        if ("checkout.session.completed".equals(command.type()) && !"AI_CREDIT_PACK".equals(command.object().path("metadata").path("type").asText())) {
+            return subscriptionIdFromValue(command.object().path("subscription"));
+        }
+        return switch (command.type()) {
+            case "customer.subscription.updated", "customer.subscription.deleted" -> command.object().path("id").asText(null);
+            case "invoice_payment.paid", "invoice.payment_succeeded", "invoice_payment.payment_failed", "invoice.payment_failed" -> subscriptionIdFromInvoice(command.invoice());
+            default -> null;
         };
     }
 
@@ -266,6 +404,58 @@ public class StripeBillingService {
         return ex.getMessage() != null && ex.getMessage().contains("No such customer");
     }
 
+    private void preventDuplicateSubscriptionCheckout(User user) throws StripeException {
+        if (hasStripeEntitlement(user.getSubscriptionStatus())) {
+            log.warn("Stripe checkout blocked because user already has local subscription entitlement. userId={}, status={}", user.getId(), user.getSubscriptionStatus());
+            throw new PlanLimitExceededException("You already have an active Pro subscription.");
+        }
+        if (StringUtils.hasText(user.getStripeSubscriptionId())) {
+            Subscription subscription;
+            try {
+                subscription = stripeApiClient.retrieveSubscription(user.getStripeSubscriptionId());
+            } catch (InvalidRequestException ex) {
+                if (!isNoSuchSubscription(ex)) {
+                    throw ex;
+                }
+                user.setStripeSubscriptionId(null);
+                subscription = null;
+            }
+            if (subscription != null && StringUtils.hasText(subscription.getCustomer()) && StringUtils.hasText(user.getStripeCustomerId()) && !user.getStripeCustomerId().equals(subscription.getCustomer())) {
+                log.warn("Stripe checkout blocked because stored subscription belongs to a different customer. userId={}", user.getId());
+                throw new PlanLimitExceededException("Your billing state needs support review before checkout.");
+            }
+            if (subscription != null && hasStripeEntitlement(mapSubscriptionStatus(subscription.getStatus(), Boolean.TRUE.equals(subscription.getCancelAtPeriodEnd())))) {
+                applyCurrentSubscriptionState(user, subscription);
+                userRepository.save(user);
+                usageLimitService.invalidateUsageCache(user.getId());
+                log.warn("Stripe checkout blocked because Stripe reports an eligible existing subscription. userId={}, subscriptionId={}", user.getId(), subscription.getId());
+                throw new PlanLimitExceededException("You already have an active Pro subscription.");
+            }
+        }
+    }
+
+    private StripeCheckoutAttempt claimSubscriptionCheckoutAttempt(Long userId) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiresAt = now.plus(SUBSCRIPTION_CHECKOUT_LOCK_TTL);
+        Optional<StripeCheckoutAttempt> existing = stripeCheckoutAttemptRepository.findByUserId(userId);
+        if (existing.isEmpty()) {
+            return stripeCheckoutAttemptRepository.saveAndFlush(StripeCheckoutAttempt.pending(userId, expiresAt));
+        }
+        StripeCheckoutAttempt attempt = existing.get();
+        if (attempt.getStatus() == StripeCheckoutAttemptStatus.PENDING && attempt.getExpiresAt() != null && attempt.getExpiresAt().isAfter(now)) {
+            log.warn("Stripe checkout blocked because a recent checkout attempt is still pending. userId={}", userId);
+            throw new PlanLimitExceededException("A Pro checkout is already in progress.");
+        }
+        attempt.setStatus(StripeCheckoutAttemptStatus.PENDING);
+        attempt.setExpiresAt(expiresAt);
+        attempt.setStripeCheckoutSessionId(null);
+        return stripeCheckoutAttemptRepository.saveAndFlush(attempt);
+    }
+
+    private boolean isNoSuchSubscription(InvalidRequestException ex) {
+        return ex.getMessage() != null && ex.getMessage().contains("No such subscription");
+    }
+
     void handleCheckoutCompleted(JsonNode object) {
         if ("AI_CREDIT_PACK".equals(object.path("metadata").path("type").asText())) {
             handleCreditPackCheckoutCompleted(object);
@@ -289,6 +479,11 @@ public class StripeBillingService {
                 applySubscriptionPeriod(user, object);
             }
             userRepository.save(user);
+            stripeCheckoutAttemptRepository.findByUserId(user.getId()).ifPresent(attempt -> {
+                attempt.setStatus(StripeCheckoutAttemptStatus.COMPLETED);
+                attempt.setStripeCheckoutSessionId(textField(object, "id"));
+                stripeCheckoutAttemptRepository.save(attempt);
+            });
             usageLimitService.invalidateUsageCache(user.getId());
             log.info("Stripe checkout completed upgraded user. userId={}", user.getId());
         });
@@ -298,10 +493,6 @@ public class StripeBillingService {
         String sessionId = object.path("id").asText(null);
         if (!StringUtils.hasText(sessionId)) {
             log.warn("Stripe AI credit pack checkout completed without session id.");
-            return;
-        }
-        if (aiCreditPurchaseRepository.existsByStripeCheckoutSessionId(sessionId)) {
-            log.info("Stripe AI credit pack checkout already applied. sessionId={}", sessionId);
             return;
         }
         JsonNode metadata = object.path("metadata");
@@ -318,82 +509,272 @@ public class StripeBillingService {
             log.warn("Stripe AI credit pack checkout had unsupported pack id. sessionId={}, packId={}", sessionId, packId);
             return;
         }
+        if (!isValidCreditPackCheckout(object, pack)) {
+            log.warn("Stripe AI credit pack checkout failed catalog validation. sessionId={}, packId={}", sessionId, pack.name());
+            return;
+        }
         userRepository.findByIdForUpdate(userId).ifPresentOrElse(user -> {
+            if (aiCreditPurchaseRepository.existsByStripeCheckoutSessionId(sessionId)) {
+                log.info("Stripe AI credit pack checkout already applied. sessionId={}", sessionId);
+                return;
+            }
+            if (!StringUtils.hasText(user.getStripeCustomerId()) || !user.getStripeCustomerId().equals(textField(object, "customer"))) {
+                log.warn("Stripe AI credit pack checkout customer mismatch. sessionId={}, userId={}", sessionId, user.getId());
+                return;
+            }
+            AiCreditPurchase purchase = AiCreditPurchase.builder().userId(user.getId()).stripeCheckoutSessionId(sessionId).stripeCustomerId(user.getStripeCustomerId()).stripePaymentIntentId(textField(object, "payment_intent")).packId(pack.name()).creditsPurchased(pack.credits()).amountCents(pack.amountCents()).refundedAmountCents(0).reversedCredits(0).currency(pack.currency()).status(AiCreditPurchaseStatus.COMPLETED).completedAt(LocalDateTime.now()).build();
+            try {
+                aiCreditPurchaseRepository.saveAndFlush(purchase);
+                afterCreditPackFulfillmentClaimed.run();
+            } catch (DataIntegrityViolationException ex) {
+                if (aiCreditPurchaseRepository.existsByStripeCheckoutSessionId(sessionId)) {
+                    log.info("Stripe AI credit pack checkout concurrently applied. sessionId={}", sessionId);
+                    return;
+                }
+                throw ex;
+            }
             int currentBalance = user.getPurchasedAiCreditsBalance() == null ? 0 : Math.max(0, user.getPurchasedAiCreditsBalance());
             user.setPurchasedAiCreditsBalance(currentBalance + pack.credits());
             userRepository.save(user);
-            AiCreditPurchase purchase = AiCreditPurchase.builder().userId(user.getId()).stripeCheckoutSessionId(sessionId).stripePaymentIntentId(textField(object, "payment_intent")).creditsPurchased(pack.credits()).amountCents((int) object.path("amount_total").asLong(pack.amountCents())).currency(object.path("currency").asText("usd")).status(AiCreditPurchaseStatus.COMPLETED).completedAt(LocalDateTime.now()).build();
-            aiCreditPurchaseRepository.save(purchase);
+            afterCreditPackCreditsIncremented.run();
             usageLimitService.invalidateUsageCache(user.getId());
             log.info("Stripe AI credit pack applied. userId={}, sessionId={}, packId={}, credits={}, newBalance={}", user.getId(), sessionId, pack.name(), pack.credits(), user.getPurchasedAiCreditsBalance());
         }, () -> log.warn("Stripe AI credit pack checkout could not be mapped to user. sessionId={}, userId={}", sessionId, userId));
     }
 
-    void handleSubscriptionUpdated(JsonNode object) {
+    void handleChargeRefunded(JsonNode charge) {
+        String paymentIntentId = textField(charge, "payment_intent");
+        String chargeId = textField(charge, "id");
+        String customerId = textField(charge, "customer");
+        Optional<AiCreditPurchase> purchase = findPurchaseForChargeEvent(paymentIntentId, chargeId);
+        if (purchase.isEmpty()) {
+            log.warn("Stripe refund ignored because no credit-pack purchase matched. chargeId={}, paymentIntentId={}", chargeId, paymentIntentId);
+            return;
+        }
+        AiCreditPurchase creditPurchase = purchase.get();
+        if (!purchaseCustomerMatches(creditPurchase, customerId)) {
+            log.warn("Stripe refund ignored due to customer mismatch. purchaseId={}, chargeId={}", creditPurchase.getId(), chargeId);
+            return;
+        }
+        attachChargeId(creditPurchase, chargeId);
+        int refundedAmount = Math.max(0, (int) charge.path("amount_refunded").asLong(0));
+        creditPurchase.setRefundedAmountCents(Math.max(nonNull(creditPurchase.getRefundedAmountCents()), refundedAmount));
+        if (creditPurchase.getRefundedAmountCents() >= nonNull(creditPurchase.getAmountCents())) {
+            applyReasonAwareReversal(creditPurchase, nonNull(creditPurchase.getCreditsPurchased()), nonNull(creditPurchase.getDisputeReversalCredits()), nonNull(creditPurchase.getDisputeRestoredCredits()), AiCreditPurchaseStatus.REFUNDED, "full_refund");
+            creditPurchase.setRefundedAt(LocalDateTime.now());
+        } else if (creditPurchase.getRefundedAmountCents() > 0 && creditPurchase.getStatus() == AiCreditPurchaseStatus.COMPLETED) {
+            creditPurchase.setStatus(AiCreditPurchaseStatus.PARTIALLY_REFUNDED);
+            creditPurchase.setRefundedAt(LocalDateTime.now());
+            log.warn("Stripe partial refund recorded for manual credit reconciliation. purchaseId={}, refundedAmountCents={}", creditPurchase.getId(), creditPurchase.getRefundedAmountCents());
+        }
+        aiCreditPurchaseRepository.save(creditPurchase);
+    }
+
+    void handleChargeDispute(JsonNode dispute) {
+        JsonNode charge = dispute.path("charge");
+        String chargeId = textField(dispute, "charge");
+        String paymentIntentId = textField(dispute, "payment_intent");
+        String customerId = textField(dispute, "customer");
+        if (!StringUtils.hasText(paymentIntentId) && charge.isObject()) {
+            paymentIntentId = textField(charge, "payment_intent");
+        }
+        if (!StringUtils.hasText(customerId) && charge.isObject()) {
+            customerId = textField(charge, "customer");
+        }
+        Optional<AiCreditPurchase> purchase = findPurchaseForChargeEvent(paymentIntentId, chargeId);
+        if (purchase.isEmpty()) {
+            log.warn("Stripe dispute ignored because no credit-pack purchase matched. chargeId={}, paymentIntentId={}", chargeId, paymentIntentId);
+            return;
+        }
+        AiCreditPurchase creditPurchase = purchase.get();
+        if (!purchaseCustomerMatches(creditPurchase, customerId)) {
+            log.warn("Stripe dispute ignored due to customer mismatch. purchaseId={}, chargeId={}", creditPurchase.getId(), chargeId);
+            return;
+        }
+        attachChargeId(creditPurchase, chargeId);
+        String disputeStatus = dispute.path("status").asText("");
+        creditPurchase.setDisputeStatus(disputeStatus);
+        creditPurchase.setDisputedAt(LocalDateTime.now());
+        if ("won".equals(disputeStatus)) {
+            restoreDisputeReversal(creditPurchase);
+        } else if ("lost".equals(disputeStatus)) {
+            applyReasonAwareReversal(creditPurchase, nonNull(creditPurchase.getRefundReversalCredits()), nonNull(creditPurchase.getCreditsPurchased()), nonNull(creditPurchase.getDisputeRestoredCredits()), AiCreditPurchaseStatus.DISPUTE_LOST, "dispute_lost");
+        } else {
+            applyReasonAwareReversal(creditPurchase, nonNull(creditPurchase.getRefundReversalCredits()), nonNull(creditPurchase.getCreditsPurchased()), nonNull(creditPurchase.getDisputeRestoredCredits()), AiCreditPurchaseStatus.DISPUTED, "dispute_created");
+        }
+        aiCreditPurchaseRepository.save(creditPurchase);
+    }
+
+    private Optional<AiCreditPurchase> findPurchaseForChargeEvent(String paymentIntentId, String chargeId) {
+        if (StringUtils.hasText(paymentIntentId)) {
+            Optional<AiCreditPurchase> byPaymentIntent = aiCreditPurchaseRepository.findByStripePaymentIntentIdForUpdate(paymentIntentId);
+            if (byPaymentIntent.isPresent()) {
+                return byPaymentIntent;
+            }
+        }
+        if (StringUtils.hasText(chargeId)) {
+            return aiCreditPurchaseRepository.findByStripeChargeIdForUpdate(chargeId);
+        }
+        return Optional.empty();
+    }
+
+    private boolean purchaseCustomerMatches(AiCreditPurchase purchase, String customerId) {
+        return !StringUtils.hasText(purchase.getStripeCustomerId())
+                || (StringUtils.hasText(customerId) && customerId.equals(purchase.getStripeCustomerId()));
+    }
+
+    private void attachChargeId(AiCreditPurchase purchase, String chargeId) {
+        if (StringUtils.hasText(chargeId) && !StringUtils.hasText(purchase.getStripeChargeId())) {
+            purchase.setStripeChargeId(chargeId);
+        }
+    }
+
+    private void applyReasonAwareReversal(AiCreditPurchase purchase, int refundReversalCredits, int disputeReversalCredits, int disputeRestoredCredits, AiCreditPurchaseStatus status, String reason) {
+        int previousEconomicReversal = economicReversalCredits(purchase);
+        purchase.setRefundReversalCredits(Math.max(0, refundReversalCredits));
+        purchase.setDisputeReversalCredits(Math.max(0, disputeReversalCredits));
+        purchase.setDisputeRestoredCredits(Math.min(Math.max(0, disputeRestoredCredits), nonNull(purchase.getDisputeReversalCredits())));
+        int newEconomicReversal = economicReversalCredits(purchase);
+        int delta = newEconomicReversal - previousEconomicReversal;
+        purchase.setStatus(status);
+        if (delta == 0) {
+            purchase.setReversedCredits(newEconomicReversal);
+            return;
+        }
+        userRepository.findByIdForUpdate(purchase.getUserId()).ifPresent(user -> {
+            int currentBalance = user.getPurchasedAiCreditsBalance() == null ? 0 : user.getPurchasedAiCreditsBalance();
+            user.setPurchasedAiCreditsBalance(currentBalance - delta);
+            userRepository.save(user);
+            usageLimitService.invalidateUsageCache(user.getId());
+        });
+        purchase.setReversedCredits(newEconomicReversal);
+        purchase.setReversedAt(LocalDateTime.now());
+        log.warn("Stripe credit-pack reversal applied. purchaseId={}, credits={}, reason={}", purchase.getId(), delta, reason);
+    }
+
+    private void restoreDisputeReversal(AiCreditPurchase purchase) {
+        int previousEconomicReversal = economicReversalCredits(purchase);
+        purchase.setDisputeRestoredCredits(nonNull(purchase.getDisputeReversalCredits()));
+        int newEconomicReversal = economicReversalCredits(purchase);
+        int restored = previousEconomicReversal - newEconomicReversal;
+        purchase.setStatus(nonNull(purchase.getRefundReversalCredits()) > 0 ? AiCreditPurchaseStatus.REFUNDED : AiCreditPurchaseStatus.DISPUTE_WON);
+        purchase.setReversedCredits(newEconomicReversal);
+        if (restored <= 0) {
+            return;
+        }
+        userRepository.findByIdForUpdate(purchase.getUserId()).ifPresent(user -> {
+            int currentBalance = user.getPurchasedAiCreditsBalance() == null ? 0 : user.getPurchasedAiCreditsBalance();
+            user.setPurchasedAiCreditsBalance(currentBalance + restored);
+            userRepository.save(user);
+            usageLimitService.invalidateUsageCache(user.getId());
+        });
+        purchase.setReversedAt(LocalDateTime.now());
+        log.info("Stripe dispute won; dispute-reversed purchased credits restored. purchaseId={}, credits={}", purchase.getId(), restored);
+    }
+
+    private int economicReversalCredits(AiCreditPurchase purchase) {
+        return Math.max(nonNull(purchase.getRefundReversalCredits()), activeDisputeReversal(purchase));
+    }
+
+    private int activeDisputeReversal(AiCreditPurchase purchase) {
+        return Math.max(0, nonNull(purchase.getDisputeReversalCredits()) - nonNull(purchase.getDisputeRestoredCredits()));
+    }
+
+    private int nonNull(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private boolean isValidCreditPackCheckout(JsonNode object, AiCreditPack pack) {
+        return "payment".equals(object.path("mode").asText(""))
+                && "paid".equals(object.path("payment_status").asText(""))
+                && pack.currency().equalsIgnoreCase(object.path("currency").asText(""))
+                && object.path("amount_total").asLong(-1) == pack.amountCents();
+    }
+
+    void handleSubscriptionUpdated(JsonNode object, Subscription currentSubscription) {
         logSubscriptionFields("customer.subscription.updated", object);
-        findUserForSubscription(object).ifPresent(user -> {
-            String status = object.path("status").asText("");
-            boolean cancelAtPeriodEnd = object.path("cancel_at_period_end").asBoolean(false);
-            SubscriptionStatus subscriptionStatus = mapSubscriptionStatus(status, cancelAtPeriodEnd);
-            user.setSubscriptionStatus(subscriptionStatus);
-            user.setPlan(subscriptionStatus == SubscriptionStatus.ACTIVE || subscriptionStatus == SubscriptionStatus.TRIALING ? PlanType.PRO : PlanType.FREE);
-            applyStripeIds(user, object.path("customer").asText(null), object.path("id").asText(null));
-            applySubscriptionPeriod(user, object);
-            applySubscriptionCancellationMetadata(user, object);
+        findUserForSubscription(object, currentSubscription).ifPresent(user -> {
+            if (currentSubscription != null) {
+                applyCurrentSubscriptionState(user, currentSubscription);
+            } else {
+                String status = object.path("status").asText("");
+                boolean cancelAtPeriodEnd = object.path("cancel_at_period_end").asBoolean(false);
+                SubscriptionStatus subscriptionStatus = mapSubscriptionStatus(status, cancelAtPeriodEnd);
+                user.setSubscriptionStatus(subscriptionStatus);
+                user.setPlan(hasStripeEntitlement(subscriptionStatus) ? PlanType.PRO : PlanType.FREE);
+                applyStripeIds(user, object.path("customer").asText(null), object.path("id").asText(null));
+                applySubscriptionPeriod(user, object);
+                applySubscriptionCancellationMetadata(user, object);
+            }
             userRepository.save(user);
             usageLimitService.invalidateUsageCache(user.getId());
-            log.info("Stripe subscription updated. userId={}, status={}, plan={}, cancelAtPeriodEnd={}", user.getId(), subscriptionStatus, user.getPlan(), cancelAtPeriodEnd);
+            log.info("Stripe subscription updated. userId={}, status={}, plan={}, sourceOfTruth={}", user.getId(), user.getSubscriptionStatus(), user.getPlan(), currentSubscription != null);
         });
     }
 
-    void handleSubscriptionDeleted(JsonNode object) {
+    void handleSubscriptionDeleted(JsonNode object, Subscription currentSubscription) {
         logSubscriptionFields("customer.subscription.deleted", object);
-        findUserForSubscription(object).ifPresent(user -> {
-            user.setPlan(PlanType.FREE);
-            user.setSubscriptionStatus(SubscriptionStatus.CANCELED);
-            applyStripeIds(user, object.path("customer").asText(null), object.path("id").asText(null));
-            applySubscriptionPeriod(user, object);
-            applySubscriptionCancellationMetadata(user, object);
+        findUserForSubscription(object, currentSubscription).ifPresent(user -> {
+            if (currentSubscription != null) {
+                applyCurrentSubscriptionState(user, currentSubscription);
+            } else {
+                user.setPlan(PlanType.FREE);
+                user.setSubscriptionStatus(SubscriptionStatus.CANCELED);
+                applyStripeIds(user, object.path("customer").asText(null), object.path("id").asText(null));
+                applySubscriptionPeriod(user, object);
+                applySubscriptionCancellationMetadata(user, object);
+            }
             userRepository.save(user);
             usageLimitService.invalidateUsageCache(user.getId());
-            log.info("Stripe subscription deleted. userId={}", user.getId());
+            log.info("Stripe subscription deleted. userId={}, status={}, plan={}, sourceOfTruth={}", user.getId(), user.getSubscriptionStatus(), user.getPlan(), currentSubscription != null);
         });
     }
 
-    void handleInvoicePaymentSucceeded(String eventId, JsonNode invoice, Period invoiceSubscriptionPeriod) {
+    void handleInvoicePaymentSucceeded(String eventId, JsonNode invoice, Period invoiceSubscriptionPeriod, Subscription currentSubscription) {
         if (invoice == null || invoice.isMissingNode() || invoice.isNull() || invoice.isTextual()) {
             log.warn("Stripe paid invoice event did not include supported invoice details. eventId={}, invoiceId={}", eventId, invoice == null ? null : invoice.asText(null));
             return;
         }
-        findUserForInvoice(invoice).ifPresentOrElse(user -> {
-            user.setPlan(PlanType.PRO);
-            user.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
-            applyStripeIds(user, textField(invoice, "customer"), subscriptionIdFromInvoice(invoice));
-            applyInvoicePeriod(user, invoice, eventId, invoiceSubscriptionPeriod);
-            clearSubscriptionCancellationMetadata(user);
+        findUserForInvoice(invoice, currentSubscription).ifPresentOrElse(user -> {
+            if (currentSubscription != null) {
+                applyCurrentSubscriptionState(user, currentSubscription);
+            } else {
+                user.setPlan(PlanType.PRO);
+                user.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
+                applyStripeIds(user, textField(invoice, "customer"), subscriptionIdFromInvoice(invoice));
+                applyInvoicePeriod(user, invoice, eventId, invoiceSubscriptionPeriod);
+                clearSubscriptionCancellationMetadata(user);
+            }
             userRepository.save(user);
             usageLimitService.invalidateUsageCache(user.getId());
-            log.info("Stripe invoice payment confirmed active subscription. userId={}", user.getId());
+            log.info("Stripe invoice payment confirmed subscription state. userId={}, status={}, plan={}, sourceOfTruth={}", user.getId(), user.getSubscriptionStatus(), user.getPlan(), currentSubscription != null);
         }, () -> log.warn("Stripe paid invoice could not be mapped to a TradePilot user. invoiceId={}", textField(invoice, "id")));
     }
 
-    void handleInvoicePaymentFailed(String eventId, JsonNode invoice, Period invoiceSubscriptionPeriod) {
+    void handleInvoicePaymentFailed(String eventId, JsonNode invoice, Period invoiceSubscriptionPeriod, Subscription currentSubscription) {
         if (invoice.isMissingNode() || invoice.isNull() || invoice.isTextual()) {
             log.warn("Stripe invoice payment failed event did not include expanded invoice details. eventId={}, invoiceId={}", eventId, invoice.asText(null));
             return;
         }
-        findUserForInvoice(invoice).ifPresentOrElse(user -> {
-            user.setPlan(PlanType.FREE);
-            user.setSubscriptionStatus(SubscriptionStatus.PAST_DUE);
-            applyStripeIds(user, textField(invoice, "customer"), subscriptionIdFromInvoice(invoice));
-            applyInvoicePeriod(user, invoice, eventId, invoiceSubscriptionPeriod);
+        findUserForInvoice(invoice, currentSubscription).ifPresentOrElse(user -> {
+            if (currentSubscription != null) {
+                applyCurrentSubscriptionState(user, currentSubscription);
+            } else {
+                user.setPlan(PlanType.PRO);
+                user.setSubscriptionStatus(SubscriptionStatus.PAST_DUE);
+                applyStripeIds(user, textField(invoice, "customer"), subscriptionIdFromInvoice(invoice));
+                applyInvoicePeriod(user, invoice, eventId, invoiceSubscriptionPeriod);
+            }
             userRepository.save(user);
             usageLimitService.invalidateUsageCache(user.getId());
-            log.warn("Stripe invoice payment failed; subscription marked past due. userId={}", user.getId());
+            log.warn("Stripe invoice payment failed; reconciled subscription state. userId={}, status={}, plan={}, sourceOfTruth={}", user.getId(), user.getSubscriptionStatus(), user.getPlan(), currentSubscription != null);
         }, () -> log.warn("Stripe failed invoice could not be mapped to a TradePilot user. invoiceId={}", textField(invoice, "id")));
     }
 
-    private Optional<User> findUserForSubscription(JsonNode object) {
+    private Optional<User> findUserForSubscription(JsonNode object, Subscription currentSubscription) {
+        if (currentSubscription != null) {
+            return findUserForCurrentSubscription(currentSubscription);
+        }
         String subscriptionId = object.path("id").asText(null);
         if (StringUtils.hasText(subscriptionId)) {
             Optional<User> bySubscription = userRepository.findByStripeSubscriptionId(subscriptionId);
@@ -408,7 +789,10 @@ public class StripeBillingService {
         return Optional.empty();
     }
 
-    private Optional<User> findUserForInvoice(JsonNode invoice) {
+    private Optional<User> findUserForInvoice(JsonNode invoice, Subscription currentSubscription) {
+        if (currentSubscription != null) {
+            return findUserForCurrentSubscription(currentSubscription);
+        }
         String subscriptionId = subscriptionIdFromInvoice(invoice);
         if (StringUtils.hasText(subscriptionId)) {
             Optional<User> bySubscription = userRepository.findByStripeSubscriptionId(subscriptionId);
@@ -421,6 +805,35 @@ public class StripeBillingService {
             return userRepository.findByStripeCustomerId(customerId);
         }
         return Optional.empty();
+    }
+
+    private Optional<User> findUserForCurrentSubscription(Subscription subscription) {
+        if (StringUtils.hasText(subscription.getId())) {
+            Optional<User> bySubscription = userRepository.findByStripeSubscriptionId(subscription.getId());
+            if (bySubscription.isPresent()) {
+                if (StringUtils.hasText(subscription.getCustomer()) && StringUtils.hasText(bySubscription.get().getStripeCustomerId()) && !subscription.getCustomer().equals(bySubscription.get().getStripeCustomerId())) {
+                    log.warn("Stripe subscription source-of-truth customer mismatch for stored user. userId={}, subscriptionId={}", bySubscription.get().getId(), subscription.getId());
+                    return Optional.empty();
+                }
+                return bySubscription;
+            }
+        }
+        if (StringUtils.hasText(subscription.getCustomer())) {
+            return userRepository.findByStripeCustomerId(subscription.getCustomer());
+        }
+        return Optional.empty();
+    }
+
+    private void applyCurrentSubscriptionState(User user, Subscription subscription) {
+        SubscriptionStatus subscriptionStatus = mapSubscriptionStatus(subscription.getStatus(), Boolean.TRUE.equals(subscription.getCancelAtPeriodEnd()));
+        user.setSubscriptionStatus(subscriptionStatus);
+        user.setPlan(hasStripeEntitlement(subscriptionStatus) ? PlanType.PRO : PlanType.FREE);
+        applyStripeIds(user, subscription.getCustomer(), subscription.getId());
+        setPeriodStart(user, subscription.getCurrentPeriodStart() == null ? 0 : subscription.getCurrentPeriodStart());
+        setPeriodEnd(user, firstPositiveNullable(subscription.getCurrentPeriodEnd(), subscription.getCancelAt() == null ? 0 : subscription.getCancelAt()));
+        user.setStripeCancelAtPeriodEnd(Boolean.TRUE.equals(subscription.getCancelAtPeriodEnd()));
+        user.setStripeCancelAt(epochToLocalDateTime(subscription.getCancelAt() == null ? 0 : subscription.getCancelAt()));
+        user.setStripeCanceledAt(epochToLocalDateTime(subscription.getCanceledAt() == null ? 0 : subscription.getCanceledAt()));
     }
 
     private void applyStripeIds(User user, String customerId, String subscriptionId) {
@@ -561,6 +974,10 @@ public class StripeBillingService {
         return epochSeconds > 0 ? LocalDateTime.ofInstant(Instant.ofEpochSecond(epochSeconds), ZoneOffset.UTC) : null;
     }
 
+    private LocalDateTime stripeEventCreated(JsonNode root) {
+        return epochToLocalDateTime(root.path("created").asLong(0));
+    }
+
     private void setPeriodStart(User user, long epochSeconds) {
         if (epochSeconds > 0) {
             user.setCurrentPeriodStart(epochToLocalDateTime(epochSeconds));
@@ -574,16 +991,21 @@ public class StripeBillingService {
     }
 
     private SubscriptionStatus mapSubscriptionStatus(String stripeStatus, boolean cancelAtPeriodEnd) {
-        if (cancelAtPeriodEnd && ("active".equals(stripeStatus) || "trialing".equals(stripeStatus))) {
-            return "trialing".equals(stripeStatus) ? SubscriptionStatus.TRIALING : SubscriptionStatus.ACTIVE;
+        String normalizedStatus = stripeStatus == null ? "" : stripeStatus;
+        if (cancelAtPeriodEnd && ("active".equals(normalizedStatus) || "trialing".equals(normalizedStatus))) {
+            return "trialing".equals(normalizedStatus) ? SubscriptionStatus.TRIALING : SubscriptionStatus.ACTIVE;
         }
-        return switch (stripeStatus) {
+        return switch (normalizedStatus) {
             case "active" -> SubscriptionStatus.ACTIVE;
             case "trialing" -> SubscriptionStatus.TRIALING;
-            case "past_due", "unpaid" -> SubscriptionStatus.PAST_DUE;
-            case "canceled" -> SubscriptionStatus.CANCELED;
+            case "past_due" -> SubscriptionStatus.PAST_DUE;
+            case "canceled", "unpaid", "incomplete_expired" -> SubscriptionStatus.CANCELED;
             default -> SubscriptionStatus.NONE;
         };
+    }
+
+    private boolean hasStripeEntitlement(SubscriptionStatus status) {
+        return status == SubscriptionStatus.ACTIVE || status == SubscriptionStatus.TRIALING || status == SubscriptionStatus.PAST_DUE;
     }
 
     private void logSubscriptionFields(String eventType, JsonNode subscription) {
@@ -610,7 +1032,10 @@ public class StripeBillingService {
     }
 
 
-    private record StripeWebhookCommand(String eventId, String type, JsonNode object, JsonNode invoice, Period invoiceSubscriptionPeriod) {
+    private record StripeWebhookCommand(String eventId, String type, JsonNode object, JsonNode invoice, Period invoiceSubscriptionPeriod, Subscription currentSubscription) {
+        private StripeWebhookCommand withCurrentSubscription(Subscription subscription) {
+            return new StripeWebhookCommand(eventId, type, object, invoice, invoiceSubscriptionPeriod, subscription);
+        }
     }
 
     private void requireCheckoutConfig() {
@@ -641,14 +1066,24 @@ public class StripeBillingService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public StripeBillingService(final StripeProperties stripeProperties, final UserRepository userRepository, final ObjectMapper objectMapper, final StripeApiClient stripeApiClient, final TransactionTemplate transactionTemplate, final ObservabilityService observabilityService, final ProcessedStripeEventRepository processedStripeEventRepository, final AiCreditPurchaseRepository aiCreditPurchaseRepository, final UsageLimitService usageLimitService) {
+    private static class StripeReconciliationException extends RuntimeException {
+        StripeReconciliationException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public StripeBillingService(final StripeProperties stripeProperties, final UserRepository userRepository, final ObjectMapper objectMapper, final StripeApiClient stripeApiClient, final Environment environment, final TransactionTemplate transactionTemplate, final ObservabilityService observabilityService, final ProcessedStripeEventRepository processedStripeEventRepository, final StripeSubscriptionStateRepository stripeSubscriptionStateRepository, final StripeCheckoutAttemptRepository stripeCheckoutAttemptRepository, final AiCreditPurchaseRepository aiCreditPurchaseRepository, final UsageLimitService usageLimitService) {
         this.stripeProperties = stripeProperties;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
         this.stripeApiClient = stripeApiClient;
+        this.environment = environment;
         this.transactionTemplate = transactionTemplate;
         this.observabilityService = observabilityService;
         this.processedStripeEventRepository = processedStripeEventRepository;
+        this.stripeSubscriptionStateRepository = stripeSubscriptionStateRepository;
+        this.stripeCheckoutAttemptRepository = stripeCheckoutAttemptRepository;
         this.aiCreditPurchaseRepository = aiCreditPurchaseRepository;
         this.usageLimitService = usageLimitService;
     }
