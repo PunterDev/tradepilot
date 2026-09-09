@@ -47,6 +47,13 @@ public class AiCoachController {
         return response;
     }
 
+    @PostMapping("/weekly/preview")
+    public CoachSnapshotDto generateWeeklyCoachPreview(@AuthenticationPrincipal User user, @RequestBody CoachGenerateRequest request) {
+        CoachSnapshotDto response = aiCoachService.generateWeeklyCoachPreview(user, request);
+        featureUsageService.track(user, FeatureKey.ACTIVATION);
+        return response;
+    }
+
     @GetMapping("/snapshots")
     public List<CoachSnapshotDto> getSnapshots(@AuthenticationPrincipal User user, @RequestParam Long accountId, @RequestParam CoachSnapshotType type) {
         return aiCoachService.getSnapshots(user, accountId, type);

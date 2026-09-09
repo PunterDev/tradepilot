@@ -55,7 +55,7 @@ public class AiTradeReviewGeneratorService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(openAiProperties.getApiKey());
-        Map<String, Object> body = Map.of("model", openAiProperties.getModel(), "messages", List.of(Map.of("role", "system", "content", promptBuilder.systemPrompt()), Map.of("role", "user", "content", prompt)), "temperature", 0.3);
+        Map<String, Object> body = Map.of("model", openAiProperties.getModel(), "messages", List.of(Map.of("role", "system", "content", promptBuilder.systemPrompt(request.getStrategyContext())), Map.of("role", "user", "content", prompt)), "temperature", 0.3);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
         ResponseEntity<String> response;
         try {

@@ -9,6 +9,7 @@ import com.tradepilot.featureusage.FeatureKey;
 import com.tradepilot.featureusage.FeatureUsageEvent;
 import com.tradepilot.featureusage.FeatureUsageRepository;
 import com.tradepilot.importing.FuturesPointValueService;
+import com.tradepilot.dev.e2e.E2eTestDataResponse;
 import com.tradepilot.ai.memory.repository.TradeMemoryRepository;
 import com.tradepilot.ai.memory.service.TradeMemoryIndexService;
 import com.tradepilot.repository.*;
@@ -21,6 +22,7 @@ import com.tradepilot.tradingdna.entity.TradingDnaSnapshot;
 import com.tradepilot.tradingdna.repository.TradingDnaSnapshotRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -36,6 +38,11 @@ public class DevDemoDataService {
     private static final String DEMO_TRADE_VERSIONED_KEY_PREFIX = DEMO_TRADE_KEY_PREFIX + "v" + DEMO_DATA_VERSION + "-";
     private static final int DEMO_TRADE_COUNT = 190;
     private static final int REPLAY_COMPATIBLE_TRADE_COUNT = 10;
+    private static final String E2E_PRO_EMAIL = "selenium-e2e@tradepilot.test";
+    private static final String E2E_FREE_EMAIL = "selenium-free-e2e@tradepilot.test";
+    private static final String E2E_UNVERIFIED_EMAIL = "selenium-unverified-e2e@tradepilot.test";
+    private static final String E2E_PASSWORD = "Selenium-E2E-Only-Password-123!";
+    private static final String E2E_TRADE_KEY_PREFIX = "SELENIUM-E2E-";
     private static final BigDecimal PNL_TOLERANCE = new BigDecimal("0.01");
     private static final BigDecimal MAX_DEMO_PRICE_MOVE = new BigDecimal("100.00");
     private static final List<DemoTradeFixture> REPLAY_COMPATIBLE_FIXTURES = List.of(
@@ -132,6 +139,164 @@ public class DevDemoDataService {
     private final TradeReplayInsightRepository tradeReplayInsightRepository;
     private final TradeMemoryRepository tradeMemoryRepository;
     private final TradeMemoryIndexService tradeMemoryIndexService;
+    private final PasswordEncoder passwordEncoder;
+
+    @Transactional
+    public E2eTestDataResponse prepareE2eTestData() {
+        E2eTestDataResponse.E2eUserData proUser = prepareE2eUser(
+                E2E_PRO_EMAIL,
+                "Selenium E2E Pro User",
+                PlanType.PRO,
+                SubscriptionStatus.ACTIVE,
+                true
+        );
+        E2eTestDataResponse.E2eUserData freeUser = prepareE2eUser(
+                E2E_FREE_EMAIL,
+                "Selenium E2E Free User",
+                PlanType.FREE,
+                SubscriptionStatus.NONE,
+                true
+        );
+        E2eTestDataResponse.E2eUserData unverifiedUser = prepareE2eUser(
+                E2E_UNVERIFIED_EMAIL,
+                "Selenium E2E Unverified User",
+                PlanType.FREE,
+                SubscriptionStatus.NONE,
+                false
+        );
+        return new E2eTestDataResponse(proUser, freeUser, unverifiedUser, "Deterministic Selenium E2E data prepared.");
+    }
+
+    private E2eTestDataResponse.E2eUserData prepareE2eUser(
+            String email,
+            String name,
+            PlanType plan,
+            SubscriptionStatus subscriptionStatus,
+            boolean emailVerified
+    ) {
+        User user = userRepository.findByEmail(email).orElseGet(() -> User.builder()
+                .name(name)
+                .email(email)
+                .passwordHash(passwordEncoder.encode(E2E_PASSWORD))
+                .emailVerified(emailVerified)
+                .plan(plan)
+                .role(UserRole.USER)
+                .subscriptionStatus(subscriptionStatus)
+                .build());
+        user.setName(name);
+        user.setPasswordHash(passwordEncoder.encode(E2E_PASSWORD));
+        user.setEmailVerified(emailVerified);
+        user.setPlan(plan);
+        user.setRole(UserRole.USER);
+        user.setSubscriptionStatus(subscriptionStatus);
+        user.setStripeCustomerId(null);
+        user.setStripeSubscriptionId(null);
+        user.setStripeCancelAtPeriodEnd(false);
+        user.setStripeCancelAt(null);
+        user.setStripeCanceledAt(null);
+        user.setPurchasedAiCreditsBalance(0);
+        User savedUser = userRepository.save(user);
+
+        clear(savedUser);
+
+        TradingAccount primary = accountRepository.save(TradingAccount.builder()
+                .user(savedUser)
+                .name("Primary E2E Account")
+                .propFirm(PropFirmType.TOPSTEP)
+                .accountNumber("SELENIUM-E2E-PRIMARY")
+                .accountType(TradingAccountType.EVALUATION)
+                .startingBalance(new BigDecimal("50000.00"))
+                .defaultRiskAmount(new BigDecimal("100.00"))
+                .status(TradingAccountStatus.ACTIVE)
+                .build());
+        TradingAccount secondary = accountRepository.save(TradingAccount.builder()
+                .user(savedUser)
+                .name("Secondary E2E Account")
+                .propFirm(PropFirmType.OTHER)
+                .accountNumber("SELENIUM-E2E-SECONDARY")
+                .accountType(TradingAccountType.PERSONAL)
+                .startingBalance(new BigDecimal("25000.00"))
+                .defaultRiskAmount(new BigDecimal("75.00"))
+                .status(TradingAccountStatus.ACTIVE)
+                .build());
+
+        List<Trade> trades = tradeRepository.saveAll(List.of(
+                e2eTrade(savedUser, primary, "PRIMARY", LocalDate.of(2026, 6, 4), LocalTime.of(14, 12),
+                        "MNQ", "MNQM6", "SHORT", 3, "30555.00", "30535.00", "120.00",
+                        SetupType.FVG, SessionType.NY_PM, "Deterministic E2E MNQ short winner."),
+                e2eTrade(savedUser, primary, "SIMILAR-ONE", LocalDate.of(2026, 6, 8), LocalTime.of(5, 25),
+                        "MNQ", "MNQM6", "SHORT", 3, "29190.00", "29178.00", "90.00",
+                        SetupType.LIQUIDITY_SWEEP, SessionType.LONDON, "Deterministic E2E MNQ London short winner."),
+                e2eTrade(savedUser, secondary, "SECONDARY", LocalDate.of(2026, 7, 8), LocalTime.of(9, 54),
+                        "MES", "MESU6", "LONG", 2, "7529.00", "7536.00", "100.00",
+                        SetupType.FVG, SessionType.NY_AM, "Deterministic E2E MES long winner.")
+        ));
+
+        return new E2eTestDataResponse.E2eUserData(
+                savedUser.getId(),
+                savedUser.getEmail(),
+                E2E_PASSWORD,
+                primary.getId(),
+                secondary.getId(),
+                trades.get(0).getId()
+        );
+    }
+
+    private Trade e2eTrade(
+            User user,
+            TradingAccount account,
+            String keySuffix,
+            LocalDate tradeDate,
+            LocalTime entryTime,
+            String symbol,
+            String contractSymbol,
+            String side,
+            int quantity,
+            String entryPrice,
+            String exitPrice,
+            String riskAmount,
+            SetupType setup,
+            SessionType session,
+            String notes
+    ) {
+        BigDecimal entry = new BigDecimal(entryPrice);
+        BigDecimal exit = new BigDecimal(exitPrice);
+        BigDecimal risk = new BigDecimal(riskAmount);
+        BigDecimal pnl = calculateGrossPnl(symbol, side, entry, exit, quantity, pointValueService);
+        Trade trade = Trade.builder()
+                .user(user)
+                .account(account)
+                .symbol(symbol)
+                .market("FUTURES")
+                .tradeDate(tradeDate)
+                .entryTime(LocalDateTime.of(tradeDate, entryTime))
+                .exitTime(LocalDateTime.of(tradeDate, entryTime.plusMinutes(6)))
+                .side(side)
+                .setup(setup)
+                .session(session)
+                .entryPrice(entry)
+                .stopPrice(stopPrice(side, entry))
+                .targetPrice(targetPrice(side, entry))
+                .exitPrice(exit)
+                .quantity(quantity)
+                .riskAmount(risk)
+                .pnlAmount(pnl)
+                .pnlR(calculateRMultiple(pnl, risk))
+                .outcome(pnl.signum() > 0 ? OutcomeType.WIN : pnl.signum() < 0 ? OutcomeType.LOSS : OutcomeType.BE)
+                .confidenceRating(8)
+                .confidence(8)
+                .emotion("Focused")
+                .executionRating(8)
+                .followedPlan(true)
+                .mistakeTag(MistakeTag.NONE)
+                .notes(notes)
+                .psychologyNotes("Synthetic Selenium fixture; calm execution and controlled risk.")
+                .lessonLearned("Keep waiting for confirmation before entry.")
+                .externalTradeKey(E2E_TRADE_KEY_PREFIX + user.getId() + "-" + keySuffix)
+                .build();
+        trade.setContractSymbol(contractSymbol);
+        return withDemoContract(trade);
+    }
 
     @Transactional
     public Map<String, Object> seed(User user) {
@@ -742,7 +907,7 @@ public class DevDemoDataService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public DevDemoDataService(final TradingAccountRepository accountRepository, final TradeRepository tradeRepository, final AiTradeReviewRepository reviewRepository, final AiTradeAnalysisRepository analysisRepository, final AiCoachSnapshotRepository coachSnapshotRepository, final TradingDnaSnapshotRepository tradingDnaSnapshotRepository, final AiSessionReviewRepository sessionReviewRepository, final TradeRuleViolationRepository violationRepository, final DailyDisciplineScoreRepository disciplineScoreRepository, final AiUsageEventRepository usageEventRepository, final FeatureUsageRepository featureUsageRepository, final UserRepository userRepository, final FuturesContractCalendar contractCalendar, final FuturesPointValueService pointValueService, final TradeReplayRepository tradeReplayRepository, final TradeReplayInsightRepository tradeReplayInsightRepository, final TradeMemoryRepository tradeMemoryRepository, final TradeMemoryIndexService tradeMemoryIndexService) {
+    public DevDemoDataService(final TradingAccountRepository accountRepository, final TradeRepository tradeRepository, final AiTradeReviewRepository reviewRepository, final AiTradeAnalysisRepository analysisRepository, final AiCoachSnapshotRepository coachSnapshotRepository, final TradingDnaSnapshotRepository tradingDnaSnapshotRepository, final AiSessionReviewRepository sessionReviewRepository, final TradeRuleViolationRepository violationRepository, final DailyDisciplineScoreRepository disciplineScoreRepository, final AiUsageEventRepository usageEventRepository, final FeatureUsageRepository featureUsageRepository, final UserRepository userRepository, final FuturesContractCalendar contractCalendar, final FuturesPointValueService pointValueService, final TradeReplayRepository tradeReplayRepository, final TradeReplayInsightRepository tradeReplayInsightRepository, final TradeMemoryRepository tradeMemoryRepository, final TradeMemoryIndexService tradeMemoryIndexService, final PasswordEncoder passwordEncoder) {
         this.accountRepository = accountRepository;
         this.tradeRepository = tradeRepository;
         this.reviewRepository = reviewRepository;
@@ -761,5 +926,6 @@ public class DevDemoDataService {
         this.tradeReplayInsightRepository = tradeReplayInsightRepository;
         this.tradeMemoryRepository = tradeMemoryRepository;
         this.tradeMemoryIndexService = tradeMemoryIndexService;
+        this.passwordEncoder = passwordEncoder;
     }
 }

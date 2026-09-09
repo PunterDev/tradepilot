@@ -12,24 +12,30 @@ e2e-tests
 
 It should sit beside `backend` and `frontend` in the TradePilot repo.
 
-## Required Configuration
+## Deterministic Test Data
 
-Regular tests require local or QA users that already exist and are email-verified:
+Regular Selenium tests prepare synthetic local-only data automatically through the guarded dev endpoint:
 
-```bash
-export TRADEPILOT_TEST_EMAIL="pro-test-user@example.test"
-export TRADEPILOT_TEST_PASSWORD="replace-me"
-export TRADEPILOT_FREE_TEST_EMAIL="free-test-user@example.test"
-export TRADEPILOT_FREE_TEST_PASSWORD="replace-me"
+```text
+POST /api/dev/e2e/prepare
 ```
 
-Trade detail and Trading Memory tests also require a known trade owned by `TRADEPILOT_TEST_EMAIL`:
+The endpoint creates or resets only these clearly synthetic users:
 
-```bash
-mvn test -Dtradepilot.testTradeId=123
+```text
+selenium-e2e@tradepilot.test
+selenium-free-e2e@tradepilot.test
 ```
 
-Never use real customer credentials. Never commit `.env` files.
+The Pro user receives a deterministic `Primary E2E Account`, `Secondary E2E Account`, and known futures trades. The Free user is also reset to a predictable Free-plan state. The endpoint returns generated database IDs for the synthetic users, primary account, and seeded trade, so Selenium never hard-codes numeric IDs and no longer needs developer-owned users or a manually supplied trade ID.
+
+This requires a local or QA backend with both dev auth and dev tools enabled:
+
+```bash
+DEV_AUTH_ENABLED=true DEV_TOOLS_ENABLED=true
+```
+
+Never enable those flags in production. Never use real customer credentials.
 
 ## Start TradePilot Locally
 
@@ -37,7 +43,7 @@ Backend:
 
 ```bash
 cd backend
-mvn spring-boot:run
+DEV_AUTH_ENABLED=true DEV_TOOLS_ENABLED=true mvn spring-boot:run
 ```
 
 The backend defaults to `http://localhost:8080` and requires its normal local database/JWT environment variables. See `docs/ENVIRONMENT_VARIABLES.md`.
@@ -53,13 +59,7 @@ The frontend runs at `http://localhost:5173`.
 
 ## Seed Or Prepare Test Data
 
-Use a disposable local or QA database. The regular Selenium suite expects:
-
-- a Pro test user with at least one trading account
-- a Free test user
-- a known seeded trade ID for `TradeDetailTest`
-
-If dev tools are enabled locally, you can log in and use the app's Dev Tools page to seed demo data. This repo also exposes dev endpoints only when `DEV_TOOLS_ENABLED=true`; do not enable them in production.
+Use a disposable local or QA database. The Selenium suite calls the E2E prepare endpoint before browser tests begin. Re-running the suite is idempotent: existing synthetic E2E data is cleared and recreated, while unrelated developer data is left alone.
 
 ## Run Tests
 
@@ -74,7 +74,7 @@ Run the regular deterministic suite:
 
 ```bash
 cd e2e-tests
-mvn test -Dtradepilot.baseUrl=http://localhost:5173 -Dheadless=true -Dtradepilot.testTradeId=123
+mvn test -Dtradepilot.baseUrl=http://localhost:5173 -Dtradepilot.apiBaseUrl=http://localhost:8080/api -Dheadless=true
 ```
 
 Run one test class:
@@ -86,13 +86,13 @@ mvn test -Dtest=LoginTest -Dtradepilot.baseUrl=http://localhost:5173 -Dheadless=
 Run against QA:
 
 ```bash
-mvn test -Dtradepilot.baseUrl=https://qa.example.test -Dheadless=true -Dtradepilot.testTradeId=123
+mvn test -Dtradepilot.baseUrl=https://qa.example.test -Dtradepilot.apiBaseUrl=https://qa.example.test/api -Dheadless=true
 ```
 
 Run staging AI/Qdrant Trading Memory smoke tests:
 
 ```bash
-mvn test -Pai-integration -Dtradepilot.baseUrl=https://qa.example.test -Dheadless=true -Dtradepilot.testTradeId=123
+mvn test -Pai-integration -Dtradepilot.baseUrl=https://qa.example.test -Dtradepilot.apiBaseUrl=https://qa.example.test/api -Dheadless=true
 ```
 
 ## Convenient Runner
@@ -100,10 +100,10 @@ mvn test -Pai-integration -Dtradepilot.baseUrl=https://qa.example.test -Dheadles
 From the TradePilot repo root:
 
 ```bash
-./e2e-tests/scripts/run-e2e.sh -Dtradepilot.testTradeId=123
+./e2e-tests/scripts/run-e2e.sh
 ```
 
-The runner checks Java, Maven, npm, and curl; starts backend/frontend only if their configured URLs are not already responding; waits for readiness; runs Maven; and stops only processes it started.
+The runner checks Java, Maven, npm, and curl; starts backend/frontend only if their configured URLs are not already responding; prepares deterministic E2E data; waits for readiness; runs Maven; and stops only processes it started.
 
 Optional runner variables:
 
@@ -111,6 +111,7 @@ Optional runner variables:
 TRADEPILOT_BACKEND_URL=http://localhost:8080
 TRADEPILOT_FRONTEND_URL=http://localhost:5173
 TRADEPILOT_BASE_URL=http://localhost:5173
+E2E_API_URL=http://localhost:8080/api
 HEADLESS=true
 ```
 
@@ -126,7 +127,7 @@ The runner also writes backend/frontend logs there for processes it starts.
 
 ## Production Safety
 
-Mutating tests reject production TradePilot URLs. Production smoke mode must be read-only and tagged separately:
+The deterministic setup endpoint is available only when dev tooling is enabled, and production config rejects dev auth/dev tools. Mutating tests also reject production TradePilot URLs. Production smoke mode must be read-only and tagged separately:
 
 ```bash
 mvn test -Pproduction-smoke -Dtradepilot.baseUrl=https://app.tradepilot.app -DproductionSmoke=true
@@ -136,4 +137,4 @@ No production smoke tests are currently implemented.
 
 ## Resetting Test Data
 
-Use the app's documented local/dev reset flow or a disposable database/schema. Do not point mutating Selenium tests at production PostgreSQL, Qdrant, Stripe, or OpenAI-backed customer data.
+The E2E prepare endpoint resets only synthetic Selenium users and their owned accounts/trades/generated data. Do not point mutating Selenium tests at production PostgreSQL, Qdrant, Stripe, or OpenAI-backed customer data.

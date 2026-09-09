@@ -1,4 +1,5 @@
 import type { CoachAiResponse, CoachSnapshot } from "../types/coachTypes";
+import type { WeeklyExecutionFocus } from "../api/executionApi";
 import { CoachInsightCard } from "./CoachInsightCard";
 import {
     coachButtonClass,
@@ -25,6 +26,10 @@ type Props = {
     hasCachedSnapshot?: boolean;
     onUsageChanged?: () => void;
     onLimitClick?: () => void;
+    previewAvailable?: boolean;
+    previewGenerating?: boolean;
+    onPreview?: () => void;
+    executionFocus?: WeeklyExecutionFocus | null;
 };
 
 function parseAi(json?: string): CoachAiResponse | null {
@@ -49,6 +54,10 @@ export function WeeklyCoachCard({
     hasCachedSnapshot = false,
     onUsageChanged,
     onLimitClick,
+    previewAvailable = false,
+    previewGenerating = false,
+    onPreview,
+    executionFocus,
 }: Props) {
     const ai = parseAi(snapshot?.aiResponseJson);
     const isRunning =
@@ -73,6 +82,11 @@ export function WeeklyCoachCard({
                         if (isNoTradeWeek) {
                             return;
                         }
+                        if (previewAvailable && onPreview) {
+                            await onPreview();
+                            onUsageChanged?.();
+                            return;
+                        }
                         if (isLimitReached) {
                             onLimitClick?.();
                             return;
@@ -80,13 +94,19 @@ export function WeeklyCoachCard({
                         await onRegenerate();
                         onUsageChanged?.();
                     }}
-                    disabled={generating || isRunning || isLimitReached || isNoTradeWeek}
+                    disabled={generating || previewGenerating || isRunning || (isLimitReached && !previewAvailable) || isNoTradeWeek}
                     className={coachButtonClass}
                     style={coachButtonStyle}
                 >
-                    {generating || isRunning ? "Generating..." : isNoTradeWeek ? "No trades to review" : isLimitReached ? "Limit reached" : "Regenerate"}
+                    {generating || previewGenerating || isRunning ? "Generating..." : isNoTradeWeek ? "No trades to review" : previewAvailable ? "Use Pro preview" : isLimitReached ? "Limit reached" : "Regenerate"}
                 </button>
             </div>
+
+            {previewAvailable && !isRunning && (
+                <p className="mt-4 rounded-xl border p-3 text-sm" style={coachNoticeStyle}>
+                    Your one-time Pro preview is available for Weekly Coach.
+                </p>
+            )}
 
             {isNoTradeWeek && (
                 <p className="mt-4 rounded-xl border p-3 text-sm" style={coachNoticeStyle}>
@@ -96,7 +116,9 @@ export function WeeklyCoachCard({
 
             {isLimitReached && (
                 <p className="mt-4 rounded-xl border p-3 text-sm" style={coachNoticeStyle}>
-                    {limitMessage
+                    {previewAvailable
+                        ? "Your one-time Pro preview is available for Weekly Coach."
+                        : limitMessage
                         ?? (canShowCachedSnapshot
                             ? "Limit reached. Showing cached Weekly Coach snapshot."
                             : "You have reached this month’s Weekly Coach generation limit. No cached snapshot is available for this week.")}
@@ -156,6 +178,24 @@ export function WeeklyCoachCard({
                 </div>
             )}
 
+            {executionFocus && (
+                <div className={`mt-5 ${coachInnerClass}`} style={coachInnerStyle}>
+                    <h3 className={coachSectionTitleClass}>This Week&apos;s Execution Focus</h3>
+                    <p className={`mt-2 leading-6 ${coachMutedClass}`}>{executionFocus.title}</p>
+                    <p className="mt-3 text-sm leading-6 text-[#dbeafe]">{executionFocus.reason}</p>
+                    <div className="mt-4 grid gap-3 md:grid-cols-4">
+                        <CoachInsightCard title="R Impact" value={`${formatR(executionFocus.impactR)}R`} />
+                        <CoachInsightCard title="Current" value={executionFocus.currentFrequency ?? 0} />
+                        <CoachInsightCard title="Previous" value={executionFocus.previousFrequency ?? "N/A"} />
+                        <CoachInsightCard title="Status" value={humanize(executionFocus.status)} />
+                    </div>
+                    <div className="mt-5 rounded-2xl border border-sky-300/20 bg-sky-400/10 p-4 text-[#e0f2fe]">
+                        <p className="text-sm text-[#93c5fd]">Your goal</p>
+                        <p className="mt-1 text-lg font-semibold">{executionFocus.goal}</p>
+                    </div>
+                </div>
+            )}
+
             {displaySnapshot && isNoTradeWeek && (
                 <div className={`mt-5 ${coachInnerClass}`} style={coachInnerStyle}>
                     <h3 className={coachSectionTitleClass}>No weekly trade data yet</h3>
@@ -203,4 +243,15 @@ export function WeeklyCoachCard({
             )}
         </section>
     );
+}
+
+function formatR(value?: number | string | null) {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed)
+        ? parsed.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1")
+        : "0";
+}
+
+function humanize(value?: string | null) {
+    return value ? value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (m) => m.toUpperCase()) : "N/A";
 }

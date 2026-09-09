@@ -10,6 +10,8 @@ public class TradeSnapshot {
     private Double exitPrice;
     private String entryTime;
     private String exitTime;
+    private String session;
+    private String setup;
     private String notes;
 
     @java.lang.SuppressWarnings("all")
@@ -59,6 +61,16 @@ public class TradeSnapshot {
     @java.lang.SuppressWarnings("all")
     public String getExitTime() {
         return this.exitTime;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getSession() {
+        return this.session;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public String getSetup() {
+        return this.setup;
     }
 
     @java.lang.SuppressWarnings("all")
@@ -112,6 +124,16 @@ public class TradeSnapshot {
     }
 
     @java.lang.SuppressWarnings("all")
+    public void setSession(final String session) {
+        this.session = session;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setSetup(final String setup) {
+        this.setup = setup;
+    }
+
+    @java.lang.SuppressWarnings("all")
     public void setNotes(final String notes) {
         this.notes = notes;
     }
@@ -150,6 +172,12 @@ public class TradeSnapshot {
         final java.lang.Object this$exitTime = this.getExitTime();
         final java.lang.Object other$exitTime = other.getExitTime();
         if (this$exitTime == null ? other$exitTime != null : !this$exitTime.equals(other$exitTime)) return false;
+        final java.lang.Object this$session = this.getSession();
+        final java.lang.Object other$session = other.getSession();
+        if (this$session == null ? other$session != null : !this$session.equals(other$session)) return false;
+        final java.lang.Object this$setup = this.getSetup();
+        final java.lang.Object other$setup = other.getSetup();
+        if (this$setup == null ? other$setup != null : !this$setup.equals(other$setup)) return false;
         final java.lang.Object this$notes = this.getNotes();
         final java.lang.Object other$notes = other.getNotes();
         if (this$notes == null ? other$notes != null : !this$notes.equals(other$notes)) return false;
@@ -184,6 +212,10 @@ public class TradeSnapshot {
         result = result * PRIME + ($entryTime == null ? 43 : $entryTime.hashCode());
         final java.lang.Object $exitTime = this.getExitTime();
         result = result * PRIME + ($exitTime == null ? 43 : $exitTime.hashCode());
+        final java.lang.Object $session = this.getSession();
+        result = result * PRIME + ($session == null ? 43 : $session.hashCode());
+        final java.lang.Object $setup = this.getSetup();
+        result = result * PRIME + ($setup == null ? 43 : $setup.hashCode());
         final java.lang.Object $notes = this.getNotes();
         result = result * PRIME + ($notes == null ? 43 : $notes.hashCode());
         return result;
@@ -192,6 +224,6 @@ public class TradeSnapshot {
     @java.lang.Override
     @java.lang.SuppressWarnings("all")
     public java.lang.String toString() {
-        return "TradeSnapshot(id=" + this.getId() + ", symbol=" + this.getSymbol() + ", side=" + this.getSide() + ", pnl=" + this.getPnl() + ", quantity=" + this.getQuantity() + ", entryPrice=" + this.getEntryPrice() + ", exitPrice=" + this.getExitPrice() + ", entryTime=" + this.getEntryTime() + ", exitTime=" + this.getExitTime() + ", notes=" + this.getNotes() + ")";
+        return "TradeSnapshot(id=" + this.getId() + ", symbol=" + this.getSymbol() + ", side=" + this.getSide() + ", pnl=" + this.getPnl() + ", quantity=" + this.getQuantity() + ", entryPrice=" + this.getEntryPrice() + ", exitPrice=" + this.getExitPrice() + ", entryTime=" + this.getEntryTime() + ", exitTime=" + this.getExitTime() + ", session=" + this.getSession() + ", setup=" + this.getSetup() + ", notes=" + this.getNotes() + ")";
     }
 }

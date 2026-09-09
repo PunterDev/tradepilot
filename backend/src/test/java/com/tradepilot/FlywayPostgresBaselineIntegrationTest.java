@@ -52,12 +52,22 @@ class FlywayPostgresBaselineIntegrationTest {
                 .load();
 
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(1);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(6);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '001' and success = true"))
                     .isEqualTo("001");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '002' and success = true"))
+                    .isEqualTo("002");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '003' and success = true"))
+                    .isEqualTo("003");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '004' and success = true"))
+                    .isEqualTo("004");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '005' and success = true"))
+                    .isEqualTo("005");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '006' and success = true"))
+                    .isEqualTo("006");
 
             assertRequiredTables(connection);
             assertStripeIndexesAndConstraints(connection);
@@ -86,7 +96,11 @@ class FlywayPostgresBaselineIntegrationTest {
                 "ai_credit_purchases",
                 "processed_stripe_events",
                 "stripe_subscription_states",
-                "stripe_checkout_attempts"
+                "stripe_checkout_attempts",
+                "user_feature_previews",
+                "seo_acquisition_events",
+                "user_acquisition_attribution",
+                "rate_limit_windows"
         );
         for (String table : tables) {
             assertThat(count(connection, """
@@ -138,6 +152,10 @@ class FlywayPostgresBaselineIntegrationTest {
         assertThatThrownBy(() -> execute(connection, "insert into stripe_subscription_states(subscription_id, last_event_id, last_event_type, last_event_created) values ('sub_state_unique', 'evt_state_2', 'customer.subscription.deleted', now())"))
                 .isInstanceOf(SQLException.class);
 
+        execute(connection, "insert into user_feature_previews(user_id, feature_key) values (%d, 'WEEKLY_COACH_PRO_PREVIEW')".formatted(userId));
+        assertThatThrownBy(() -> execute(connection, "insert into user_feature_previews(user_id, feature_key) values (%d, 'WEEKLY_COACH_PRO_PREVIEW')".formatted(userId)))
+                .isInstanceOf(SQLException.class);
+
         assertThatThrownBy(() -> insertCreditPurchaseWithReversalCounts(connection, userId, "cs_bad_reversal", "pi_bad_reversal", 10, 5))
                 .isInstanceOf(SQLException.class);
 
@@ -147,6 +165,8 @@ class FlywayPostgresBaselineIntegrationTest {
                 where connamespace = 'public'::regnamespace
                   and conname = 'users_purchased_ai_credits_balance_nonnegative'
                 """)).isZero();
+        assertThatThrownBy(() -> execute(connection, "insert into rate_limit_windows(rate_key, request_count, window_start, expires_at) values ('bad', -1, now(), now())"))
+                .isInstanceOf(SQLException.class);
     }
 
     private static void assertNegativePurchasedCreditsAreAllowed(Connection connection) {

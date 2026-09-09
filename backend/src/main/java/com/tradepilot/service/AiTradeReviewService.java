@@ -6,6 +6,8 @@ import com.tradepilot.billing.FeatureAccessException;
 import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.billing.UsageType;
 import com.tradepilot.ai.memory.service.TradeMemoryIndexPublisher;
+import com.tradepilot.ai.strategy.StrategyContext;
+import com.tradepilot.ai.strategy.StrategyContextService;
 import com.tradepilot.dto.ai.AiTradeReviewJobResponse;
 import com.tradepilot.dto.ai.AiTradeReviewRequest;
 import com.tradepilot.dto.ai.AiTradeReviewResponse;
@@ -19,6 +21,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
@@ -38,10 +41,13 @@ public class AiTradeReviewService {
     private final UsageLimitService usageLimitService;
     private final ObservabilityService observabilityService;
     private final TradeMemoryIndexPublisher tradeMemoryIndexPublisher;
+    private final StrategyContextService strategyContextService;
 
     public AiTradeReviewResponse reviewTrade(User user, AiTradeReviewRequest request) {
         Long userId = requireUserId(user);
         Trade ownedTrade = resolveOwnedTrade(user, request.getTradeId());
+        applyCanonicalTradeSnapshot(request, ownedTrade);
+        applyStrategyContext(userId, request, ownedTrade);
         Instant start = Instant.now();
         Long tradeId = request.getTradeId();
         String reviewHash = buildReviewHash(request);
@@ -81,6 +87,8 @@ public class AiTradeReviewService {
     public AiTradeReviewJobResponse startAsyncReview(User user, AiTradeReviewRequest request) {
         Long userId = requireUserId(user);
         Trade ownedTrade = resolveOwnedTrade(user, request.getTradeId());
+        applyCanonicalTradeSnapshot(request, ownedTrade);
+        applyStrategyContext(userId, request, ownedTrade);
         Long tradeId = request.getTradeId();
         String reviewHash = buildReviewHash(request);
         var existingReview = Boolean.TRUE.equals(request.getForceRefresh()) ? java.util.Optional.<AiTradeReview>empty() : aiTradeReviewRepository.findByUserIdAndTradeIdAndReviewVersionAndReviewHash(userId, tradeId, REVIEW_VERSION, reviewHash);
@@ -179,6 +187,38 @@ public class AiTradeReviewService {
         return trade;
     }
 
+    private void applyCanonicalTradeSnapshot(AiTradeReviewRequest request, Trade trade) {
+        if (request == null || trade == null) {
+            return;
+        }
+        com.tradepilot.dto.ai.TradeSnapshot snapshot = new com.tradepilot.dto.ai.TradeSnapshot();
+        snapshot.setId(trade.getId());
+        snapshot.setSymbol(trade.getSymbol());
+        snapshot.setSide(trade.getSide());
+        snapshot.setPnl(doubleValue(trade.getPnlAmount()));
+        snapshot.setQuantity(trade.getQuantity());
+        snapshot.setEntryPrice(doubleValue(trade.getEntryPrice()));
+        snapshot.setExitPrice(doubleValue(trade.getExitPrice()));
+        snapshot.setEntryTime(trade.getEntryTime() == null ? null : trade.getEntryTime().toString());
+        snapshot.setExitTime(trade.getExitTime() == null ? null : trade.getExitTime().toString());
+        snapshot.setSession(trade.getSession() == null ? null : trade.getSession().name());
+        snapshot.setSetup(trade.getSetup() == null ? null : trade.getSetup().name());
+        snapshot.setNotes(trade.getNotes());
+        request.setTrade(snapshot);
+    }
+
+    private void applyStrategyContext(Long userId, AiTradeReviewRequest request, Trade trade) {
+        if (request == null) {
+            return;
+        }
+        StrategyContext context = strategyContextService.resolve(userId, trade, request.getJournalText());
+        request.setStrategyContext(context);
+    }
+
+    private Double doubleValue(BigDecimal value) {
+        return value == null ? null : value.doubleValue();
+    }
+
     private void validateReviewableTrade(Trade trade) {
         if (trade == null) {
             throw new ResourceNotFoundException("Trade not found");
@@ -210,7 +250,7 @@ public class AiTradeReviewService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public AiTradeReviewService(final ObjectMapper objectMapper, final AiTradeReviewRepository aiTradeReviewRepository, final AiTradeReviewGeneratorService generatorService, final AiTradeReviewAsyncWorker asyncWorker, final TradeService tradeService, final UsageLimitService usageLimitService, final ObservabilityService observabilityService, final TradeMemoryIndexPublisher tradeMemoryIndexPublisher) {
+    public AiTradeReviewService(final ObjectMapper objectMapper, final AiTradeReviewRepository aiTradeReviewRepository, final AiTradeReviewGeneratorService generatorService, final AiTradeReviewAsyncWorker asyncWorker, final TradeService tradeService, final UsageLimitService usageLimitService, final ObservabilityService observabilityService, final TradeMemoryIndexPublisher tradeMemoryIndexPublisher, final StrategyContextService strategyContextService) {
         this.objectMapper = objectMapper;
         this.aiTradeReviewRepository = aiTradeReviewRepository;
         this.generatorService = generatorService;
@@ -219,5 +259,6 @@ public class AiTradeReviewService {
         this.usageLimitService = usageLimitService;
         this.observabilityService = observabilityService;
         this.tradeMemoryIndexPublisher = tradeMemoryIndexPublisher;
+        this.strategyContextService = strategyContextService;
     }
 }

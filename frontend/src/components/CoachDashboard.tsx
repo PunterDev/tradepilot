@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDailyCoach } from "../hooks/useDailyCoach";
 import { useWeeklyCoach } from "../hooks/useWeeklyCoach";
 import { DailyCoachCard } from "./DailyCoachCard";
@@ -6,11 +6,13 @@ import { WeeklyCoachCard } from "./WeeklyCoachCard";
 import UpgradeModal from "./UpgradeModal";
 import type { SelectedAccountId } from "../types/dashboard";
 import type { BillingUsage } from "../types/billing";
+import type { ActivationStatus } from "../types/activation";
 import { creditsRemaining } from "../utils/featureAccess";
 
 type Props = {
   selectedAccountId: SelectedAccountId;
   usage?: BillingUsage | null;
+  activationStatus?: ActivationStatus | null;
   onUsageChanged?: () => void;
 };
 
@@ -26,7 +28,7 @@ function startOfWeekIso(date = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
-export function CoachDashboard({ selectedAccountId, usage, onUsageChanged }: Props) {
+export function CoachDashboard({ selectedAccountId, usage, activationStatus, onUsageChanged }: Props) {
   const [activeTab, setActiveTab] = useState<"daily" | "weekly">("daily");
   const [dailyDate, setDailyDate] = useState(todayIso());
   const [weeklyStartDate, setWeeklyStartDate] = useState(startOfWeekIso());
@@ -34,11 +36,19 @@ export function CoachDashboard({ selectedAccountId, usage, onUsageChanged }: Pro
 
   const allAccountsSelected = selectedAccountId === "ALL";
   const accountId = allAccountsSelected ? undefined : Number(selectedAccountId);
+  const normalCoachAccess = usage?.plan === "PRO";
 
-  const daily = useDailyCoach(accountId, dailyDate);
-  const weekly = useWeeklyCoach(accountId, weeklyStartDate);
+  const daily = useDailyCoach(normalCoachAccess ? accountId : undefined, dailyDate);
+  const weeklyPreviewAvailable = Boolean(activationStatus?.proPreview?.available);
+  const weekly = useWeeklyCoach(accountId, weeklyStartDate, weeklyPreviewAvailable, normalCoachAccess);
   const dailyRemaining = usage ? creditsRemaining(usage) : 1;
   const weeklyRemaining = usage ? creditsRemaining(usage) : 1;
+
+  useEffect(() => {
+    if (!normalCoachAccess && weeklyPreviewAvailable) {
+      setActiveTab("weekly");
+    }
+  }, [normalCoachAccess, weeklyPreviewAvailable]);
 
   if (allAccountsSelected) {
     return (
@@ -313,18 +323,22 @@ export function CoachDashboard({ selectedAccountId, usage, onUsageChanged }: Pro
           onLimitClick={() => setUpgradeOpen(true)}
         />
       ) : (
-        <WeeklyCoachCard
-          snapshot={weekly.data}
-          loading={weekly.loading}
-          generating={weekly.generating}
-          error={weekly.error}
-          onRegenerate={weekly.regenerate}
-          remaining={weeklyRemaining}
+          <WeeklyCoachCard
+            snapshot={weekly.data}
+            loading={weekly.loading}
+            generating={weekly.generating}
+            error={weekly.error}
+            onRegenerate={weekly.regenerate}
+            executionFocus={weekly.executionFocus}
+            remaining={weeklyRemaining}
           limitReached={weekly.limitReached}
           limitMessage={weekly.limitMessage}
           hasCachedSnapshot={weekly.hasCachedSnapshot}
           onUsageChanged={onUsageChanged}
           onLimitClick={() => setUpgradeOpen(true)}
+          previewAvailable={weeklyPreviewAvailable}
+          previewGenerating={weekly.generating}
+          onPreview={weekly.generatePreview}
         />
       )}
     </section>

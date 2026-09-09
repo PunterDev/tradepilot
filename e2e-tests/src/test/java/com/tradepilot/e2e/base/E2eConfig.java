@@ -6,12 +6,20 @@ import java.util.Optional;
 
 public final class E2eConfig {
     public static final String DEFAULT_BASE_URL = "http://localhost:5173";
+    public static final String DEFAULT_API_BASE_URL = "http://localhost:8080/api";
 
     private E2eConfig() {
     }
 
     public static String baseUrl() {
         return trimTrailingSlash(System.getProperty("tradepilot.baseUrl", DEFAULT_BASE_URL));
+    }
+
+    public static String apiBaseUrl() {
+        return trimTrailingSlash(System.getProperty(
+                "tradepilot.apiBaseUrl",
+                optionalEnv("E2E_API_URL").orElse(DEFAULT_API_BASE_URL)
+        ));
     }
 
     public static boolean headless() {
@@ -33,18 +41,6 @@ public final class E2eConfig {
             return Optional.empty();
         }
         return Optional.of(value);
-    }
-
-    public static long requiredLongProperty(String name) {
-        String value = System.getProperty(name);
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException("Missing required system property: -D" + name + "=<value>");
-        }
-        try {
-            return Long.parseLong(value);
-        } catch (NumberFormatException ex) {
-            throw new IllegalStateException("System property -D" + name + " must be a number.", ex);
-        }
     }
 
     public static void rejectProductionMutation(String baseUrl, String testName) {

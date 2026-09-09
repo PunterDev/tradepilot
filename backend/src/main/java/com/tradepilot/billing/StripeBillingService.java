@@ -14,6 +14,7 @@ import com.stripe.net.Webhook;
 import com.tradepilot.entity.User;
 import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.repository.UserRepository;
+import com.tradepilot.seoanalytics.SeoAnalyticsService;
 import com.tradepilot.util.LogSanitizer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
@@ -46,6 +47,7 @@ public class StripeBillingService {
     private final StripeCheckoutAttemptRepository stripeCheckoutAttemptRepository;
     private final AiCreditPurchaseRepository aiCreditPurchaseRepository;
     private final UsageLimitService usageLimitService;
+    private final SeoAnalyticsService seoAnalyticsService;
     private static final Duration SUBSCRIPTION_CHECKOUT_LOCK_TTL = Duration.ofMinutes(30);
     private Runnable afterCreditPackFulfillmentClaimed = () -> {
     };
@@ -485,6 +487,7 @@ public class StripeBillingService {
                 stripeCheckoutAttemptRepository.save(attempt);
             });
             usageLimitService.invalidateUsageCache(user.getId());
+            seoAnalyticsService.markProConverted(user, LocalDateTime.now());
             log.info("Stripe checkout completed upgraded user. userId={}", user.getId());
         });
     }
@@ -1073,7 +1076,7 @@ public class StripeBillingService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public StripeBillingService(final StripeProperties stripeProperties, final UserRepository userRepository, final ObjectMapper objectMapper, final StripeApiClient stripeApiClient, final Environment environment, final TransactionTemplate transactionTemplate, final ObservabilityService observabilityService, final ProcessedStripeEventRepository processedStripeEventRepository, final StripeSubscriptionStateRepository stripeSubscriptionStateRepository, final StripeCheckoutAttemptRepository stripeCheckoutAttemptRepository, final AiCreditPurchaseRepository aiCreditPurchaseRepository, final UsageLimitService usageLimitService) {
+    public StripeBillingService(final StripeProperties stripeProperties, final UserRepository userRepository, final ObjectMapper objectMapper, final StripeApiClient stripeApiClient, final Environment environment, final TransactionTemplate transactionTemplate, final ObservabilityService observabilityService, final ProcessedStripeEventRepository processedStripeEventRepository, final StripeSubscriptionStateRepository stripeSubscriptionStateRepository, final StripeCheckoutAttemptRepository stripeCheckoutAttemptRepository, final AiCreditPurchaseRepository aiCreditPurchaseRepository, final UsageLimitService usageLimitService, final SeoAnalyticsService seoAnalyticsService) {
         this.stripeProperties = stripeProperties;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
@@ -1086,5 +1089,6 @@ public class StripeBillingService {
         this.stripeCheckoutAttemptRepository = stripeCheckoutAttemptRepository;
         this.aiCreditPurchaseRepository = aiCreditPurchaseRepository;
         this.usageLimitService = usageLimitService;
+        this.seoAnalyticsService = seoAnalyticsService;
     }
 }

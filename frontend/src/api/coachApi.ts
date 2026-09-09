@@ -31,6 +31,12 @@ export function generateWeeklyCoach(payload: CoachGenerateRequest) {
     .then((res) => res.data);
 }
 
+export function generateWeeklyCoachPreview(payload: CoachGenerateRequest) {
+  return api
+    .post<CoachSnapshot>("/coach/weekly/preview", payload)
+    .then((res) => res.data);
+}
+
 export function getCoachSnapshots(
   accountId: number,
   type: CoachSnapshotType

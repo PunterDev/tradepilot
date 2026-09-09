@@ -1,5 +1,113 @@
 {
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), payment=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        }
+      ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "tradepilotcoach.com"
+        }
+      ],
+      "destination": "https://www.tradepilotcoach.com/$1",
+      "permanent": true
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/futures-trading-journal",
+      "destination": "/futures-trading-journal/index.html"
+    },
+    {
+      "source": "/topstep-trading-journal",
+      "destination": "/topstep-trading-journal/index.html"
+    },
+    {
+      "source": "/tradovate-trading-journal",
+      "destination": "/tradovate-trading-journal/index.html"
+    },
+    {
+      "source": "/prop-firm-trading-journal",
+      "destination": "/prop-firm-trading-journal/index.html"
+    },
+    {
+      "source": "/ai-trading-journal",
+      "destination": "/ai-trading-journal/index.html"
+    },
+    {
+      "source": "/tools/trading-expectancy-calculator",
+      "destination": "/tools/trading-expectancy-calculator/index.html"
+    },
+    {
+      "source": "/tools/overtrading-calculator",
+      "destination": "/tools/overtrading-calculator/index.html"
+    },
+    {
+      "source": "/tools/revenge-trading-calculator",
+      "destination": "/tools/revenge-trading-calculator/index.html"
+    },
+    {
+      "source": "/trading-psychology",
+      "destination": "/trading-psychology/index.html"
+    },
+    {
+      "source": "/revenge-trading",
+      "destination": "/revenge-trading/index.html"
+    },
+    {
+      "source": "/overtrading",
+      "destination": "/overtrading/index.html"
+    },
+    {
+      "source": "/trading-discipline",
+      "destination": "/trading-discipline/index.html"
+    },
+    {
+      "source": "/breaking-trading-rules",
+      "destination": "/breaking-trading-rules/index.html"
+    },
+    {
+      "source": "/trading-after-losses",
+      "destination": "/trading-after-losses/index.html"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy/index.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms/index.html"
+    },
+    {
+      "source": "/contact",
+      "destination": "/contact/index.html"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"

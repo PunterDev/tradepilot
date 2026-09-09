@@ -6,6 +6,7 @@ import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.entity.Trade;
 import com.tradepilot.entity.TradingAccount;
 import com.tradepilot.entity.User;
+import com.tradepilot.exception.ResourceNotFoundException;
 import com.tradepilot.playbook.dto.*;
 import com.tradepilot.playbook.entity.PlaybookChecklistItem;
 import com.tradepilot.playbook.entity.PlaybookMilestone;
@@ -158,7 +159,7 @@ public class PlaybookService {
     public PlaybookTradeAssignmentResponse linkTrade(User user, Long setupId, Long tradeId, PlaybookTradeAssignmentRequest request) {
         PlaybookSetup setup = find(user, setupId);
         if (setup.getStatus() == PlaybookStatus.ARCHIVED) throw new IllegalArgumentException("Archived setups cannot be linked until restored.");
-        Trade trade = tradeRepository.findByIdAndUser_Id(tradeId, user.getId()).orElseThrow(() -> new IllegalArgumentException("Trade not found."));
+        Trade trade = tradeRepository.findByIdAndUser_Id(tradeId, user.getId()).orElseThrow(() -> new ResourceNotFoundException("Trade not found"));
         if (setup.getAccount() != null && trade.getAccount() != null && !Objects.equals(setup.getAccount().getId(), trade.getAccount().getId())) {
             throw new IllegalArgumentException("Trade does not belong to this setup account.");
         }
@@ -196,7 +197,7 @@ public class PlaybookService {
 
     @Transactional
     public PlaybookTradeAssignmentResponse updateAssignment(User user, Long assignmentId, PlaybookTradeAssignmentRequest request) {
-        TradePlaybookAssignment assignment = assignmentRepository.findByIdAndUser_Id(assignmentId, user.getId()).orElseThrow(() -> new IllegalArgumentException("Playbook assignment not found."));
+        TradePlaybookAssignment assignment = assignmentRepository.findByIdAndUser_Id(assignmentId, user.getId()).orElseThrow(() -> new ResourceNotFoundException("Playbook assignment not found"));
         applyAssignment(assignment.getSetup(), assignment, request);
         return assignmentDto(assignmentRepository.save(assignment));
     }
@@ -338,12 +339,12 @@ public class PlaybookService {
 
     private PlaybookSetup find(User user, Long setupId) {
         featureAccessService.requireFeature(user, Feature.PLAYBOOK);
-        return setupRepository.findByIdAndUser_Id(setupId, user.getId()).orElseThrow(() -> new IllegalArgumentException("Playbook setup not found."));
+        return setupRepository.findByIdAndUser_Id(setupId, user.getId()).orElseThrow(() -> new ResourceNotFoundException("Playbook setup not found"));
     }
 
     private TradingAccount resolveAccount(User user, Long accountId) {
         if (accountId == null) return null;
-        return accountRepository.findByIdAndUser_Id(accountId, user.getId()).orElseThrow(() -> new IllegalArgumentException("Trading account not found."));
+        return accountRepository.findByIdAndUser_Id(accountId, user.getId()).orElseThrow(() -> new ResourceNotFoundException("Trading account not found"));
     }
 
     private Long accountId(PlaybookSetup setup) {

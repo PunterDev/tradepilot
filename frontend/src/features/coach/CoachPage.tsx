@@ -1,15 +1,17 @@
 import { CoachDashboard } from "../../components/CoachDashboard";
 import PageHeader from "../../layout/PageHeader";
 import type { BillingUsage } from "../../types/billing";
+import type { ActivationStatus } from "../../types/activation";
 import type { SelectedAccountId } from "../../types/dashboard";
 
 type Props = {
   selectedAccountId: SelectedAccountId;
   usage?: BillingUsage | null;
+  activationStatus?: ActivationStatus | null;
   onUsageChanged: () => void;
 };
 
-export default function CoachPage({ selectedAccountId, usage, onUsageChanged }: Props) {
+export default function CoachPage({ selectedAccountId, usage, activationStatus, onUsageChanged }: Props) {
   return (
     <>
       <PageHeader
@@ -20,6 +22,7 @@ export default function CoachPage({ selectedAccountId, usage, onUsageChanged }: 
       <CoachDashboard
         selectedAccountId={selectedAccountId}
         usage={usage}
+        activationStatus={activationStatus}
         onUsageChanged={onUsageChanged}
       />
     </>

@@ -9,8 +9,13 @@ import com.tradepilot.entity.User;
 import com.tradepilot.enums.AuthTokenType;
 import com.tradepilot.enums.UserRole;
 import com.tradepilot.exception.EmailNotVerifiedException;
+import com.tradepilot.featureusage.FeatureKey;
+import com.tradepilot.featureusage.FeatureUsageAction;
+import com.tradepilot.featureusage.FeatureUsageEventType;
+import com.tradepilot.featureusage.FeatureUsageService;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.security.JwtService;
+import com.tradepilot.seoanalytics.SeoAnalyticsService;
 import com.tradepilot.util.LogSanitizer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -36,6 +41,8 @@ public class AuthService {
     private final AuthTokenService authTokenService;
     private final EmailAsyncService emailAsyncService;
     private final UsageLimitService usageLimitService;
+    private final FeatureUsageService featureUsageService;
+    private final SeoAnalyticsService seoAnalyticsService;
     @Value("${app.frontend-url:http://localhost:5173}")
     private String frontendUrl;
 
@@ -48,6 +55,8 @@ public class AuthService {
         }
         User user = User.builder().name(request.getName().trim()).email(email).passwordHash(passwordEncoder.encode(request.getPassword())).emailVerified(false).build();
         User saved = userRepository.save(user);
+        featureUsageService.track(saved, FeatureKey.ACTIVATION, FeatureUsageAction.USER_SIGNED_UP, FeatureUsageEventType.USER_ACTION, null, "USER", saved.getId().toString(), "auth", null);
+        seoAnalyticsService.recordSignup(saved, request.getSeoAttribution());
         sendVerification(saved);
         log.info("Registration completed. userId={}", saved.getId());
         return new MessageResponse(VERIFY_MESSAGE);
@@ -153,7 +162,7 @@ public class AuthService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public AuthService(final UserRepository userRepository, final PasswordEncoder passwordEncoder, final JwtService jwtService, final AuthenticationManager authenticationManager, final AuthTokenService authTokenService, final EmailAsyncService emailAsyncService, final UsageLimitService usageLimitService) {
+    public AuthService(final UserRepository userRepository, final PasswordEncoder passwordEncoder, final JwtService jwtService, final AuthenticationManager authenticationManager, final AuthTokenService authTokenService, final EmailAsyncService emailAsyncService, final UsageLimitService usageLimitService, final FeatureUsageService featureUsageService, final SeoAnalyticsService seoAnalyticsService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
@@ -161,5 +170,7 @@ public class AuthService {
         this.authTokenService = authTokenService;
         this.emailAsyncService = emailAsyncService;
         this.usageLimitService = usageLimitService;
+        this.featureUsageService = featureUsageService;
+        this.seoAnalyticsService = seoAnalyticsService;
     }
 }

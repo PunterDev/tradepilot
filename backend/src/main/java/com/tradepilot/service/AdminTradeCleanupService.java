@@ -2,6 +2,7 @@ package com.tradepilot.service;
 
 import com.tradepilot.coach.entity.CoachSnapshotType;
 import com.tradepilot.coach.repository.AiCoachSnapshotRepository;
+import com.tradepilot.ai.memory.service.TradeMemoryIndexService;
 import com.tradepilot.dto.admin.AdminTradeCleanupResponse;
 import com.tradepilot.entity.Trade;
 import com.tradepilot.entity.TradingAccount;
@@ -40,6 +41,7 @@ public class AdminTradeCleanupService {
     private final TradingDnaSnapshotRepository tradingDnaSnapshotRepository;
     private final AiCoachSnapshotRepository coachSnapshotRepository;
     private final PerformanceCacheInvalidationService cacheInvalidationService;
+    private final TradeMemoryIndexService tradeMemoryIndexService;
 
     @Transactional
     public AdminTradeCleanupResponse cleanupRange(User admin, Long userId, Long accountId, LocalDate startDate, LocalDate endDate, boolean dryRun) {
@@ -102,6 +104,9 @@ public class AdminTradeCleanupService {
 
     private void deleteAffectedRows(Long userId, Long accountId, LocalDate startDate, LocalDate endDate, List<Long> tradeIds) {
         if (!tradeIds.isEmpty()) {
+            for (Long tradeId : tradeIds) {
+                tradeMemoryIndexService.deleteMemory(userId, tradeId);
+            }
             aiTradeReviewRepository.deleteByUserIdAndTradeIdIn(userId, tradeIds);
             aiTradeAnalysisRepository.deleteByUserIdAndTradeIdIn(userId, tradeIds);
             tradeRuleViolationRepository.deleteByUserIdAndTradeIdIn(userId, tradeIds);
@@ -119,7 +124,7 @@ public class AdminTradeCleanupService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public AdminTradeCleanupService(final UserRepository userRepository, final TradingAccountRepository tradingAccountRepository, final TradeRepository tradeRepository, final AiTradeReviewRepository aiTradeReviewRepository, final AiTradeAnalysisRepository aiTradeAnalysisRepository, final TradeRuleViolationRepository tradeRuleViolationRepository, final DailyDisciplineScoreRepository dailyDisciplineScoreRepository, final AiSessionReviewRepository aiSessionReviewRepository, final AiLeakDetectorSnapshotRepository leakDetectorSnapshotRepository, final TradingDnaSnapshotRepository tradingDnaSnapshotRepository, final AiCoachSnapshotRepository coachSnapshotRepository, final PerformanceCacheInvalidationService cacheInvalidationService) {
+    public AdminTradeCleanupService(final UserRepository userRepository, final TradingAccountRepository tradingAccountRepository, final TradeRepository tradeRepository, final AiTradeReviewRepository aiTradeReviewRepository, final AiTradeAnalysisRepository aiTradeAnalysisRepository, final TradeRuleViolationRepository tradeRuleViolationRepository, final DailyDisciplineScoreRepository dailyDisciplineScoreRepository, final AiSessionReviewRepository aiSessionReviewRepository, final AiLeakDetectorSnapshotRepository leakDetectorSnapshotRepository, final TradingDnaSnapshotRepository tradingDnaSnapshotRepository, final AiCoachSnapshotRepository coachSnapshotRepository, final PerformanceCacheInvalidationService cacheInvalidationService, final TradeMemoryIndexService tradeMemoryIndexService) {
         this.userRepository = userRepository;
         this.tradingAccountRepository = tradingAccountRepository;
         this.tradeRepository = tradeRepository;
@@ -132,5 +137,6 @@ public class AdminTradeCleanupService {
         this.tradingDnaSnapshotRepository = tradingDnaSnapshotRepository;
         this.coachSnapshotRepository = coachSnapshotRepository;
         this.cacheInvalidationService = cacheInvalidationService;
+        this.tradeMemoryIndexService = tradeMemoryIndexService;
     }
 }

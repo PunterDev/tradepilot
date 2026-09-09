@@ -14,10 +14,10 @@ public interface TradingMemoryVectorClient {
     QdrantCollectionValidationResult validateCollection();
     void upsert(UUID pointId, List<Double> vector, TradeMemoryVectorPayload payload);
     List<VectorSearchResult> search(Long userId, List<Double> queryVector, Long excludeTradeId, int limit);
-    default List<VectorSearchResult> search(TradingMemorySearchRequest request) {
-        return search(request.userId(), request.queryVector(), request.excludeTradeId(), request.limit());
-    }
+    List<VectorSearchResult> search(TradingMemorySearchRequest request);
     void delete(UUID pointId);
     default void deleteByUserId(Long userId) {
+    }
+    default void deleteByUserIdAndAccountId(Long userId, Long accountId) {
     }
 }

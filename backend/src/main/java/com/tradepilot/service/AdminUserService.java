@@ -7,8 +7,14 @@ import com.tradepilot.dto.admin.AdminContactMessageResponse;
 import com.tradepilot.dto.admin.AdminRecentUpgradeResponse;
 import com.tradepilot.dto.admin.AdminUserDetailResponse;
 import com.tradepilot.dto.admin.AdminUserResponse;
+import com.tradepilot.dto.admin.UserFeatureEntitlementRequest;
+import com.tradepilot.dto.admin.UserFeatureEntitlementResponse;
 import com.tradepilot.dto.common.PageRequestParams;
 import com.tradepilot.dto.common.PagedResponse;
+import com.tradepilot.entitlement.FeatureEntitlementKey;
+import com.tradepilot.entitlement.FeatureEntitlementService;
+import com.tradepilot.entitlement.UserFeatureEntitlement;
+import com.tradepilot.entitlement.UserFeatureEntitlementRepository;
 import com.tradepilot.entity.AdminAuditLog;
 import com.tradepilot.entity.ContactMessage;
 import com.tradepilot.entity.TradingAccount;
@@ -22,6 +28,7 @@ import com.tradepilot.repository.ContactMessageRepository;
 import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.repository.TradingAccountRepository;
 import com.tradepilot.repository.UserRepository;
+import com.tradepilot.seoanalytics.SeoAnalyticsService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -46,6 +53,9 @@ public class AdminUserService {
     private final TradeRepository tradeRepository;
     private final AiTradeReviewRepository aiTradeReviewRepository;
     private final ContactMessageRepository contactMessageRepository;
+    private final SeoAnalyticsService seoAnalyticsService;
+    private final FeatureEntitlementService featureEntitlementService;
+    private final UserFeatureEntitlementRepository featureEntitlementRepository;
 
     @PreAuthorize("hasRole(\'ADMIN\')")
     @Transactional(readOnly = true)
@@ -89,6 +99,7 @@ public class AdminUserService {
         target.setProUntil(request.proUntil());
         clearStripeManagedState(target);
         User saved = userRepository.save(target);
+        seoAnalyticsService.markProConverted(saved, LocalDateTime.now());
         audit(admin, saved, AdminAuditAction.UPGRADE_TO_PRO, request.reason(), before, snapshot(saved));
         log.info("Admin upgraded user to PRO. adminUserId={}, targetUserId={}", admin.getId(), saved.getId());
         return mapUser(saved);
@@ -131,6 +142,26 @@ public class AdminUserService {
         audit(admin, saved, AdminAuditAction.ROLE_CHANGE, request.reason(), before, snapshot(saved));
         log.info("Admin removed ADMIN role. adminUserId={}, targetUserId={}", admin.getId(), saved.getId());
         return mapUser(saved);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional(readOnly = true)
+    public List<UserFeatureEntitlementResponse> featureEntitlements(Long targetUserId) {
+        User target = getTarget(targetUserId);
+        return featureEntitlementRepository.findByUserOrderByEntitlementKeyAsc(target).stream().map(this::mapEntitlement).toList();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public UserFeatureEntitlementResponse setFeatureEntitlement(User admin, Long targetUserId, UserFeatureEntitlementRequest request) {
+        if (request == null || request.entitlementKey() == null) {
+            throw new IllegalArgumentException("Entitlement key is required.");
+        }
+        User target = getTarget(targetUserId);
+        String before = entitlementSnapshot(target, request.entitlementKey());
+        UserFeatureEntitlement saved = featureEntitlementService.setEntitlement(targetUserId, request.entitlementKey(), !Boolean.FALSE.equals(request.enabled()), request.reason());
+        audit(admin, target, AdminAuditAction.FEATURE_ENTITLEMENT_CHANGE, request.reason(), before, entitlementSnapshot(target, request.entitlementKey()));
+        return mapEntitlement(saved);
     }
 
     private User getTarget(Long targetUserId) {
@@ -356,8 +387,18 @@ public class AdminUserService {
         return "plan=%s,role=%s,subscriptionStatus=%s,proUntil=%s,stripeCustomerId=%s,stripeSubscriptionId=%s".formatted(user.getPlan(), user.getRole(), user.getSubscriptionStatus(), user.getProUntil(), user.getStripeCustomerId(), user.getStripeSubscriptionId());
     }
 
+    private String entitlementSnapshot(User user, FeatureEntitlementKey key) {
+        return featureEntitlementRepository.findByUserAndEntitlementKey(user, key)
+                .map(entitlement -> "entitlement=%s,enabled=%s,reason=%s".formatted(entitlement.getEntitlementKey(), entitlement.isEnabled(), entitlement.getReason()))
+                .orElse("entitlement=%s,enabled=false".formatted(key));
+    }
+
+    private UserFeatureEntitlementResponse mapEntitlement(UserFeatureEntitlement entitlement) {
+        return new UserFeatureEntitlementResponse(entitlement.getEntitlementKey(), entitlement.isEnabled(), entitlement.getReason(), entitlement.getUpdatedAt());
+    }
+
     @java.lang.SuppressWarnings("all")
-    public AdminUserService(final UserRepository userRepository, final AdminAuditLogRepository auditLogRepository, final UsageLimitService usageLimitService, final AiUsageEventRepository aiUsageEventRepository, final TradingAccountRepository tradingAccountRepository, final TradeRepository tradeRepository, final AiTradeReviewRepository aiTradeReviewRepository, final ContactMessageRepository contactMessageRepository) {
+    public AdminUserService(final UserRepository userRepository, final AdminAuditLogRepository auditLogRepository, final UsageLimitService usageLimitService, final AiUsageEventRepository aiUsageEventRepository, final TradingAccountRepository tradingAccountRepository, final TradeRepository tradeRepository, final AiTradeReviewRepository aiTradeReviewRepository, final ContactMessageRepository contactMessageRepository, final SeoAnalyticsService seoAnalyticsService, final FeatureEntitlementService featureEntitlementService, final UserFeatureEntitlementRepository featureEntitlementRepository) {
         this.userRepository = userRepository;
         this.auditLogRepository = auditLogRepository;
         this.usageLimitService = usageLimitService;
@@ -366,5 +407,8 @@ public class AdminUserService {
         this.tradeRepository = tradeRepository;
         this.aiTradeReviewRepository = aiTradeReviewRepository;
         this.contactMessageRepository = contactMessageRepository;
+        this.seoAnalyticsService = seoAnalyticsService;
+        this.featureEntitlementService = featureEntitlementService;
+        this.featureEntitlementRepository = featureEntitlementRepository;
     }
 }

@@ -12,12 +12,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 import java.io.IOException;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Component
 public class RateLimitInterceptor implements HandlerInterceptor {
     @java.lang.SuppressWarnings("all")
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RateLimitInterceptor.class);
-    private final InMemoryRateLimiter rateLimiter;
+    private final RateLimiter rateLimiter;
     private final SecurityErrorResponseWriter securityErrorResponseWriter;
     @Value("${app.rate-limit.auth-login.max-requests:8}")
     private int authLoginMax;
@@ -35,6 +38,12 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     private int contactMax;
     @Value("${app.rate-limit.contact.window-seconds:300}")
     private long contactWindowSeconds;
+    @Value("${app.rate-limit.seo-events.max-requests:120}")
+    private int seoEventsMax;
+    @Value("${app.rate-limit.seo-events.window-seconds:60}")
+    private long seoEventsWindowSeconds;
+    @Value("${app.rate-limit.seo-events.max-content-bytes:16384}")
+    private long seoEventsMaxContentBytes;
     @Value("${app.rate-limit.ai-generation.max-requests:12}")
     private int aiGenerationMax;
     @Value("${app.rate-limit.ai-generation.window-seconds:300}")
@@ -47,9 +56,17 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     private int billingCheckoutMax;
     @Value("${app.rate-limit.billing-checkout.window-seconds:300}")
     private long billingCheckoutWindowSeconds;
+    @Value("${app.rate-limit.trust-forwarded-headers:false}")
+    private boolean trustForwardedHeaders;
+    @Value("${app.rate-limit.trusted-proxies:}")
+    private String trustedProxies;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws IOException {
+        if (isOversizedSeoEventsRequest(request)) {
+            securityErrorResponseWriter.write(response, HttpStatus.PAYLOAD_TOO_LARGE, "PAYLOAD_TOO_LARGE", "Request body is too large.", request.getRequestURI());
+            return false;
+        }
         RateLimitRule rule = ruleFor(request);
         if (rule == null) {
             return true;
@@ -81,6 +98,9 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         if (HttpMethod.POST.matches(method) && "/api/contact".equals(path)) {
             return new RateLimitRule("contact", contactMax, contactWindowSeconds, false);
         }
+        if (HttpMethod.POST.matches(method) && "/api/seo/events".equals(path)) {
+            return new RateLimitRule("seo-events", seoEventsMax, seoEventsWindowSeconds, false);
+        }
         if (HttpMethod.POST.matches(method) && ("/api/trades/import".equals(path) || "/api/trades/import/preview".equals(path) || "/api/trades/import/csv".equals(path) || "/api/trades/repair-tradovate-directions".equals(path))) {
             return new RateLimitRule("csv-import", csvImportMax, csvImportWindowSeconds, true);
         }
@@ -91,6 +111,15 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             return new RateLimitRule("ai-generation:" + aiFeature(path), aiGenerationMax, aiGenerationWindowSeconds, true);
         }
         return null;
+    }
+
+    private boolean isOversizedSeoEventsRequest(HttpServletRequest request) {
+        String path = normalizedApiPath(request.getRequestURI());
+        long contentLength = request.getContentLengthLong();
+        return HttpMethod.POST.matches(request.getMethod())
+                && "/api/seo/events".equals(path)
+                && seoEventsMaxContentBytes > 0
+                && contentLength > seoEventsMaxContentBytes;
     }
 
     private boolean isAiGenerationRequest(String method, String path) {
@@ -128,10 +157,49 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
     private String ipAddress(HttpServletRequest request) {
         String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (StringUtils.hasText(forwardedFor)) {
+        if (trustForwardedHeaders && trustedProxy(request.getRemoteAddr()) && StringUtils.hasText(forwardedFor)) {
             return forwardedFor.split(",")[0].trim();
         }
         return request.getRemoteAddr() == null ? "unknown" : request.getRemoteAddr();
+    }
+
+    private boolean trustedProxy(String remoteAddr) {
+        if (!StringUtils.hasText(remoteAddr)) {
+            return false;
+        }
+        if ("127.0.0.1".equals(remoteAddr) || "0:0:0:0:0:0:0:1".equals(remoteAddr) || "::1".equals(remoteAddr)) {
+            return true;
+        }
+        if (remoteAddr.startsWith("10.") || remoteAddr.startsWith("192.168.") || isPrivate172(remoteAddr)) {
+            return true;
+        }
+        return configuredTrustedProxies().contains(remoteAddr);
+    }
+
+    private boolean isPrivate172(String remoteAddr) {
+        if (!remoteAddr.startsWith("172.")) {
+            return false;
+        }
+        String[] parts = remoteAddr.split("\\.");
+        if (parts.length < 2) {
+            return false;
+        }
+        try {
+            int secondOctet = Integer.parseInt(parts[1]);
+            return secondOctet >= 16 && secondOctet <= 31;
+        } catch (NumberFormatException ex) {
+            return false;
+        }
+    }
+
+    private Set<String> configuredTrustedProxies() {
+        if (!StringUtils.hasText(trustedProxies)) {
+            return Set.of();
+        }
+        return Stream.of(trustedProxies.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     private String safeSubject(boolean authenticated, String subject) {
@@ -143,7 +211,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     }
 
     @java.lang.SuppressWarnings("all")
-    public RateLimitInterceptor(final InMemoryRateLimiter rateLimiter, final SecurityErrorResponseWriter securityErrorResponseWriter) {
+    public RateLimitInterceptor(final RateLimiter rateLimiter, final SecurityErrorResponseWriter securityErrorResponseWriter) {
         this.rateLimiter = rateLimiter;
         this.securityErrorResponseWriter = securityErrorResponseWriter;
     }

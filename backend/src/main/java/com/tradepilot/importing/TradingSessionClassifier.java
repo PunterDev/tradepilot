@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
 @Component
@@ -31,6 +32,13 @@ public class TradingSessionClassifier {
             return SessionType.UNKNOWN;
         }
         return classifyMarketTime(marketLocalTime.toLocalTime());
+    }
+
+    public SessionType classifySourceLocalTimestamp(LocalDateTime sourceLocalTime, ZoneId sourceZone) {
+        if (sourceLocalTime == null || sourceZone == null) {
+            return SessionType.UNKNOWN;
+        }
+        return classify(sourceLocalTime.atZone(sourceZone).toInstant());
     }
 
     private SessionType classifyMarketTime(LocalTime time) {

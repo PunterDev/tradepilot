@@ -14,6 +14,13 @@ import com.tradepilot.enums.SetupType;
 import com.tradepilot.enums.TradingAccountStatus;
 import com.tradepilot.enums.TradingAccountType;
 import com.tradepilot.enums.UserRole;
+import com.tradepilot.playbook.entity.PlaybookSetup;
+import com.tradepilot.playbook.entity.TradePlaybookAssignment;
+import com.tradepilot.playbook.enums.PlaybookCategory;
+import com.tradepilot.playbook.enums.PlaybookDirection;
+import com.tradepilot.playbook.enums.PlaybookStatus;
+import com.tradepilot.playbook.repository.PlaybookSetupRepository;
+import com.tradepilot.playbook.repository.TradePlaybookAssignmentRepository;
 import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.repository.TradingAccountRepository;
 import com.tradepilot.repository.UserRepository;
@@ -37,6 +44,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -49,6 +57,8 @@ class RbacSecurityTests {
     @Autowired UserRepository userRepository;
     @Autowired TradingAccountRepository tradingAccountRepository;
     @Autowired TradeRepository tradeRepository;
+    @Autowired PlaybookSetupRepository playbookSetupRepository;
+    @Autowired TradePlaybookAssignmentRepository playbookAssignmentRepository;
     @Autowired PasswordEncoder passwordEncoder;
 
     @Test
@@ -58,6 +68,16 @@ class RbacSecurityTests {
 
         mockMvc.perform(get("/api/v1/accounts").header("Authorization", "Bearer definitely-not-a-jwt"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void privateApiResponsesAreNotSharedCacheableAndIncludeBaselineSecurityHeaders() throws Exception {
+        mockMvc.perform(get("/api/v1/accounts"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("Cache-Control", "no-cache, no-store, max-age=0, must-revalidate"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("Referrer-Policy", "strict-origin-when-cross-origin"))
+                .andExpect(header().string("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()"));
     }
 
     @Test
@@ -86,6 +106,21 @@ class RbacSecurityTests {
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/admin/observability/summary").header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void authMeRequiresAuthenticationAndAcceptsUserAndAdminTokens() throws Exception {
+        User admin = createUser("rbac-auth-me-admin@example.com", UserRole.ADMIN);
+        User normal = createUser("rbac-auth-me-user@example.com", UserRole.USER);
+
+        mockMvc.perform(get("/api/auth/me"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer definitely-not-a-jwt"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + tokenFor(normal)))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + tokenFor(admin)))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -220,6 +255,90 @@ class RbacSecurityTests {
         assertThat(dnaJson.get("totalTrades").asInt()).isZero();
     }
 
+    @Test
+    void playbookRoutesRejectAnotherUsersSetupTradeAndAssignmentIds() throws Exception {
+        User userA = createUser("rbac-playbook-a@example.com", UserRole.USER);
+        User userB = createUser("rbac-playbook-b@example.com", UserRole.USER);
+        TradingAccount accountA = createAccount(userA, "Playbook A Account");
+        TradingAccount accountB = createAccount(userB, "Playbook B Account");
+        Trade tradeA = createTrade(userA, accountA, BigDecimal.valueOf(95));
+        Trade tradeB = createTrade(userB, accountB, BigDecimal.valueOf(120));
+        PlaybookSetup setupA = createSetup(userA, accountA, "A Setup");
+        PlaybookSetup setupB = createSetup(userB, accountB, "B Setup");
+        TradePlaybookAssignment assignmentB = playbookAssignmentRepository.save(assignment(userB, accountB, tradeB, setupB));
+        String tokenA = tokenFor(userA);
+
+        mockMvc.perform(get("/api/v1/playbook/{setupId}", setupB.getId())
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/playbook/{setupId}", 9_999_999L)
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(put("/api/v1/playbook/{setupId}", setupB.getId())
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(playbookRequestBody(accountA.getId(), "Hijack")))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/api/v1/playbook/{setupId}/trades/{tradeId}", setupA.getId(), tradeB.getId())
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(patch("/api/v1/playbook/assignments/{assignmentId}", assignmentB.getId())
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"notes\":\"must not update\"}"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(patch("/api/v1/playbook/assignments/{assignmentId}", 9_999_999L)
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"notes\":\"must not update\"}"))
+                .andExpect(status().isNotFound());
+
+        assertThat(playbookSetupRepository.findByIdAndUser_Id(setupB.getId(), userB.getId())).isPresent();
+        assertThat(playbookAssignmentRepository.findByIdAndUser_Id(assignmentB.getId(), userB.getId()))
+                .get()
+                .extracting(TradePlaybookAssignment::getNotes)
+                .isNull();
+        assertThat(tradeRepository.findById(tradeA.getId())).isPresent();
+    }
+
+    @Test
+    void replayAndTradingMemoryRoutesRejectAnotherUsersTradeIds() throws Exception {
+        User userA = createUser("rbac-replay-a@example.com", UserRole.USER);
+        User userB = createUser("rbac-replay-b@example.com", UserRole.USER);
+        TradingAccount accountB = createAccount(userB, "Replay B Account");
+        Trade tradeB = createTrade(userB, accountB, BigDecimal.valueOf(-40));
+        String tokenA = tokenFor(userA);
+
+        mockMvc.perform(get("/api/v1/trades/{tradeId}/replay", tradeB.getId())
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/api/v1/trades/{tradeId}/replay/generate", tradeB.getId())
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/v1/trades/{tradeId}/trading-memory", tradeB.getId())
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/trades/{tradeId}/trading-memory", 9_999_999L)
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/api/v1/trades/{tradeId}/trading-memory/regenerate", tradeB.getId())
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/trades/{tradeId}/similar-trades", tradeB.getId())
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNotFound());
+
+        assertThat(tradeRepository.findById(tradeB.getId())).isPresent();
+    }
+
     private User createUser(String email, UserRole role) {
         return userRepository.save(User.builder()
                 .name(email)
@@ -276,6 +395,51 @@ class RbacSecurityTests {
                 .pnlAmount(pnl)
                 .outcome(pnl.signum() >= 0 ? OutcomeType.WIN : OutcomeType.LOSS)
                 .build());
+    }
+
+    private PlaybookSetup createSetup(User user, TradingAccount account, String name) {
+        PlaybookSetup setup = new PlaybookSetup();
+        setup.setUser(user);
+        setup.setAccount(account);
+        setup.setName(name);
+        setup.setShortDescription("Authorization test setup");
+        setup.setDescription("Authorization test setup");
+        setup.setCategory(PlaybookCategory.CUSTOM);
+        setup.setStatus(PlaybookStatus.DRAFT);
+        setup.setDirection(PlaybookDirection.BOTH);
+        return playbookSetupRepository.save(setup);
+    }
+
+    private TradePlaybookAssignment assignment(User user, TradingAccount account, Trade trade, PlaybookSetup setup) {
+        TradePlaybookAssignment assignment = new TradePlaybookAssignment();
+        assignment.setUser(user);
+        assignment.setAccount(account);
+        assignment.setTrade(trade);
+        assignment.setSetup(setup);
+        return assignment;
+    }
+
+    private String playbookRequestBody(Long accountId, String name) {
+        return """
+                {
+                  "accountId": %d,
+                  "name": "%s",
+                  "shortDescription": "Updated",
+                  "description": "Updated by authorization test",
+                  "category": "CUSTOM",
+                  "status": "DRAFT",
+                  "direction": "BOTH",
+                  "instruments": [],
+                  "sessions": [],
+                  "timeframes": [],
+                  "tags": [],
+                  "marketContext": [],
+                  "riskRules": [],
+                  "managementRules": [],
+                  "postTradeRules": [],
+                  "checklistItems": []
+                }
+                """.formatted(accountId, name);
     }
 
     private String importBody(Long accountId, String externalKey) {

@@ -35,7 +35,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "app.rate-limit.ai-generation.max-requests=1",
         "app.rate-limit.ai-generation.window-seconds=60",
         "app.rate-limit.billing-checkout.max-requests=1",
-        "app.rate-limit.billing-checkout.window-seconds=60"
+        "app.rate-limit.billing-checkout.window-seconds=60",
+        "app.rate-limit.trust-forwarded-headers=true"
 })
 class AbuseProtectionTests {
     @Autowired MockMvc mockMvc;

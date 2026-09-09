@@ -26,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -45,7 +46,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@TestPropertySource(properties = "app.dev-tools-enabled=true")
+@TestPropertySource(properties = {
+        "app.dev-tools-enabled=true",
+        "app.dev-auth.enabled=true"
+})
 class DevToolsEnabledTests {
     @Autowired MockMvc mockMvc;
     @Autowired UserRepository userRepository;
@@ -54,6 +58,87 @@ class DevToolsEnabledTests {
     @Autowired TradeReplayRepository replayRepository;
     @Autowired TradeReplayInsightRepository replayInsightRepository;
     @Autowired JwtService jwtService;
+    @Autowired PasswordEncoder passwordEncoder;
+
+    @Test
+    void e2ePrepareProvisionsSyntheticUsersWithDeterministicOwnedData() throws Exception {
+        mockMvc.perform(post("/api/dev/e2e/prepare"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.proUser.email").value("selenium-e2e@tradepilot.test"))
+                .andExpect(jsonPath("$.freeUser.email").value("selenium-free-e2e@tradepilot.test"))
+                .andExpect(jsonPath("$.unverifiedUser.email").value("selenium-unverified-e2e@tradepilot.test"))
+                .andExpect(jsonPath("$.proUser.primaryAccountId").isNumber())
+                .andExpect(jsonPath("$.proUser.secondaryAccountId").isNumber())
+                .andExpect(jsonPath("$.proUser.tradeId").isNumber())
+                .andExpect(jsonPath("$.freeUser.primaryAccountId").isNumber())
+                .andExpect(jsonPath("$.freeUser.secondaryAccountId").isNumber())
+                .andExpect(jsonPath("$.freeUser.tradeId").isNumber())
+                .andExpect(jsonPath("$.unverifiedUser.primaryAccountId").isNumber())
+                .andExpect(jsonPath("$.unverifiedUser.secondaryAccountId").isNumber())
+                .andExpect(jsonPath("$.unverifiedUser.tradeId").isNumber());
+
+        User proUser = userRepository.findByEmail("selenium-e2e@tradepilot.test").orElseThrow();
+        User freeUser = userRepository.findByEmail("selenium-free-e2e@tradepilot.test").orElseThrow();
+        User unverifiedUser = userRepository.findByEmail("selenium-unverified-e2e@tradepilot.test").orElseThrow();
+
+        assertThat(proUser.getEmailVerified()).isTrue();
+        assertThat(proUser.getPlan()).isEqualTo(PlanType.PRO);
+        assertThat(passwordEncoder.matches("Selenium-E2E-Only-Password-123!", proUser.getPassword())).isTrue();
+        assertThat(accountRepository.countByUser(proUser)).isEqualTo(2);
+        assertThat(tradeRepository.countByUser(proUser)).isEqualTo(3);
+
+        assertThat(freeUser.getEmailVerified()).isTrue();
+        assertThat(freeUser.getPlan()).isEqualTo(PlanType.FREE);
+        assertThat(passwordEncoder.matches("Selenium-E2E-Only-Password-123!", freeUser.getPassword())).isTrue();
+        assertThat(accountRepository.countByUser(freeUser)).isEqualTo(2);
+        assertThat(tradeRepository.countByUser(freeUser)).isEqualTo(3);
+
+        assertThat(unverifiedUser.getEmailVerified()).isFalse();
+        assertThat(unverifiedUser.getPlan()).isEqualTo(PlanType.FREE);
+        assertThat(passwordEncoder.matches("Selenium-E2E-Only-Password-123!", unverifiedUser.getPassword())).isTrue();
+        assertThat(accountRepository.countByUser(unverifiedUser)).isEqualTo(2);
+        assertThat(tradeRepository.countByUser(unverifiedUser)).isEqualTo(3);
+    }
+
+    @Test
+    void e2ePrepareIsIdempotentAndResetsOnlySyntheticUsers() throws Exception {
+        mockMvc.perform(post("/api/dev/e2e/prepare"))
+                .andExpect(status().isOk());
+
+        User proUser = userRepository.findByEmail("selenium-e2e@tradepilot.test").orElseThrow();
+        User unrelated = createUser("not-selenium-e2e@example.com");
+        TradingAccount unrelatedAccount = createAccount(unrelated);
+        tradeRepository.save(realImportedTrade(unrelated, unrelatedAccount));
+        accountRepository.save(TradingAccount.builder()
+                .user(proUser)
+                .name("Temporary E2E Drift")
+                .propFirm(PropFirmType.OTHER)
+                .accountNumber("TEMP-E2E-DRIFT")
+                .accountType(TradingAccountType.PERSONAL)
+                .startingBalance(BigDecimal.valueOf(1000))
+                .status(TradingAccountStatus.ACTIVE)
+                .build());
+
+        mockMvc.perform(post("/api/dev/e2e/prepare"))
+                .andExpect(status().isOk());
+
+        User refreshedProUser = userRepository.findByEmail("selenium-e2e@tradepilot.test").orElseThrow();
+        List<TradingAccount> e2eAccounts = accountRepository.findByUserOrderByCreatedAtDesc(refreshedProUser);
+        List<Trade> e2eTrades = tradeRepository.findByUserOrderByTradeDateAscEntryTimeAscIdAsc(refreshedProUser);
+
+        assertThat(e2eAccounts).hasSize(2);
+        assertThat(e2eAccounts).extracting(TradingAccount::getName)
+                .containsExactlyInAnyOrder("Primary E2E Account", "Secondary E2E Account");
+        assertThat(e2eTrades).hasSize(3);
+        assertThat(e2eTrades).allSatisfy(trade -> {
+            assertThat(trade.getUser().getId()).isEqualTo(refreshedProUser.getId());
+            assertThat(trade.getAccount().getUser().getId()).isEqualTo(refreshedProUser.getId());
+            assertThat(trade.getExternalTradeKey()).startsWith("SELENIUM-E2E-" + refreshedProUser.getId() + "-");
+        });
+
+        assertThat(accountRepository.countByUser(unrelated)).isEqualTo(1);
+        assertThat(tradeRepository.countByUser(unrelated)).isEqualTo(1);
+    }
 
     @Test
     void seedDataBelongsOnlyToCurrentUser() throws Exception {

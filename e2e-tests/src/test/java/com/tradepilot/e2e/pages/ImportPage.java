@@ -23,13 +23,9 @@ public class ImportPage {
         wait.until(ExpectedConditions.presenceOfElementLocated(file));
     }
 
-    public ImportPage selectFirstImportableAccount() {
+    public ImportPage selectAccount(long accountId) {
         Select select = new Select(wait.until(ExpectedConditions.elementToBeClickable(account)));
-        select.getOptions().stream()
-                .filter(option -> !option.getAttribute("value").isBlank() && !"ALL".equals(option.getAttribute("value")))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("No importable trading account option was available. Seed or create a trading account first."))
-                .click();
+        select.selectByValue(Long.toString(accountId));
         return this;
     }
 

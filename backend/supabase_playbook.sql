@@ -131,6 +131,7 @@ ALTER TABLE feature_usage_events
 ALTER TABLE feature_usage_events
     ADD CONSTRAINT chk_feature_usage_events_feature
     CHECK (feature IN (
+        'ACTIVATION',
         'AI_REVIEW',
         'DAILY_COACH',
         'WEEKLY_COACH',
@@ -140,7 +141,9 @@ ALTER TABLE feature_usage_events
         'PLAYBOOK',
         'TRADING_MEMORY',
         'SESSION_REVIEW',
+        'AI_PRE_ANALYSIS',
         'TRADE_REPLAY',
+        'EXECUTION_ENGINE',
         'TRADE_DETAIL',
         'CALENDAR_VIEW',
         'ANALYTICS_VIEW'

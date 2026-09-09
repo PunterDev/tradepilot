@@ -12,20 +12,26 @@ import com.tradepilot.repository.UserRepository;
 import com.tradepilot.security.JwtService;
 import com.tradepilot.tradereplay.entity.TradeReplayInsight;
 import com.tradepilot.tradereplay.entity.TradeReplayInsightType;
+import com.tradepilot.tradereplay.entity.TradeReplay;
+import com.tradepilot.tradereplay.entity.TradeReplayStatus;
 import com.tradepilot.tradereplay.service.HistoricalCandle;
 import com.tradepilot.tradereplay.service.HistoricalCandleResult;
 import com.tradepilot.tradereplay.service.HistoricalMarketDataProvider;
 import com.tradepilot.tradereplay.service.HistoricalMarketDataProviderRegistry;
+import com.tradepilot.tradereplay.service.ContractResolutionResult;
+import com.tradepilot.tradereplay.service.FuturesContractResolver;
 import com.tradepilot.tradereplay.service.ContractSymbolSource;
 import com.tradepilot.tradereplay.repository.TradeReplayInsightRepository;
 import com.tradepilot.tradereplay.repository.TradeReplayRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -37,14 +43,18 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
         "tradepilot.features.v3-enabled=true",
-        "tradepilot.market-data.provider=databento"
+        "tradepilot.market-data.provider=databento",
+        "tradepilot.market-data.cache-enabled=false"
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -57,8 +67,15 @@ class TradeReplayRegenerationPersistenceTests {
     @Autowired TradeReplayInsightRepository insightRepository;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JwtService jwtService;
+    @Autowired JdbcTemplate jdbcTemplate;
 
     @MockBean HistoricalMarketDataProviderRegistry providerRegistry;
+    @MockBean FuturesContractResolver contractResolver;
+
+    @BeforeEach
+    void defaultContractResolution() {
+        when(contractResolver.resolve(any())).thenReturn(ContractResolutionResult.ok("MNQ", "MNQM6", "MNQM6"));
+    }
 
     @Test
     void regeneratePersistsStrongExcursionCaptureInsight() throws Exception {
@@ -86,6 +103,108 @@ class TradeReplayRegenerationPersistenceTests {
         assertThat(insights).isNotEmpty();
         assertThat(insights.get(0).getType()).isEqualTo(TradeReplayInsightType.STRONG_EXCURSION_CAPTURE);
         assertThat(insights.get(0).getDisplayOrder()).isEqualTo(1);
+    }
+
+    @Test
+    void activePendingReplayCannotDuplicateGeneration() throws Exception {
+        HistoricalMarketDataProvider provider = Mockito.mock(HistoricalMarketDataProvider.class);
+        when(provider.providerName()).thenReturn("databento");
+        when(providerRegistry.activeProvider()).thenReturn(provider);
+        User user = createUser("replay-active-pending@example.com");
+        TradingAccount account = createAccount(user);
+        Trade trade = createStrongCaptureTrade(user, account);
+        TradeReplay replay = replayRepository.save(replay(user, trade, TradeReplayStatus.PENDING));
+
+        mockMvc.perform(post("/api/v1/trades/" + trade.getId() + "/replay/regenerate")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.replayId").value(replay.getId()))
+                .andExpect(jsonPath("$.status").value("PENDING"));
+
+        verify(provider, never()).getCandles(any());
+    }
+
+    @Test
+    void stalePendingReplayCanRecoverAndRegenerate() throws Exception {
+        HistoricalMarketDataProvider provider = Mockito.mock(HistoricalMarketDataProvider.class);
+        when(provider.providerName()).thenReturn("databento");
+        when(provider.getCandles(any())).thenReturn(HistoricalCandleResult.success(strongCaptureCandles()));
+        when(providerRegistry.activeProvider()).thenReturn(provider);
+        User user = createUser("replay-stale-pending@example.com");
+        TradingAccount account = createAccount(user);
+        Trade trade = createStrongCaptureTrade(user, account);
+        TradeReplay replay = replayRepository.save(replay(user, trade, TradeReplayStatus.PENDING));
+        makeReplayStale(replay);
+
+        mockMvc.perform(post("/api/v1/trades/" + trade.getId() + "/replay/regenerate")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("READY"))
+                .andExpect(jsonPath("$.failureCode").doesNotExist());
+    }
+
+    @Test
+    void stalePendingReplayIsMarkedFailedOnReadSoUserCanRetry() throws Exception {
+        User user = createUser("replay-stale-read@example.com");
+        TradingAccount account = createAccount(user);
+        Trade trade = createStrongCaptureTrade(user, account);
+        replayRepository.save(replay(user, trade, TradeReplayStatus.PENDING));
+        TradeReplay replay = replayRepository.findByUserIdAndTradeId(user.getId(), trade.getId()).orElseThrow();
+        makeReplayStale(replay);
+
+        mockMvc.perform(get("/api/v1/trades/" + trade.getId() + "/replay")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FAILED"))
+                .andExpect(jsonPath("$.failureCode").value("REPLAY_PROCESSING_STALE"));
+    }
+
+    @Test
+    void providerExceptionTransitionsReplayToFailed() throws Exception {
+        HistoricalMarketDataProvider provider = Mockito.mock(HistoricalMarketDataProvider.class);
+        when(provider.providerName()).thenReturn("databento");
+        when(provider.getCandles(any())).thenThrow(new IllegalStateException("provider blew up"));
+        when(providerRegistry.activeProvider()).thenReturn(provider);
+        User user = createUser("replay-provider-exception@example.com");
+        TradingAccount account = createAccount(user);
+        Trade trade = createStrongCaptureTrade(user, account);
+
+        mockMvc.perform(post("/api/v1/trades/" + trade.getId() + "/replay/generate")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FAILED"))
+                .andExpect(jsonPath("$.failureCode").value("REPLAY_EXECUTION_ERROR"));
+    }
+
+    @Test
+    void contractResolutionExceptionTransitionsReplayToFailed() throws Exception {
+        when(contractResolver.resolve(any())).thenThrow(new IllegalStateException("contract blew up"));
+        User user = createUser("replay-contract-exception@example.com");
+        TradingAccount account = createAccount(user);
+        Trade trade = createStrongCaptureTrade(user, account);
+
+        mockMvc.perform(post("/api/v1/trades/" + trade.getId() + "/replay/generate")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FAILED"))
+                .andExpect(jsonPath("$.failureCode").value("CONTRACT_RESOLUTION_ERROR"));
+    }
+
+    @Test
+    void failedReplayCanRegenerate() throws Exception {
+        HistoricalMarketDataProvider provider = Mockito.mock(HistoricalMarketDataProvider.class);
+        when(provider.providerName()).thenReturn("databento");
+        when(provider.getCandles(any())).thenReturn(HistoricalCandleResult.success(strongCaptureCandles()));
+        when(providerRegistry.activeProvider()).thenReturn(provider);
+        User user = createUser("replay-failed-regenerates@example.com");
+        TradingAccount account = createAccount(user);
+        Trade trade = createStrongCaptureTrade(user, account);
+        replayRepository.save(replay(user, trade, TradeReplayStatus.FAILED));
+
+        mockMvc.perform(post("/api/v1/trades/" + trade.getId() + "/replay/regenerate")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("READY"));
     }
 
     private List<HistoricalCandle> strongCaptureCandles() {
@@ -152,5 +271,32 @@ class TradeReplayRegenerationPersistenceTests {
         trade.setContractSymbolSource(ContractSymbolSource.IMPORTED.name());
         trade.setOriginalBrokerSymbol("MNQM6");
         return tradeRepository.save(trade);
+    }
+
+    private TradeReplay replay(User user, Trade trade, TradeReplayStatus status) {
+        TradeReplay replay = new TradeReplay();
+        replay.setUser(user);
+        replay.setTrade(trade);
+        replay.setStatus(status);
+        replay.setOriginalBrokerSymbol(trade.getContractSymbol());
+        replay.setResolvedProviderSymbol(trade.getContractSymbol());
+        replay.setProvider("databento");
+        replay.setCandleInterval("1m");
+        replay.setWindowStart(Instant.parse("2026-06-08T10:10:00Z"));
+        replay.setWindowEnd(Instant.parse("2026-06-08T10:58:00Z"));
+        replay.setEligibleAt(Instant.parse("2026-06-09T10:28:00Z"));
+        replay.setEntryTimestamp(Instant.parse("2026-06-08T10:25:00Z"));
+        replay.setFinalExitTimestamp(Instant.parse("2026-06-08T10:28:00Z"));
+        if (status == TradeReplayStatus.FAILED) {
+            replay.setFailureCode("TEST_FAILURE");
+            replay.setSanitizedFailureMessage("Previous replay failed.");
+        }
+        return replay;
+    }
+
+    private void makeReplayStale(TradeReplay replay) {
+        jdbcTemplate.update("update trade_replays set updated_at = ? where id = ?",
+                java.sql.Timestamp.from(Instant.now().minusSeconds(600)),
+                replay.getId());
     }
 }

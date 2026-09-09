@@ -1,6 +1,7 @@
 package com.tradepilot.featureusage;
 
 public enum FeatureKey {
+    ACTIVATION,
     AI_REVIEW,
     DAILY_COACH,
     WEEKLY_COACH,
@@ -10,7 +11,9 @@ public enum FeatureKey {
     PLAYBOOK,
     TRADING_MEMORY,
     SESSION_REVIEW,
+    AI_PRE_ANALYSIS,
     TRADE_REPLAY,
+    EXECUTION_ENGINE,
     TRADE_DETAIL,
     CALENDAR_VIEW,
     ANALYTICS_VIEW

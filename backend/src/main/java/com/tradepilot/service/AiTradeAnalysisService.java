@@ -1,11 +1,14 @@
 package com.tradepilot.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradepilot.ai.strategy.StrategyContext;
+import com.tradepilot.ai.strategy.StrategyContextService;
 import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.billing.UsageType;
 import com.tradepilot.dto.ai.AiTradeAnalysisJobResponse;
 import com.tradepilot.dto.ai.AiTradeAnalysisRequest;
 import com.tradepilot.entity.AiTradeAnalysis;
+import com.tradepilot.entity.Trade;
 import com.tradepilot.entity.User;
 import com.tradepilot.exception.ResourceNotFoundException;
 import com.tradepilot.repository.AiTradeAnalysisRepository;
@@ -24,12 +27,14 @@ public class AiTradeAnalysisService {
     private final AiTradeAnalysisAsyncWorker asyncWorker;
     private final TradeService tradeService;
     private final UsageLimitService usageLimitService;
+    private final StrategyContextService strategyContextService;
 
     public AiTradeAnalysisJobResponse startAsync(User user, String requestJson, MultipartFile chartImage) {
         try {
             Long userId = requireUserId(user);
             AiTradeAnalysisRequest request = objectMapper.readValue(requestJson, AiTradeAnalysisRequest.class);
-            validateOwnedTrade(user, request.getTradeId());
+            Trade trade = validateOwnedTrade(user, request.getTradeId());
+            applyStrategyContext(userId, request, trade);
             byte[] imageBytes = chartImage == null || chartImage.isEmpty() ? null : chartImage.getBytes();
             String mimeType = chartImage == null ? null : chartImage.getContentType();
             String reviewVersion = request.getReviewVersion() == null || request.getReviewVersion().isBlank() ? "v1" : request.getReviewVersion();
@@ -85,15 +90,23 @@ public class AiTradeAnalysisService {
         return user.getId();
     }
 
-    private void validateOwnedTrade(User user, Long tradeId) {
+    private Trade validateOwnedTrade(User user, Long tradeId) {
         if (tradeId == null) {
             throw new IllegalArgumentException("tradeId is required");
         }
-        tradeService.getOwnedTrade(user, tradeId);
+        return tradeService.getOwnedTrade(user, tradeId);
+    }
+
+    private void applyStrategyContext(Long userId, AiTradeAnalysisRequest request, Trade trade) {
+        StrategyContext context = strategyContextService.resolve(userId, trade, request.getJournalText());
+        request.setStrategyContext(context);
+        if (request.getTrade() != null && request.getTrade().getSetup() == null && trade.getSetup() != null) {
+            request.getTrade().setSetup(trade.getSetup().name());
+        }
     }
 
     @java.lang.SuppressWarnings("all")
-    public AiTradeAnalysisService(final ObjectMapper objectMapper, final AiTradeAnalysisRepository repository, final AiTradeAnalysisMapper mapper, final AiTradeAnalysisHashService hashService, final AiTradeAnalysisAsyncWorker asyncWorker, final TradeService tradeService, final UsageLimitService usageLimitService) {
+    public AiTradeAnalysisService(final ObjectMapper objectMapper, final AiTradeAnalysisRepository repository, final AiTradeAnalysisMapper mapper, final AiTradeAnalysisHashService hashService, final AiTradeAnalysisAsyncWorker asyncWorker, final TradeService tradeService, final UsageLimitService usageLimitService, final StrategyContextService strategyContextService) {
         this.objectMapper = objectMapper;
         this.repository = repository;
         this.mapper = mapper;
@@ -101,5 +114,6 @@ public class AiTradeAnalysisService {
         this.asyncWorker = asyncWorker;
         this.tradeService = tradeService;
         this.usageLimitService = usageLimitService;
+        this.strategyContextService = strategyContextService;
     }
 }

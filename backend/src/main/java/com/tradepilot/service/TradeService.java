@@ -36,7 +36,16 @@ public class TradeService {
     @java.lang.SuppressWarnings("all")
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TradeService.class);
     private static final int MAX_IMPORT_ROWS = 5000;
-    private static final List<DateTimeFormatter> TRADOVATE_TIMESTAMP_FORMATTERS = List.of(new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy h:mm:ss a").toFormatter(Locale.US), new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy h:mm a").toFormatter(Locale.US), new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy h:mm:ss a").toFormatter(Locale.US), new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy h:mm a").toFormatter(Locale.US));
+    private static final List<DateTimeFormatter> TRADOVATE_TIMESTAMP_FORMATTERS = List.of(
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy HH:mm:ss").toFormatter(Locale.US),
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy H:mm:ss").toFormatter(Locale.US),
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy HH:mm:ss").toFormatter(Locale.US),
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy H:mm:ss").toFormatter(Locale.US),
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy h:mm:ss a").toFormatter(Locale.US),
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy h:mm a").toFormatter(Locale.US),
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy h:mm:ss a").toFormatter(Locale.US),
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy h:mm a").toFormatter(Locale.US)
+    );
     private final TradeRepository tradeRepository;
     private final TradingAccountService tradingAccountService;
     private final ImportBatchRepository importBatchRepository;
@@ -406,13 +415,26 @@ public class TradeService {
             return null;
         }
         String[] parts = externalTradeKey.split("\\|", -1);
+        if (parts.length >= 11 && "TRADOVATE_PERFORMANCE".equals(parts[0])) {
+            return repairDataFromTradovateTimestamps(
+                    parseTradovateTimestamp(parts[9]),
+                    parseTradovateTimestamp(parts[10]),
+                    parseDecimal(parts[6]),
+                    parseDecimal(parts[7])
+            );
+        }
         if (parts.length < 8) {
             return null;
         }
-        LocalDateTime boughtAt = parseTradovateTimestamp(parts[2]);
-        LocalDateTime soldAt = parseTradovateTimestamp(parts[3]);
-        BigDecimal buyPrice = parseDecimal(parts[5]);
-        BigDecimal sellPrice = parseDecimal(parts[6]);
+        return repairDataFromTradovateTimestamps(
+                parseTradovateTimestamp(parts[2]),
+                parseTradovateTimestamp(parts[3]),
+                parseDecimal(parts[5]),
+                parseDecimal(parts[6])
+        );
+    }
+
+    private RepairData repairDataFromTradovateTimestamps(LocalDateTime boughtAt, LocalDateTime soldAt, BigDecimal buyPrice, BigDecimal sellPrice) {
         if (boughtAt == null || soldAt == null || boughtAt.equals(soldAt)) {
             return null;
         }

@@ -59,7 +59,7 @@ Backend:
 V2_FEATURES_ENABLED=true
 QDRANT_URL=https://your-qdrant-cluster
 QDRANT_API_KEY=replace_with_secret
-QDRANT_COLLECTION_NAME=tradepilot_trade_memories
+QDRANT_COLLECTION=tradepilot_trade_memories
 OPENAI_API_KEY=replace_with_secret
 ```
 
@@ -75,7 +75,7 @@ Spring properties:
 tradepilot:
   trading-memory:
     enabled: ${TRADING_MEMORY_ENABLED:true}
-    collection-name: ${QDRANT_COLLECTION_NAME:tradepilot_trade_memories}
+    collection-name: ${QDRANT_COLLECTION:${QDRANT_COLLECTION_NAME:tradepilot_trade_memories}}
     vector-size: ${TRADING_MEMORY_VECTOR_SIZE:1536}
     similarity-threshold: ${TRADING_MEMORY_SIMILARITY_THRESHOLD:0.72}
     default-limit: ${TRADING_MEMORY_DEFAULT_LIMIT:5}
@@ -106,7 +106,7 @@ Trading Memory validates Qdrant without failing Spring Boot startup. Validation 
 
 If the collection is missing and `TRADING_MEMORY_QDRANT_AUTO_CREATE_COLLECTION=true`, TradePilot creates it and attempts to create payload indexes for:
 
-`userId`, `tradeId`, `instrument`, `direction`, `setup`, `mistake`, `emotion`, `session`, `tradeDate`, `memoryVersion`
+`userId`, `accountId`, `tradeId`, `instrument`, `direction`, `setup`, `mistake`, `emotion`, `session`, `tradeDate`, `memoryVersion`
 
 If an existing collection has the wrong vector size or distance metric, TradePilot does not delete or recreate it. Trading Memory returns an unavailable operational state while normal AI Trade Review continues.
 
@@ -116,6 +116,7 @@ Each Qdrant point payload includes:
 
 - `tradeId`
 - `userId`
+- `accountId`
 - `instrument`
 - `direction`
 - `setup`
@@ -211,10 +212,10 @@ For `CUT_WINNER_EARLY`, opportunity R is calculated only when realized R and MFE
 ## Security
 
 - V2 routes are disabled when `V2_FEATURES_ENABLED=false`.
-- Similarity search always includes a Qdrant payload filter for authenticated `userId`.
+- Similarity search always includes Qdrant payload filters for authenticated `userId` and, when the trade belongs to an account, that `accountId`.
 - Qdrant search always excludes the current trade ID via `must_not`.
 - Optional setup, instrument, direction, and lookback filters are passed into the vector search request when supplied and enforced again after PostgreSQL hydration.
-- PostgreSQL hydration always uses authenticated `userId`.
+- PostgreSQL hydration always uses authenticated `userId` and account scope when available.
 - Qdrant point IDs are internal.
 - Full memory documents, trader notes, and emotional notes are not logged.
 - Trading Memory failures do not block the existing AI Trade Review.
@@ -230,8 +231,10 @@ For `CUT_WINNER_EARLY`, opportunity R is calculated only when realized R and MFE
 ## Deletion and Stale Handling
 
 - Trade deletion deletes the PostgreSQL memory row and attempts to delete the Qdrant point.
+- Account deletion deletes account-scoped PostgreSQL memory rows and attempts to delete account-scoped Qdrant points before removing the account's trades.
 - Qdrant delete failures are logged and do not block core trade deletion.
 - User-level memory deletion is user-scoped and uses Qdrant payload filtering by `userId`.
+- Admin trade cleanup deletes matching memory rows and attempts vector deletion before batch-deleting trades.
 - Trade edits mark existing memory `STALE`; regenerate/retry rebuilds the canonical document and compares the content hash.
 - Deleted or inaccessible Qdrant candidates are removed during PostgreSQL hydration and never shown to the user.
 

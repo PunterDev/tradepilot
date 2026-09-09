@@ -7,6 +7,7 @@ public record TradeMemoryVectorPayload(
         UUID pointId,
         Long tradeId,
         Long userId,
+        Long accountId,
         String instrument,
         String direction,
         String setup,

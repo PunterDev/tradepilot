@@ -16,6 +16,10 @@ This manifest lists actual configuration names used by the backend and frontend.
 | `APP_ALLOWED_ORIGINS` | Required | Non-secret | Comma-separated deployed frontend origins, no wildcard, no localhost | Yes. `CorsConfig` rejects empty, wildcard with credentials, and localhost/127.0.0.1 in production. |
 | `APP_FRONTEND_URL` | Required | Non-secret | Deployed frontend origin, no trailing path required | Yes. `ProductionUrlConfig` rejects missing, localhost, and 127.0.0.1 in production. |
 | `FRONTEND_URL` | Optional fallback | Non-secret | Frontend origin | No. Do not rely on this in production; set `APP_FRONTEND_URL`. |
+| `APP_ADMIN_ACCESS_PROTECTION` | Required | Non-secret | `external-mfa` or `privileged-access-gateway` | Yes. Requires an explicitly documented external admin MFA or privileged access gateway control in production. |
+| `RATE_LIMIT_STORE` | Required | Non-secret | `database` | Yes. Rejects non-database stores in production. |
+| `RATE_LIMIT_TRUST_FORWARDED_HEADERS` | Optional | Non-secret | `true` or `false` | No. Default `false`; enable only when immediate proxy trust is understood. |
+| `RATE_LIMIT_TRUSTED_PROXIES` | Optional | Non-secret | Comma-separated proxy IPs | No. Used with forwarded-header trust. |
 | `JWT_SECRET` | Required | Secret | Base64 with at least 32 random bytes | Yes. JWT services reject missing, non-Base64, or weak values. |
 | `JWT_EXPIRATION_MINUTES` | Optional | Non-secret | Integer minutes | No. Defaults to 30. |
 | `JWT_EXPIRATION_MS` | Optional | Non-secret | Integer milliseconds | No. Defaults to 1800000. |
@@ -47,5 +51,5 @@ This manifest lists actual configuration names used by the backend and frontend.
 ## Safety Notes
 
 - There is no frontend Stripe publishable key in the current implementation; Checkout and Customer Portal sessions are created by the backend.
-- Backend production startup should fail before serving traffic if Stripe secret, webhook secret, monthly price, yearly price, `APP_FRONTEND_URL`, CORS origins, or JWT secret are unsafe.
+- Backend production startup should fail before serving traffic if Stripe secret, webhook secret, monthly price, yearly price, `APP_FRONTEND_URL`, CORS origins, JWT secret, shared rate-limit store, or admin access protection declaration are unsafe.
 - Production defaults in code include localhost for development. Production validators reject localhost when the `production` or `prod` profile is active.

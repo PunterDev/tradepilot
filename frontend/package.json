@@ -1,7 +1,8 @@
 {
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc && vite build",
+    "build": "tsc && VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://127.0.0.1:8080/api} vite build && npm run prerender",
+    "prerender": "node scripts/prerender-public-pages.mjs",
     "preview": "vite preview",
     "e2e": "playwright test"
   },

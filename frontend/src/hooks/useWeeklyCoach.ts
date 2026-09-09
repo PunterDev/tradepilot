@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { getWeeklyCoach, generateWeeklyCoach } from "../api/coachApi";
+import { getWeeklyCoach, generateWeeklyCoach, generateWeeklyCoachPreview } from "../api/coachApi";
+import { getExecutionWeeklyFocus, type WeeklyExecutionFocus } from "../api/executionApi";
 import type { CoachSnapshot } from "../types/coachTypes";
 import { coachLimitMessage, isLimitReachedError, type CoachLimitState } from "./coachLimitHandling";
 
@@ -12,11 +13,12 @@ function addDays(date: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
-export function useWeeklyCoach(accountId?: number, weekStart?: string) {
+export function useWeeklyCoach(accountId?: number, weekStart?: string, previewAvailable = false, loadEnabled = true) {
   const [data, setData] = useState<CoachSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [executionFocus, setExecutionFocus] = useState<WeeklyExecutionFocus | null>(null);
   const [limitState, setLimitState] = useState<CoachLimitState>({
     limitReached: false,
     message: "",
@@ -27,7 +29,7 @@ export function useWeeklyCoach(accountId?: number, weekStart?: string) {
   );
 
   async function load() {
-    if (!accountId || !weekStart) return;
+    if (!loadEnabled || !accountId || !weekStart) return;
 
     setLoading(true);
     setError(null);
@@ -36,6 +38,7 @@ export function useWeeklyCoach(accountId?: number, weekStart?: string) {
     try {
       const snapshot = await getWeeklyCoach(accountId, weekStart);
       setData(snapshot);
+      getExecutionWeeklyFocus(accountId).then(setExecutionFocus).catch(() => setExecutionFocus(null));
     } catch (e) {
       if (isLimitReachedError(e)) {
         setLimitState({
@@ -71,6 +74,7 @@ export function useWeeklyCoach(accountId?: number, weekStart?: string) {
       });
 
       setData(snapshot);
+      getExecutionWeeklyFocus(accountId).then(setExecutionFocus).catch(() => setExecutionFocus(null));
     } catch (e) {
       if (isLimitReachedError(e)) {
         setLimitState({
@@ -90,9 +94,34 @@ export function useWeeklyCoach(accountId?: number, weekStart?: string) {
     }
   }
 
+  async function generatePreview() {
+    if (!accountId || !weekStart || !previewAvailable) return;
+
+    setGenerating(true);
+    setError(null);
+    setLimitState({ limitReached: false, message: "", hasCachedSnapshot: false });
+
+    try {
+      const snapshot = await generateWeeklyCoachPreview({
+        accountId,
+        periodStart: weekStart,
+        periodEnd: addDays(weekStart, 6),
+        forceRefresh: true,
+      });
+
+      setData(snapshot);
+      getExecutionWeeklyFocus(accountId).then(setExecutionFocus).catch(() => setExecutionFocus(null));
+    } catch (e) {
+      console.error(e);
+      setError("Unable to start the Weekly Coach preview right now. Please try again.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   useEffect(() => {
     load();
-  }, [accountId, weekStart]);
+  }, [accountId, weekStart, loadEnabled]);
 
   useEffect(() => {
     if (!data) return;
@@ -104,7 +133,7 @@ export function useWeeklyCoach(accountId?: number, weekStart?: string) {
     }, 2500);
 
     return () => window.clearInterval(interval);
-  }, [data?.status, accountId, weekStart]);
+  }, [data?.status, accountId, weekStart, loadEnabled]);
 
   return {
     data,
@@ -114,7 +143,9 @@ export function useWeeklyCoach(accountId?: number, weekStart?: string) {
     limitReached: limitState.limitReached,
     limitMessage: limitState.message,
     hasCachedSnapshot: limitState.hasCachedSnapshot,
+    executionFocus,
     reload: load,
     regenerate,
+    generatePreview,
   };
 }

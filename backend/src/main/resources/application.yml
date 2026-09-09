@@ -6,8 +6,12 @@ spring:
     driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
 
     hikari:
-      maximum-pool-size: 5
-      minimum-idle: 1
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+      max-lifetime: ${DB_POOL_MAX_LIFETIME_MS:240000}
+      keepalive-time: ${DB_POOL_KEEPALIVE_TIME_MS:120000}
+      idle-timeout: ${DB_POOL_IDLE_TIMEOUT_MS:120000}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT_MS:30000}
 
   flyway:
     enabled: ${FLYWAY_ENABLED:true}
@@ -63,7 +67,7 @@ tradepilot:
     cache-enabled: ${REPLAY_CACHE_ENABLED:true}
   trading-memory:
     enabled: ${TRADING_MEMORY_ENABLED:true}
-    collection-name: ${QDRANT_COLLECTION_NAME:tradepilot_trade_memories}
+    collection-name: ${QDRANT_COLLECTION:${QDRANT_COLLECTION_NAME:tradepilot_trade_memories}}
     vector-size: ${TRADING_MEMORY_VECTOR_SIZE:1536}
     similarity-threshold: ${TRADING_MEMORY_SIMILARITY_THRESHOLD:0.72}
     default-limit: ${TRADING_MEMORY_DEFAULT_LIMIT:5}
@@ -83,10 +87,23 @@ tradepilot:
     retry-initial-delay-seconds: ${TRADING_MEMORY_RETRY_INITIAL_DELAY_SECONDS:60}
     retry-max-delay-seconds: ${TRADING_MEMORY_RETRY_MAX_DELAY_SECONDS:3600}
     retry-batch-size: ${TRADING_MEMORY_RETRY_BATCH_SIZE:50}
+  execution:
+    clean-execution-threshold: ${EXECUTION_CLEAN_THRESHOLD:75}
+    fast-reentry-minutes: ${EXECUTION_FAST_REENTRY_MINUTES:7}
+    fast-reentry-baseline-ratio: ${EXECUTION_FAST_REENTRY_BASELINE_RATIO:0.50}
+    risk-increase-percent: ${EXECUTION_RISK_INCREASE_PERCENT:25}
+    size-increase-percent: ${EXECUTION_SIZE_INCREASE_PERCENT:25}
+    execution-drop-points: ${EXECUTION_DROP_POINTS:15}
+    minimum-pressure-point-samples: ${EXECUTION_MIN_PRESSURE_POINT_SAMPLES:8}
+    minimum-pattern-occurrences: ${EXECUTION_MIN_PATTERN_OCCURRENCES:3}
+    lookback-days: ${EXECUTION_LOOKBACK_DAYS:90}
+    low-evidence-coverage-threshold: ${EXECUTION_LOW_EVIDENCE_COVERAGE_THRESHOLD:25}
+    moderate-evidence-coverage-threshold: ${EXECUTION_MODERATE_EVIDENCE_COVERAGE_THRESHOLD:50}
+    high-evidence-coverage-threshold: ${EXECUTION_HIGH_EVIDENCE_COVERAGE_THRESHOLD:75}
 
 app:
   cors:
-    allowed-origins: ${APP_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:3000}
+    allowed-origins: ${APP_ALLOWED_ORIGINS:https://www.tradepilotcoach.com}
   dev-auth:
     enabled: ${DEV_AUTH_ENABLED:false}
   dev-tools-enabled: ${DEV_TOOLS_ENABLED:false}
@@ -97,6 +114,16 @@ app:
   openai:
     api-key: ${OPENAI_API_KEY:}
     model: ${OPENAI_MODEL:gpt-4.1-mini}
+  google-search-console:
+    enabled: ${GSC_ENABLED:false}
+    property: ${GSC_PROPERTY:}
+    service-account-json: ${GSC_SERVICE_ACCOUNT_JSON:}
+    service-account-json-base64: ${GSC_SERVICE_ACCOUNT_JSON_BASE64:}
+    canonical-host: ${GSC_CANONICAL_HOST:www.tradepilotcoach.com}
+    max-rows-per-query: ${GSC_MAX_ROWS_PER_QUERY:25000}
+    page-size: ${GSC_PAGE_SIZE:25000}
+    cache-ttl-minutes: ${GSC_CACHE_TTL_MINUTES:60}
+    brand-terms: ${GSC_BRAND_TERMS:tradepilot,trade pilot,tradepilotcoach}
   http-client:
     connect-timeout: ${APP_HTTP_CLIENT_CONNECT_TIMEOUT:5s}
     read-timeout: ${APP_HTTP_CLIENT_READ_TIMEOUT:30s}
@@ -105,6 +132,8 @@ app:
       core-pool-size: ${APP_AI_ASYNC_CORE_POOL_SIZE:2}
       max-pool-size: ${APP_AI_ASYNC_MAX_POOL_SIZE:6}
       queue-capacity: ${APP_AI_ASYNC_QUEUE_CAPACITY:50}
+  pre-analysis:
+    beta-emails: ${AI_PRE_ANALYSIS_BETA_EMAILS:${APP_ADMIN_EMAIL:}}
   email:
     resend:
       api-key: ${RESEND_API_KEY:}
@@ -113,7 +142,7 @@ app:
       core-pool-size: ${APP_EMAIL_ASYNC_CORE_POOL_SIZE:1}
       max-pool-size: ${APP_EMAIL_ASYNC_MAX_POOL_SIZE:3}
       queue-capacity: ${APP_EMAIL_ASYNC_QUEUE_CAPACITY:100}
-  frontend-url: ${APP_FRONTEND_URL:${FRONTEND_URL:http://localhost:5173}}
+  frontend-url: ${APP_FRONTEND_URL:${FRONTEND_URL:https://www.tradepilotcoach.com}}
   admin-email: ${APP_ADMIN_EMAIL:}
   admin-bootstrap:
     enabled: ${APP_ADMIN_BOOTSTRAP_ENABLED:false}
@@ -141,6 +170,9 @@ app:
       query-performance-events-days: ${OBSERVABILITY_RETENTION_QUERY_PERFORMANCE_EVENTS_DAYS:60}
       system-alerts-days: ${OBSERVABILITY_RETENTION_SYSTEM_ALERTS_DAYS:180}
   rate-limit:
+    store: ${RATE_LIMIT_STORE:memory}
+    trust-forwarded-headers: ${RATE_LIMIT_TRUST_FORWARDED_HEADERS:false}
+    trusted-proxies: ${RATE_LIMIT_TRUSTED_PROXIES:}
     auth-login:
       max-requests: ${RATE_LIMIT_AUTH_LOGIN_MAX:8}
       window-seconds: ${RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS:60}
@@ -153,6 +185,10 @@ app:
     contact:
       max-requests: ${RATE_LIMIT_CONTACT_MAX:3}
       window-seconds: ${RATE_LIMIT_CONTACT_WINDOW_SECONDS:300}
+    seo-events:
+      max-requests: ${RATE_LIMIT_SEO_EVENTS_MAX:120}
+      window-seconds: ${RATE_LIMIT_SEO_EVENTS_WINDOW_SECONDS:60}
+      max-content-bytes: ${RATE_LIMIT_SEO_EVENTS_MAX_CONTENT_BYTES:16384}
     ai-generation:
       max-requests: ${RATE_LIMIT_AI_GENERATION_MAX:12}
       window-seconds: ${RATE_LIMIT_AI_GENERATION_WINDOW_SECONDS:300}

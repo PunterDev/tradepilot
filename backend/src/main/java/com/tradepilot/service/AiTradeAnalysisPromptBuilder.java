@@ -1,5 +1,6 @@
 package com.tradepilot.service;
 
+import com.tradepilot.ai.strategy.StrategyContext;
 import com.tradepilot.dto.ai.AiTradeAnalysisRequest;
 import com.tradepilot.dto.ai.TradeSnapshot;
 import org.springframework.stereotype.Component;
@@ -9,11 +10,14 @@ public class AiTradeAnalysisPromptBuilder {
 
     public String build(AiTradeAnalysisRequest request, boolean hasChartImage) {
         TradeSnapshot trade = request == null ? null : request.getTrade();
+        StrategyContext strategyContext = request == null || request.getStrategyContext() == null ? StrategyContext.general() : request.getStrategyContext();
 
         return """
                 You are TradePilot AI, a senior futures trading coach for NQ/ES/MES/MNQ traders.
 
                 Analyze this trade as ONE unified trade analysis.
+
+                %s
 
                 If a chart screenshot is provided, use it as supporting visual context.
                 If no chart screenshot is provided, do not invent visual chart details; analyze only from trade data and journal notes.
@@ -29,6 +33,12 @@ public class AiTradeAnalysisPromptBuilder {
                 - If the chart appears ambiguous, prioritize the structured trade fields.
                 - Use the chart image only as supporting visual context.
                 - Scores must be integers from 0 to 100.
+                - Review the trade primarily against the trader's documented strategy, setup, playbook, and execution rules.
+                - User playbook and user rules override any generic strategy-profile assumptions.
+                - Strategy-specific concepts may be used only when StrategyContext supports them.
+                - Do not introduce requirements or terminology from trading methodologies that are not part of the user's strategy, setup, playbook, or explicitly documented trade rationale.
+                - General market-structure, retracement, or liquidity language does not by itself imply any specific methodology.
+                - Unknown or custom strategy context must remain methodology-neutral.
 
                 Trade context:
                 - Trade ID: %s
@@ -40,6 +50,7 @@ public class AiTradeAnalysisPromptBuilder {
                 - Exit price: %s
                 - Entry time: %s
                 - Exit time: %s
+                - Setup: %s
                 - Notes: %s
 
                 Journal text:
@@ -52,7 +63,7 @@ public class AiTradeAnalysisPromptBuilder {
                 - risk management
                 - discipline
                 - entry and exit quality
-                - ICT concepts only when visible in chart or supported by notes: liquidity sweep, displacement, FVG, IFVG, HTF bias
+                - strategy-specific concepts only when present in StrategyContext and supported by trade data, chart evidence, or documented notes
                 - emotional mistakes such as revenge trading, forcing, early entry, moving to breakeven too soon
 
                 Rule violations:
@@ -84,6 +95,7 @@ public class AiTradeAnalysisPromptBuilder {
                   "violations": []
                 }
                 """.formatted(
+                strategyContext.promptBlock(),
                 request == null ? null : request.getTradeId(),
                 trade == null ? null : trade.getSymbol(),
                 trade == null ? null : trade.getSide(),
@@ -93,6 +105,7 @@ public class AiTradeAnalysisPromptBuilder {
                 trade == null ? null : trade.getExitPrice(),
                 trade == null ? null : trade.getEntryTime(),
                 trade == null ? null : trade.getExitTime(),
+                trade == null ? null : trade.getSetup(),
                 trade == null ? null : trade.getNotes(),
                 request == null || request.getJournalText() == null ? "" : request.getJournalText(),
                 hasChartImage ? "YES" : "NO"

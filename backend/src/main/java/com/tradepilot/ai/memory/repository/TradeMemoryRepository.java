@@ -16,12 +16,14 @@ public interface TradeMemoryRepository extends JpaRepository<TradeMemory, UUID> 
     Optional<TradeMemory> findByTradeIdAndUserId(Long tradeId, Long userId);
     Optional<TradeMemory> findByTradeId(Long tradeId);
     List<TradeMemory> findByUserIdAndTradeIdIn(Long userId, List<Long> tradeIds);
+    List<TradeMemory> findByUserIdAndAccountIdAndTradeIdIn(Long userId, Long accountId, List<Long> tradeIds);
     List<TradeMemory> findByUserId(Long userId);
     long countByUserIdAndEmbeddingStatus(Long userId, EmbeddingStatus status);
     long countByEmbeddingStatus(EmbeddingStatus status);
     List<TradeMemory> findByUserIdAndEmbeddingStatusOrderByUpdatedAtAsc(Long userId, EmbeddingStatus status, Pageable pageable);
     List<TradeMemory> findByEmbeddingStatusAndNextRetryAtLessThanEqualOrderByUpdatedAtAsc(EmbeddingStatus status, OffsetDateTime nextRetryAt, Pageable pageable);
     void deleteByTradeIdAndUserId(Long tradeId, Long userId);
+    void deleteByUserIdAndAccountId(Long userId, Long accountId);
     void deleteByUserId(Long userId);
 
     @Query("select min(m.updatedAt) from TradeMemory m where m.embeddingStatus = :status")

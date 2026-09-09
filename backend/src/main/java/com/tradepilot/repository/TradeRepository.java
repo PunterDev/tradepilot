@@ -43,6 +43,16 @@ public interface TradeRepository extends JpaRepository<Trade, Long>, JpaSpecific
             """)
     List<Object[]> countByUserIds(@Param("userIds") List<Long> userIds);
 
+    @Query("""
+            select t.account.id, count(t)
+            from Trade t
+            where t.user = :user
+              and t.account is not null
+            group by t.account.id
+            order by count(t) desc, t.account.id asc
+            """)
+    List<Object[]> countByAccountForUser(@Param("user") User user);
+
     @EntityGraph(attributePaths = {"account"})
     List<Trade> findByUserAndTradeDateBetweenOrderByTradeDateDesc(User user, LocalDate startDate, LocalDate endDate);
 

@@ -18,7 +18,7 @@ public class CorsConfig {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CorsConfig.class);
 
     @Bean
-    public CorsFilter corsFilter(@Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:5174,http://localhost:3000}") String allowedOrigins, Environment environment) {
+    public CorsFilter corsFilter(@Value("${app.cors.allowed-origins:https://www.tradepilotcoach.com}") String allowedOrigins, Environment environment) {
         CorsConfiguration config = new CorsConfiguration();
         List<String> origins = parseAllowedOrigins(allowedOrigins);
         if (origins.contains("*")) {
@@ -29,6 +29,9 @@ public class CorsConfig {
         }
         if (environment.acceptsProfiles(Profiles.of("prod", "production")) && origins.stream().anyMatch(origin -> origin.contains("localhost") || origin.contains("127.0.0.1"))) {
             throw new IllegalStateException("Production CORS cannot use localhost origins. Configure APP_ALLOWED_ORIGINS with deployed frontend origins only.");
+        }
+        if (environment.acceptsProfiles(Profiles.of("prod", "production")) && !origins.contains("https://www.tradepilotcoach.com")) {
+            throw new IllegalStateException("Production CORS must explicitly allow https://www.tradepilotcoach.com.");
         }
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));

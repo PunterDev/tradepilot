@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.ArrayList;
@@ -27,7 +28,7 @@ import java.util.Set;
 public class TradovateCsvParser {
     private static final Logger log = LoggerFactory.getLogger(TradovateCsvParser.class);
     private static final BigDecimal MAX_PNL_RECONCILIATION_DELTA = new BigDecimal("25.00");
-    private static final Set<String> REQUIRED_HEADERS = Set.of(
+    private static final Set<String> DASHBOARD_HEADERS = Set.of(
             "symbol",
             "qty",
             "buyPrice",
@@ -36,7 +37,22 @@ public class TradovateCsvParser {
             "boughtTimestamp",
             "soldTimestamp"
     );
+    private static final Set<String> PERFORMANCE_HEADERS = Set.of(
+            "symbol",
+            "buyFillId",
+            "sellFillId",
+            "qty",
+            "buyPrice",
+            "sellPrice",
+            "pnl",
+            "boughtTimestamp",
+            "soldTimestamp"
+    );
     private static final List<DateTimeFormatter> TIMESTAMP_FORMATTERS = List.of(
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy HH:mm:ss").toFormatter(Locale.US),
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy H:mm:ss").toFormatter(Locale.US),
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy HH:mm:ss").toFormatter(Locale.US),
+            new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy H:mm:ss").toFormatter(Locale.US),
             new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy h:mm:ss a").toFormatter(Locale.US),
             new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yyyy h:mm a").toFormatter(Locale.US),
             new DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("M/d/yy h:mm:ss a").toFormatter(Locale.US),
@@ -57,7 +73,7 @@ public class TradovateCsvParser {
     }
 
     public boolean supports(CsvTable table) {
-        return table.hasHeaders(REQUIRED_HEADERS);
+        return table.hasHeaders(DASHBOARD_HEADERS) || table.hasHeaders(PERFORMANCE_HEADERS);
     }
 
     public ParsedImport parse(String csv, Long accountId, String fileName) {
@@ -72,8 +88,9 @@ public class TradovateCsvParser {
         for (int index = 0; index < table.rows().size(); index++) {
             Map<String, String> row = table.rows().get(index);
             int rowNumber = index + 2;
+            boolean performanceRow = isPerformanceTable(table);
             try {
-                requests.add(parseRow(row, accountId, fileName, rowNumber));
+                requests.add(parseRow(row, accountId, fileName, rowNumber, performanceRow));
             } catch (IllegalArgumentException ex) {
                 invalidRows++;
                 warnings.add(ex.getMessage());
@@ -98,17 +115,29 @@ public class TradovateCsvParser {
         );
     }
 
-    private TradeImportRequest parseRow(Map<String, String> row, Long accountId, String fileName, int rowNumber) {
+    private boolean isPerformanceTable(CsvTable table) {
+        return table.hasHeaders(PERFORMANCE_HEADERS);
+    }
+
+    private TradeImportRequest parseRow(Map<String, String> row, Long accountId, String fileName, int rowNumber, boolean performanceRow) {
         String brokerSymbol = required(row, "symbol", rowNumber);
         String boughtTimestamp = required(row, "boughtTimestamp", rowNumber);
         String soldTimestamp = required(row, "soldTimestamp", rowNumber);
+        String buyFillId = performanceRow ? required(row, "buyFillId", rowNumber) : null;
+        String sellFillId = performanceRow ? required(row, "sellFillId", rowNumber) : null;
         BigDecimal buyPrice = parseDecimal(required(row, "buyPrice", rowNumber), "buyPrice", rowNumber);
         BigDecimal sellPrice = parseDecimal(required(row, "sellPrice", rowNumber), "sellPrice", rowNumber);
         int quantity = parsePositiveInt(required(row, "qty", rowNumber), "qty", rowNumber);
         BigDecimal pnl = parseMoney(required(row, "pnl", rowNumber), rowNumber);
         LocalDateTime boughtAt = parseTimestamp(boughtTimestamp, rowNumber);
         LocalDateTime soldAt = parseTimestamp(soldTimestamp, rowNumber);
+        if (performanceRow && boughtAt.equals(soldAt)) {
+            throw new IllegalArgumentException("Row " + rowNumber + " has equal boughtTimestamp and soldTimestamp; matched Tradovate Performance rows require distinct entry and exit times.");
+        }
         String side = inferSide(row, boughtAt, soldAt);
+        if (performanceRow && "UNKNOWN".equals(side)) {
+            throw new IllegalArgumentException("Row " + rowNumber + " has invalid timestamp ordering; unable to infer Tradovate Performance direction.");
+        }
         boolean isShort = "SHORT".equals(side);
         LocalDateTime entryTime = isShort ? soldAt : boughtAt;
         LocalDateTime exitTime = isShort ? boughtAt : soldAt;
@@ -120,7 +149,18 @@ public class TradovateCsvParser {
             rootSymbol = brokerSymbol.toUpperCase(Locale.ROOT);
         }
         reconcilePnl(rowNumber, brokerSymbol, rootSymbol, side, entryPrice, exitPrice, quantity, pnl);
-        String externalKey = String.join("|",
+        String externalKey = performanceRow ? performanceExternalKey(
+                accountId,
+                brokerSymbol,
+                buyFillId,
+                sellFillId,
+                quantity,
+                buyPrice,
+                sellPrice,
+                pnl,
+                boughtTimestamp,
+                soldTimestamp
+        ) : String.join("|",
                 String.valueOf(accountId),
                 brokerSymbol.toUpperCase(Locale.ROOT),
                 boughtTimestamp,
@@ -130,6 +170,7 @@ public class TradovateCsvParser {
                 sellPrice.stripTrailingZeros().toPlainString(),
                 pnl.stripTrailingZeros().toPlainString()
         );
+        com.tradepilot.enums.SessionType session = classifySession(entryTime, performanceRow, rowNumber, brokerSymbol, boughtTimestamp, soldTimestamp);
         return new TradeImportRequest(
                 accountId,
                 fileName,
@@ -141,7 +182,7 @@ public class TradovateCsvParser {
                 exitTime,
                 side,
                 SetupType.OTHER,
-                sessionClassifier.classifyMarketLocalTimestamp(entryTime),
+                session,
                 entryPrice,
                 exitPrice,
                 quantity,
@@ -151,6 +192,66 @@ public class TradovateCsvParser {
                 brokerSymbol,
                 contract.valid() ? contract.normalizedContractSymbol() : null,
                 contract.valid() ? ContractSymbolSource.IMPORTED.name() : null
+        );
+    }
+
+    private com.tradepilot.enums.SessionType classifySession(LocalDateTime entryTime, boolean performanceRow, int rowNumber, String brokerSymbol, String boughtTimestamp, String soldTimestamp) {
+        if (!performanceRow) {
+            com.tradepilot.enums.SessionType session = sessionClassifier.classifyMarketLocalTimestamp(entryTime);
+            logSessionClassification(rowNumber, brokerSymbol, "TRADOVATE_DASHBOARD", boughtTimestamp, soldTimestamp, entryTime, TradingSessionPolicy.MARKET_ZONE, session);
+            return session;
+        }
+        com.tradepilot.enums.SessionType session = sessionClassifier.classifySourceLocalTimestamp(entryTime, TradingSessionPolicy.TRADOVATE_BROKER_ZONE);
+        logSessionClassification(rowNumber, brokerSymbol, "TRADOVATE_PERFORMANCE", boughtTimestamp, soldTimestamp, entryTime, TradingSessionPolicy.TRADOVATE_BROKER_ZONE, session);
+        return session;
+    }
+
+    private void logSessionClassification(int rowNumber, String brokerSymbol, String sourceFormat, String boughtTimestamp, String soldTimestamp, LocalDateTime entryTime, java.time.ZoneId sourceZone, com.tradepilot.enums.SessionType session) {
+        if (!log.isDebugEnabled() || entryTime == null) {
+            return;
+        }
+        ZonedDateTime sourceDateTime = entryTime.atZone(sourceZone);
+        ZonedDateTime marketDateTime = sourceDateTime.toInstant().atZone(TradingSessionPolicy.MARKET_ZONE);
+        log.debug(
+                "Tradovate session classified. rowNumber={}, symbol={}, sourceFormat={}, rawBoughtTimestamp={}, rawSoldTimestamp={}, sourceZone={}, sourceTimestamp={}, canonicalInstant={}, marketZone={}, marketTimestamp={}, session={}",
+                rowNumber,
+                brokerSymbol,
+                sourceFormat,
+                boughtTimestamp,
+                soldTimestamp,
+                sourceZone,
+                entryTime,
+                sourceDateTime.toInstant(),
+                TradingSessionPolicy.MARKET_ZONE,
+                marketDateTime.toLocalDateTime(),
+                session
+        );
+    }
+
+    private String performanceExternalKey(
+            Long accountId,
+            String brokerSymbol,
+            String buyFillId,
+            String sellFillId,
+            int quantity,
+            BigDecimal buyPrice,
+            BigDecimal sellPrice,
+            BigDecimal pnl,
+            String boughtTimestamp,
+            String soldTimestamp
+    ) {
+        return String.join("|",
+                "TRADOVATE_PERFORMANCE",
+                String.valueOf(accountId),
+                brokerSymbol.toUpperCase(Locale.ROOT),
+                buyFillId,
+                sellFillId,
+                String.valueOf(quantity),
+                buyPrice.stripTrailingZeros().toPlainString(),
+                sellPrice.stripTrailingZeros().toPlainString(),
+                pnl.stripTrailingZeros().toPlainString(),
+                boughtTimestamp,
+                soldTimestamp
         );
     }
 

@@ -9,8 +9,14 @@ import com.tradepilot.ai.memory.service.TradeMemoryErrorClassifier;
 import com.tradepilot.ai.memory.service.TradeMemoryIndexPublisher;
 import com.tradepilot.ai.memory.service.TradeMemoryIndexService;
 import com.tradepilot.ai.memory.service.TradeMemoryPromptService;
+import com.tradepilot.ai.memory.service.TradingMemoryStartupValidator;
 import com.tradepilot.ai.memory.vector.QdrantTradeMemoryClient;
+import com.tradepilot.ai.memory.vector.TradingMemoryVectorClient;
+import com.tradepilot.ai.memory.vector.model.QdrantCollectionValidationResult;
+import com.tradepilot.ai.memory.vector.model.TradeMemoryVectorPayload;
 import com.tradepilot.ai.memory.vector.model.TradingMemorySearchRequest;
+import com.tradepilot.billing.Feature;
+import com.tradepilot.config.FeatureFlagService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -22,7 +28,9 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -86,6 +94,8 @@ class TradingMemoryHardeningTests {
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"key\":\"userId\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"value\":\"42\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"key\":\"accountId\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"value\":\"77\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"must_not\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"key\":\"tradeId\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"value\":\"99\"")))
@@ -97,9 +107,112 @@ class TradingMemoryHardeningTests {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"value\":\"LONG\"")))
                 .andRespond(withSuccess("{\"result\":[]}", MediaType.APPLICATION_JSON));
 
-        client.search(new TradingMemorySearchRequest(42L, List.of(0.1, 0.2), 99L, 5, "IFVG", "NQ", "LONG", null, null));
+        client.search(new TradingMemorySearchRequest(42L, List.of(0.1, 0.2), 99L, 5, 77L, "IFVG", "NQ", "LONG", null, null));
 
         server.verify();
+    }
+
+    @Test
+    void qdrantSearchRejectsMissingUserFilter() {
+        QdrantTradeMemoryClient client = new QdrantTradeMemoryClient(new RestTemplate(), objectMapper, properties());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        client.search(new TradingMemorySearchRequest(null, List.of(0.1, 0.2), 99L, 5, 77L, null, null, null, null, null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires userId filter");
+    }
+
+    @Test
+    void qdrantUpsertPersistsAccountScopeInPayload() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        TradingMemoryProperties properties = properties();
+        properties.setQdrantCreatePayloadIndexes(false);
+        QdrantTradeMemoryClient client = new QdrantTradeMemoryClient(restTemplate, objectMapper, properties);
+        UUID pointId = UUID.randomUUID();
+
+        server.expect(once(), requestTo("http://qdrant.test/collections/tradepilot_trade_memories"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"result":{"config":{"params":{"vectors":{"size":1536,"distance":"Cosine"}}},"payload_schema":{}}}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo("http://qdrant.test/collections/tradepilot_trade_memories/points?wait=true"))
+                .andExpect(method(HttpMethod.PUT))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"userId\":\"42\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"accountId\":\"77\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"tradeId\":\"99\"")))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        client.upsert(pointId, List.of(0.1, 0.2), new TradeMemoryVectorPayload(
+                pointId, 99L, 42L, 77L, "NQ", "LONG", "IFVG", null, null, "NEW_YORK", LocalDate.parse("2026-06-22"), 1
+        ));
+
+        server.verify();
+    }
+
+    @Test
+    void qdrantDeleteAttemptsWhenConfiguredEvenBeforeValidationSucceeds() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        QdrantTradeMemoryClient client = new QdrantTradeMemoryClient(restTemplate, objectMapper, properties());
+        UUID pointId = UUID.randomUUID();
+
+        server.expect(once(), requestTo("http://qdrant.test/collections/tradepilot_trade_memories/points/delete?wait=true"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(pointId.toString())))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        client.delete(pointId);
+
+        server.verify();
+    }
+
+    @Test
+    void qdrantAccountDeleteRequiresUserAndAccountFilters() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        QdrantTradeMemoryClient client = new QdrantTradeMemoryClient(restTemplate, objectMapper, properties());
+
+        server.expect(once(), requestTo("http://qdrant.test/collections/tradepilot_trade_memories/points/delete?wait=true"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"key\":\"userId\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"value\":\"42\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"key\":\"accountId\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"value\":\"77\"")))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        client.deleteByUserIdAndAccountId(42L, 77L);
+
+        server.verify();
+    }
+
+    @Test
+    void startupValidatorSkipsQdrantWhenV2TradingMemoryIsDisabled() {
+        TradingMemoryProperties properties = properties();
+        FeatureFlagService featureFlagService = mock(FeatureFlagService.class);
+        TradingMemoryVectorClient vectorClient = mock(TradingMemoryVectorClient.class);
+        TradingMemoryStartupValidator validator = new TradingMemoryStartupValidator(properties, vectorClient, featureFlagService);
+
+        when(featureFlagService.isEnabled(Feature.TRADING_MEMORY)).thenReturn(false);
+
+        validator.validateOnStartup();
+
+        verify(vectorClient, never()).validateCollection();
+    }
+
+    @Test
+    void startupValidatorValidatesQdrantWhenV2TradingMemoryIsEnabled() {
+        TradingMemoryProperties properties = properties();
+        FeatureFlagService featureFlagService = mock(FeatureFlagService.class);
+        TradingMemoryVectorClient vectorClient = mock(TradingMemoryVectorClient.class);
+        TradingMemoryStartupValidator validator = new TradingMemoryStartupValidator(properties, vectorClient, featureFlagService);
+
+        when(featureFlagService.isEnabled(Feature.TRADING_MEMORY)).thenReturn(true);
+        when(vectorClient.validateCollection()).thenReturn(QdrantCollectionValidationResult.unavailable("boom"));
+
+        validator.validateOnStartup();
+
+        verify(vectorClient).validateCollection();
     }
 
     @Test

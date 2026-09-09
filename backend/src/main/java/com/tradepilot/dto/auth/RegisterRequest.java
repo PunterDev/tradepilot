@@ -1,6 +1,8 @@
 package com.tradepilot.dto.auth;
 
 import jakarta.validation.constraints.*;
+import jakarta.validation.Valid;
+import com.tradepilot.seoanalytics.dto.SeoAttributionRequest;
 
 public class RegisterRequest {
     @NotBlank
@@ -13,6 +15,8 @@ public class RegisterRequest {
     @NotBlank
     @Size(min = 8, max = 100)
     private String password;
+    @Valid
+    private SeoAttributionRequest seoAttribution;
 
     @java.lang.SuppressWarnings("all")
     public RegisterRequest() {
@@ -34,6 +38,11 @@ public class RegisterRequest {
     }
 
     @java.lang.SuppressWarnings("all")
+    public SeoAttributionRequest getSeoAttribution() {
+        return this.seoAttribution;
+    }
+
+    @java.lang.SuppressWarnings("all")
     public void setName(final String name) {
         this.name = name;
     }
@@ -46,6 +55,11 @@ public class RegisterRequest {
     @java.lang.SuppressWarnings("all")
     public void setPassword(final String password) {
         this.password = password;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setSeoAttribution(final SeoAttributionRequest seoAttribution) {
+        this.seoAttribution = seoAttribution;
     }
 
     @java.lang.Override
@@ -64,6 +78,9 @@ public class RegisterRequest {
         final java.lang.Object this$password = this.getPassword();
         final java.lang.Object other$password = other.getPassword();
         if (this$password == null ? other$password != null : !this$password.equals(other$password)) return false;
+        final java.lang.Object this$seoAttribution = this.getSeoAttribution();
+        final java.lang.Object other$seoAttribution = other.getSeoAttribution();
+        if (this$seoAttribution == null ? other$seoAttribution != null : !this$seoAttribution.equals(other$seoAttribution)) return false;
         return true;
     }
 
@@ -83,6 +100,8 @@ public class RegisterRequest {
         result = result * PRIME + ($email == null ? 43 : $email.hashCode());
         final java.lang.Object $password = this.getPassword();
         result = result * PRIME + ($password == null ? 43 : $password.hashCode());
+        final java.lang.Object $seoAttribution = this.getSeoAttribution();
+        result = result * PRIME + ($seoAttribution == null ? 43 : $seoAttribution.hashCode());
         return result;
     }
 

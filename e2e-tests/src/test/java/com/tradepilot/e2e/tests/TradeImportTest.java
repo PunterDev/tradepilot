@@ -17,17 +17,15 @@ import com.tradepilot.e2e.pages.LoginPage;
 class TradeImportTest extends BaseTest {
     @Test
     void topstepCsvShowsAValidPreview() {
-        String email = requiredEnv("TRADEPILOT_TEST_EMAIL");
-        String password = requiredEnv("TRADEPILOT_TEST_PASSWORD");
         rejectProductionMutation("topstepCsvShowsAValidPreview");
         DashboardPage dashboard = new LoginPage(driver, wait)
             .open(baseUrl)
-            .login(email, password);
+            .login(testData.proUser().email(), testData.proUser().password());
 
         assertTrue(dashboard.isDisplayed());
         Path csv = Path.of("src/test/resources/test-data/topstep-orders.csv").toAbsolutePath();
         ImportPage preview = dashboard.importPanel()
-                .selectFirstImportableAccount()
+                .selectAccount(testData.proUser().primaryAccountId())
                 .upload(csv.toString());
 
         assertTrue(preview.broker().contains("TOPSTEP"), "Detected format should be TOPSTEP");

@@ -1,10 +1,13 @@
 package com.tradepilot.dto.ai;
 
+import com.tradepilot.ai.strategy.StrategyContext;
+
 public class AiTradeAnalysisRequest {
     private Long tradeId;
     private String journalText;
     private TradeSnapshot trade;
     private String reviewVersion = "v1";
+    private StrategyContext strategyContext;
 
     @java.lang.SuppressWarnings("all")
     public AiTradeAnalysisRequest() {
@@ -31,6 +34,11 @@ public class AiTradeAnalysisRequest {
     }
 
     @java.lang.SuppressWarnings("all")
+    public StrategyContext getStrategyContext() {
+        return this.strategyContext;
+    }
+
+    @java.lang.SuppressWarnings("all")
     public void setTradeId(final Long tradeId) {
         this.tradeId = tradeId;
     }
@@ -48,6 +56,11 @@ public class AiTradeAnalysisRequest {
     @java.lang.SuppressWarnings("all")
     public void setReviewVersion(final String reviewVersion) {
         this.reviewVersion = reviewVersion;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setStrategyContext(final StrategyContext strategyContext) {
+        this.strategyContext = strategyContext;
     }
 
     @java.lang.Override
@@ -69,6 +82,9 @@ public class AiTradeAnalysisRequest {
         final java.lang.Object this$reviewVersion = this.getReviewVersion();
         final java.lang.Object other$reviewVersion = other.getReviewVersion();
         if (this$reviewVersion == null ? other$reviewVersion != null : !this$reviewVersion.equals(other$reviewVersion)) return false;
+        final java.lang.Object this$strategyContext = this.getStrategyContext();
+        final java.lang.Object other$strategyContext = other.getStrategyContext();
+        if (this$strategyContext == null ? other$strategyContext != null : !this$strategyContext.equals(other$strategyContext)) return false;
         return true;
     }
 
@@ -90,12 +106,14 @@ public class AiTradeAnalysisRequest {
         result = result * PRIME + ($trade == null ? 43 : $trade.hashCode());
         final java.lang.Object $reviewVersion = this.getReviewVersion();
         result = result * PRIME + ($reviewVersion == null ? 43 : $reviewVersion.hashCode());
+        final java.lang.Object $strategyContext = this.getStrategyContext();
+        result = result * PRIME + ($strategyContext == null ? 43 : $strategyContext.hashCode());
         return result;
     }
 
     @java.lang.Override
     @java.lang.SuppressWarnings("all")
     public java.lang.String toString() {
-        return "AiTradeAnalysisRequest(tradeId=" + this.getTradeId() + ", journalText=" + this.getJournalText() + ", trade=" + this.getTrade() + ", reviewVersion=" + this.getReviewVersion() + ")";
+        return "AiTradeAnalysisRequest(tradeId=" + this.getTradeId() + ", journalText=" + this.getJournalText() + ", trade=" + this.getTrade() + ", reviewVersion=" + this.getReviewVersion() + ", strategyContext=" + this.getStrategyContext() + ")";
     }
 }

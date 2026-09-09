@@ -137,6 +137,19 @@ public class UsageLimitService {
         return aggregateCacheService.get(usageCacheKey(user), BILLING_USAGE_TTL, () -> buildUsage(user));
     }
 
+    public Map<String, Integer> getAiFeatureCreditCosts() {
+        Map<String, Integer> costs = new LinkedHashMap<>();
+        costs.put(Feature.AI_TRADE_REVIEW.name(), creditsFor(Feature.AI_TRADE_REVIEW));
+        costs.put(Feature.SESSION_REVIEW.name(), creditsFor(Feature.SESSION_REVIEW));
+        costs.put(Feature.DAILY_COACH.name(), creditsFor(Feature.DAILY_COACH));
+        costs.put(Feature.WEEKLY_COACH.name(), creditsFor(Feature.WEEKLY_COACH));
+        costs.put(Feature.TRADING_DNA.name(), creditsFor(Feature.TRADING_DNA));
+        costs.put(Feature.AI_LEAK_DETECTOR.name(), creditsFor(Feature.AI_LEAK_DETECTOR));
+        costs.put(Feature.PERFORMANCE_TIMELINE.name(), creditsFor(Feature.PERFORMANCE_TIMELINE));
+        costs.put(Feature.PLAYBOOK.name(), creditsFor(Feature.PLAYBOOK));
+        return costs;
+    }
+
     public void invalidateUsageCache(Long userId) {
         cacheInvalidationService.invalidateBillingUsage(userId);
     }
@@ -182,6 +195,7 @@ public class UsageLimitService {
         response.setMonthlyAiCreditsRemaining(monthlyRemaining);
         response.setPurchasedAiCreditsBalance(purchasedBalance);
         response.setTotalAiCreditsAvailable(totalAvailable);
+        response.setFeatureCosts(getAiFeatureCreditCosts());
         return response;
     }
 

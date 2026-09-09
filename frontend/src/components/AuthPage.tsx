@@ -22,7 +22,9 @@ import {
   authPageStyle,
   authPanelStyle,
 } from "./authStyles";
+import { activationSourceFromSearch, persistActivationSource } from "../utils/activationRedirect";
 import Seo from "./Seo";
+import { readSeoAttributionPayload } from "../utils/seoAttribution";
 
 type AuthMode = "login" | "register";
 
@@ -106,11 +108,12 @@ export default function AuthPage({ onAuthenticated, initialMode = "login", sessi
     try {
       const trimmedEmail = email.trim();
       const payload: LoginRequest | RegisterRequest = isRegister
-        ? { name: name.trim(), email: trimmedEmail, password }
+        ? { name: name.trim(), email: trimmedEmail, password, seoAttribution: readSeoAttributionPayload() }
         : { email: trimmedEmail, password };
 
       if (isRegister) {
         const response = await register(payload as RegisterRequest);
+        persistActivationSource(activationSourceFromSearch(location.search));
         setMessage(response.message);
         setMode("login");
         setPassword("");
@@ -156,7 +159,7 @@ export default function AuthPage({ onAuthenticated, initialMode = "login", sessi
 
   return (
     <main style={authPageStyle}>
-      <Seo title={seoTitle} description={seoDescription} path={seoPath} />
+      <Seo title={seoTitle} description={seoDescription} path={seoPath} robots="noindex,nofollow" />
       <AuthIntro />
 
       <section style={authFormShellStyle}>
@@ -256,7 +259,7 @@ export default function AuthPage({ onAuthenticated, initialMode = "login", sessi
             )}
 
             {message && (
-              <div role="status" style={authMessageStyle}>
+              <div role="status" data-testid="auth-message" style={authMessageStyle}>
                 {message}
               </div>
             )}

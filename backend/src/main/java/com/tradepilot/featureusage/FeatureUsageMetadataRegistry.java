@@ -13,11 +13,13 @@ public class FeatureUsageMetadataRegistry {
     private final Map<FeatureKey, FeatureUsageMetadata> metadata = new EnumMap<>(FeatureKey.class);
 
     public FeatureUsageMetadataRegistry() {
+        register(new FeatureUsageMetadata(FeatureKey.ACTIVATION, "First Insight Activation", "Activation", "Signup-to-first-insight onboarding funnel.", FeatureUsageCategory.OTHER, FeatureUsageEventType.USER_ACTION, true, false, false, true, 5, "sparkles", "emerald"));
         register(new FeatureUsageMetadata(FeatureKey.TRADE_DETAIL, "Trade Detail", "Trade Detail", "Opening and reviewing individual trade records.", FeatureUsageCategory.JOURNALING, FeatureUsageEventType.PAGE_VIEW, true, false, false, true, 10, "file-text", "slate"));
         register(new FeatureUsageMetadata(FeatureKey.CALENDAR_VIEW, "PnL Calendar", "Calendar", "Calendar view of historical trading results.", FeatureUsageCategory.ANALYTICS, FeatureUsageEventType.ANALYTICS_VIEW, true, false, false, true, 20, "calendar", "cyan"));
         register(new FeatureUsageMetadata(FeatureKey.ANALYTICS_VIEW, "Analytics", "Analytics", "Core analytics dashboards and breakdowns.", FeatureUsageCategory.ANALYTICS, FeatureUsageEventType.ANALYTICS_VIEW, true, false, false, true, 30, "bar-chart", "blue"));
         register(new FeatureUsageMetadata(FeatureKey.AI_REVIEW, "AI Trade Review", "AI Review", "AI feedback for an individual trade.", FeatureUsageCategory.AI_COACHING, FeatureUsageEventType.AI_GENERATION, false, true, true, false, 40, "sparkles", "emerald"));
         register(new FeatureUsageMetadata(FeatureKey.SESSION_REVIEW, "Session Review", "Session", "Review a full trading session and replay insights.", FeatureUsageCategory.AI_COACHING, FeatureUsageEventType.AI_GENERATION, false, true, true, false, 50, "activity", "teal"));
+        register(new FeatureUsageMetadata(FeatureKey.AI_PRE_ANALYSIS, "AI Pre-Analysis", "Pre-Analysis", "Private-beta chart review against a saved personal playbook.", FeatureUsageCategory.AI_COACHING, FeatureUsageEventType.AI_GENERATION, false, true, false, false, 55, "scan-search", "cyan"));
         register(new FeatureUsageMetadata(FeatureKey.DAILY_COACH, "Daily Coach", "Daily Coach", "Date-specific AI coaching and next-session rule.", FeatureUsageCategory.AI_COACHING, FeatureUsageEventType.AI_GENERATION, false, true, true, false, 60, "sun", "green"));
         register(new FeatureUsageMetadata(FeatureKey.WEEKLY_COACH, "Weekly Coach", "Weekly Coach", "Weekly AI performance review and focus areas.", FeatureUsageCategory.AI_COACHING, FeatureUsageEventType.AI_GENERATION, false, true, true, false, 70, "calendar-days", "lime"));
         register(new FeatureUsageMetadata(FeatureKey.TRADING_DNA, "Trading DNA", "DNA", "Long-term trader profile and behavioral pattern analysis.", FeatureUsageCategory.AI_COACHING, FeatureUsageEventType.AI_GENERATION, false, true, true, false, 80, "fingerprint", "violet"));
@@ -26,6 +28,7 @@ public class FeatureUsageMetadataRegistry {
         register(new FeatureUsageMetadata(FeatureKey.PLAYBOOK, "AI Trading Playbook", "Playbook", "Setup documentation, checklist review, and behavior comparison.", FeatureUsageCategory.PLAYBOOK, FeatureUsageEventType.USER_ACTION, false, true, false, false, 110, "book-open", "teal"));
         register(new FeatureUsageMetadata(FeatureKey.TRADING_MEMORY, "AI Trading Memory", "Memory", "Searches similar reviewed trades and recurring patterns for historical trade context.", FeatureUsageCategory.AI_COACHING, FeatureUsageEventType.USER_ACTION, false, true, false, false, 120, "brain", "cyan"));
         register(new FeatureUsageMetadata(FeatureKey.TRADE_REPLAY, "AI Trade Replay", "Replay", "One-minute futures replay with deterministic trade-management insights.", FeatureUsageCategory.AI_COACHING, FeatureUsageEventType.USER_ACTION, false, true, false, false, 130, "candlestick-chart", "sky"));
+        register(new FeatureUsageMetadata(FeatureKey.EXECUTION_ENGINE, "Execution Engine", "Execution", "Deterministic execution quality scoring and process-review insights.", FeatureUsageCategory.PERFORMANCE, FeatureUsageEventType.USER_ACTION, true, false, false, false, 140, "gauge", "emerald"));
     }
 
     public FeatureUsageMetadata get(FeatureKey feature) {

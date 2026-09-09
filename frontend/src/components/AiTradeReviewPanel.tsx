@@ -1,3 +1,5 @@
+import { useEffect, useState, type CSSProperties } from "react";
+import { getTradeExecution, type ExecutionScore, type PlanComparisonItem } from "../api/executionApi";
 import type { Trade } from "../types/trade";
 import { useAiReviewPolling } from "../hooks/useAiReviewPolling";
 import {
@@ -21,6 +23,8 @@ const subtleTextStyle = {
 };
 
 export default function AiTradeReviewPanel({ trade, journalText }: Props) {
+    const [execution, setExecution] = useState<ExecutionScore | null>(null);
+    const [executionError, setExecutionError] = useState<string | null>(null);
     const {
         review,
         error,
@@ -42,10 +46,28 @@ export default function AiTradeReviewPanel({ trade, journalText }: Props) {
         });
     };
 
+    useEffect(() => {
+        let cancelled = false;
+        setExecution(null);
+        setExecutionError(null);
+        getTradeExecution(trade.id)
+            .then((data) => {
+                if (!cancelled) setExecution(data);
+            })
+            .catch(() => {
+                if (!cancelled) setExecutionError("Execution score is unavailable for this trade.");
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [trade.id]);
+
     const hasReviewContent = Boolean(review?.summary || review?.grade || review?.tags?.length);
 
     return (
         <div style={aiReviewCardStyle}>
+            <ExecutionCard execution={execution} error={executionError} />
+
             <div style={aiReviewHeaderStyle}>
                 <div>
                     <h3>AI Trade Review</h3>
@@ -239,3 +261,121 @@ export default function AiTradeReviewPanel({ trade, journalText }: Props) {
         </div>
     );
 }
+
+function ExecutionCard({ execution, error }: { execution: ExecutionScore | null; error: string | null }) {
+    if (error) {
+        return <div style={executionPanel}><strong>Execution Score</strong><p style={subtleTextStyle}>{error}</p></div>;
+    }
+    if (!execution) {
+        return <div style={executionPanel}><strong>Execution Score</strong><p style={subtleTextStyle}>Loading execution context...</p></div>;
+    }
+    const components = Object.values(execution.components ?? {});
+    return (
+        <section style={executionPanel}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div>
+                    <div style={executionKicker}>Execution Score</div>
+	                    <strong style={{ fontSize: 34, lineHeight: 1 }}>{execution.executionScore ?? "N/A"} / 100</strong>
+	                    <p style={{ ...subtleTextStyle, marginTop: 8 }}>{evidenceLabel(execution)}</p>
+	                </div>
+                <div style={classificationBadge(execution.classification)}>{classificationLabel(execution.classification)}</div>
+            </div>
+	            <p style={{ margin: "14px 0 0", color: "#dbeafe", lineHeight: 1.5 }}>{execution.processOutcomeMessage}</p>
+	            {execution.preAnalysisComparison?.planAvailable && (
+	                <div style={planAlignmentBox}>
+	                    <strong>Plan Alignment</strong>
+	                    <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+	                        {execution.preAnalysisComparison.comparisons
+	                            .filter((item) => item.status !== "NOT_EVALUABLE")
+	                            .slice(0, 3)
+	                            .map((item) => <PlanAlignmentLine key={item.type} item={item} />)}
+	                    </div>
+	                </div>
+	            )}
+	            <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+                {components.map((component) => (
+                    <div key={component.key} style={componentRow}>
+                        <span>{component.label}</span>
+                        <strong>{component.evaluated ? `${component.score}/${component.maxScore}` : "Not evaluated"}</strong>
+                    </div>
+                ))}
+            </div>
+        </section>
+    );
+}
+
+function PlanAlignmentLine({ item }: { item: PlanComparisonItem }) {
+    return (
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, color: "#cbd5e1", fontSize: 13 }}>
+            <span>{humanizeExecution(item.type)}</span>
+            <strong style={{ color: item.status === "VIOLATED" ? "#fda4af" : item.status === "PARTIAL" ? "#fde68a" : "#bbf7d0" }}>
+                {humanizeExecution(item.status)}
+            </strong>
+        </div>
+    );
+}
+
+function evidenceLabel(execution: ExecutionScore) {
+    if (execution.evidenceConfidence === "LOW" || execution.evidenceConfidence === "VERY_LOW") {
+        return "Based on limited execution evidence";
+    }
+    return `Evidence coverage: ${execution.evidenceCoveragePercent}%`;
+}
+
+function classificationLabel(value: string) {
+    return value.toLowerCase().split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function humanizeExecution(value: string) {
+    return value.toLowerCase().split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function classificationBadge(classification: string) {
+    const risky = classification === "UNDISCIPLINED_WIN" || classification === "UNDISCIPLINED_LOSS";
+    const clean = classification === "CLEAN_WIN" || classification === "CLEAN_LOSS";
+    return {
+        borderRadius: 999,
+        padding: "8px 12px",
+        fontSize: 12,
+        fontWeight: 900,
+        letterSpacing: 0,
+        color: clean ? "#bbf7d0" : risky ? "#fecdd3" : "#cbd5e1",
+        background: clean ? "rgba(34,197,94,0.14)" : risky ? "rgba(244,63,94,0.14)" : "rgba(148,163,184,0.12)",
+        border: clean ? "1px solid rgba(34,197,94,0.32)" : risky ? "1px solid rgba(244,63,94,0.32)" : "1px solid rgba(148,163,184,0.24)",
+    };
+}
+
+const executionPanel = {
+    marginBottom: 18,
+    padding: 18,
+    borderRadius: 8,
+    background: "rgba(15,23,42,0.86)",
+    border: "1px solid rgba(96,165,250,0.28)",
+} satisfies CSSProperties;
+
+const executionKicker = {
+    color: "#93c5fd",
+    fontSize: 12,
+    textTransform: "uppercase",
+    fontWeight: 900,
+    marginBottom: 8,
+} satisfies CSSProperties;
+
+const componentRow = {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: "8px 0",
+    borderTop: "1px solid rgba(148,163,184,0.14)",
+    color: "#cbd5e1",
+    fontSize: 13,
+} satisfies CSSProperties;
+
+const planAlignmentBox = {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 8,
+    border: "1px solid rgba(56,189,248,0.22)",
+    background: "rgba(8,47,73,0.22)",
+    color: "#e0f2fe",
+} satisfies CSSProperties;

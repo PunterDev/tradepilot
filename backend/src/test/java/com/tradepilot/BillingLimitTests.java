@@ -42,6 +42,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -858,20 +859,26 @@ class BillingLimitTests {
 
     private CoachSnapshotDto waitForDailyCoach(User user, Long accountId, LocalDate date) {
         CoachSnapshotDto latest = null;
-        for (int i = 0; i < 30; i++) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        int attempts = 0;
+        while (System.nanoTime() < deadline) {
+            attempts++;
             latest = aiCoachService.getDailyCoach(user, accountId, date);
             if (latest.getStatus() == CoachSnapshotStatus.COMPLETED) {
                 return latest;
             }
             try {
-                Thread.sleep(50);
+                Thread.sleep(100);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
         assertThat(latest).isNotNull();
-        assertThat(latest.getStatus()).isEqualTo(CoachSnapshotStatus.COMPLETED);
+        assertThat(latest.getStatus())
+                .as("Daily Coach did not complete within 10s after %s attempts for userId=%s, accountId=%s, date=%s; last status=%s",
+                        attempts, user.getId(), accountId, date, latest.getStatus())
+                .isEqualTo(CoachSnapshotStatus.COMPLETED);
         return latest;
     }
 

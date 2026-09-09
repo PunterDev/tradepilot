@@ -35,6 +35,13 @@ export type AdminUserDetail = {
   auditLogs: AdminRecentUpgrade[];
 };
 
+export type UserFeatureEntitlement = {
+  entitlementKey: "AI_PRE_ANALYSIS_BETA";
+  enabled: boolean;
+  reason?: string | null;
+  updatedAt?: string | null;
+};
+
 export type AdminTradeCleanupRequest = {
   userId: number;
   accountId: number;
@@ -98,6 +105,19 @@ export async function makeUserAdmin(userId: number, reason: string): Promise<Adm
 
 export async function removeUserAdmin(userId: number, reason: string): Promise<AdminUserRecord> {
   const res = await api.post<AdminUserRecord>(`/admin/users/${userId}/remove-admin`, { reason });
+  return res.data;
+}
+
+export async function getUserFeatureEntitlements(userId: number): Promise<UserFeatureEntitlement[]> {
+  const res = await api.get<UserFeatureEntitlement[]>(`/admin/users/${userId}/feature-entitlements`);
+  return res.data;
+}
+
+export async function setUserFeatureEntitlement(
+  userId: number,
+  payload: { entitlementKey: "AI_PRE_ANALYSIS_BETA"; enabled: boolean; reason?: string }
+): Promise<UserFeatureEntitlement> {
+  const res = await api.put<UserFeatureEntitlement>(`/admin/users/${userId}/feature-entitlements`, payload);
   return res.data;
 }
 

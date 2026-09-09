@@ -13,6 +13,7 @@ import com.tradepilot.config.FeatureFlagService;
 import com.tradepilot.billing.Feature;
 import com.tradepilot.entity.AiTradeReview;
 import com.tradepilot.entity.Trade;
+import com.tradepilot.exception.ResourceNotFoundException;
 import com.tradepilot.featureusage.FeatureKey;
 import com.tradepilot.featureusage.FeatureUsageAction;
 import com.tradepilot.featureusage.FeatureUsageEventType;
@@ -70,7 +71,7 @@ public class TradeMemoryIndexService {
         if (!properties.isEnabled() || !featureFlagService.isEnabled(Feature.TRADING_MEMORY)) {
             return null;
         }
-        Trade trade = tradeRepository.findByIdAndUser_Id(tradeId, userId).orElseThrow(() -> new IllegalArgumentException("Trade not found."));
+        Trade trade = tradeRepository.findByIdAndUser_Id(tradeId, userId).orElseThrow(() -> new ResourceNotFoundException("Trade not found"));
         AiTradeReview review = reviewRepository.findTopByUserIdAndTradeIdAndStatusOrderByCreatedAtDesc(userId, tradeId, "COMPLETED").orElse(null);
         TradeMemoryDocument document = builder.build(trade, review);
         TradeMemory memory = memoryRepository.findByTradeIdAndUserId(tradeId, userId).orElseGet(TradeMemory::new);
@@ -86,6 +87,7 @@ public class TradeMemoryIndexService {
         if (memory.getVectorPointId() == null) memory.setVectorPointId(UUID.randomUUID());
         memory.setTradeId(tradeId);
         memory.setUserId(userId);
+        memory.setAccountId(trade.getAccount() == null ? null : trade.getAccount().getId());
         memory.setMemoryVersion(document.memoryVersion());
         memory.setSummary(document.summary());
         memory.setSetupNormalized(document.setupNormalized());
@@ -165,6 +167,17 @@ public class TradeMemoryIndexService {
         memoryRepository.deleteByUserId(userId);
     }
 
+    @Transactional
+    public void deleteAccountMemories(Long userId, Long accountId) {
+        if (userId == null || accountId == null) return;
+        try {
+            vectorClient.deleteByUserIdAndAccountId(userId, accountId);
+        } catch (RuntimeException ex) {
+            log.warn("Trading Memory account vector delete failed. userId={}, accountId={}, reason={}", userId, accountId, ex.getClass().getSimpleName());
+        }
+        memoryRepository.deleteByUserIdAndAccountId(userId, accountId);
+    }
+
     private OffsetDateTime nextRetryAt(TradeMemory memory, TradeMemoryErrorCode code) {
         if (!properties.isRetryEnabled() || !errorClassifier.retryable(code)) return null;
         int attempts = memory.getAttemptCount() == null ? 0 : memory.getAttemptCount();
@@ -184,6 +197,7 @@ public class TradeMemoryIndexService {
                 memory.getVectorPointId(),
                 memory.getTradeId(),
                 memory.getUserId(),
+                memory.getAccountId(),
                 trade.getSymbol(),
                 trade.getSide(),
                 memory.getSetupNormalized(),

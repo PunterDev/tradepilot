@@ -6,6 +6,8 @@ import {
   type SessionReviewTrade,
   type SessionTimelineTrade,
 } from "../api/sessionReviewApi";
+import { getExecutionSession, type ExecutionSessionSummary, type PlanComparisonItem } from "../api/executionApi";
+import { trackFeatureUsage } from "../api/featureUsageApi";
 import type { TradingAccount } from "../api/accountApi";
 import type { SelectedAccountId } from "../types/dashboard";
 import type { TradovateTrade } from "../utils/tradovateCsv";
@@ -28,9 +30,11 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
   const [accountId, setAccountId] = useState<number | "">(defaultAccountId);
   const [date, setDate] = useState(defaultDate);
   const [review, setReview] = useState<SessionReview | null>(null);
+  const [execution, setExecution] = useState<ExecutionSessionSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [trackedExecutionKey, setTrackedExecutionKey] = useState("");
 
   useEffect(() => {
     if (defaultAccountId) setAccountId((current) => current || defaultAccountId);
@@ -45,13 +49,27 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
     void loadReview(accountId, date);
   }, [accountId, date]);
 
+  useEffect(() => {
+    if (!execution || !accountId || !date) return;
+    const key = `${accountId}:${date}`;
+    if (trackedExecutionKey === key) return;
+    setTrackedExecutionKey(key);
+    void trackFeatureUsage("EXECUTION_ENGINE").catch(() => undefined);
+  }, [accountId, date, execution, trackedExecutionKey]);
+
   async function loadReview(nextAccountId: number, nextDate: string) {
     setLoading(true);
     setError(null);
     try {
-      setReview(await getSessionReview(nextAccountId, nextDate));
+      const [nextReview, nextExecution] = await Promise.all([
+        getSessionReview(nextAccountId, nextDate),
+        getExecutionSession(nextAccountId, nextDate).catch(() => null),
+      ]);
+      setReview(nextReview);
+      setExecution(nextExecution);
     } catch {
       setReview(null);
+      setExecution(null);
       setError("Unable to load this session review.");
     } finally {
       setLoading(false);
@@ -63,7 +81,9 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
     setGenerating(true);
     setError(null);
     try {
-      setReview(await generateSessionReview({ accountId, date, forceRefresh }));
+      const nextReview = await generateSessionReview({ accountId, date, forceRefresh });
+      setReview(nextReview);
+      setExecution(await getExecutionSession(accountId, date).catch(() => null));
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to generate the session review.");
     } finally {
@@ -126,6 +146,8 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
               <Metric label="Profit Factor" value={toNumber(review.profitFactor).toFixed(2)} />
               <Metric label="Discipline" value={`${review.sessionDisciplineScore}/100`} tone={review.sessionDisciplineScore >= 80 ? "positive" : "negative"} />
             </div>
+
+            {execution && <SessionExecutionCard execution={execution} />}
 
             {!hasTrades ? (
               <EmptyFilm />
@@ -230,6 +252,78 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
   );
 }
 
+function SessionExecutionCard({ execution }: { execution: ExecutionSessionSummary }) {
+  return (
+    <section style={executionPanel}>
+      <div style={sectionHeader}>
+        <div>
+          <div style={eyebrow}>Execution Engine</div>
+          <h2 style={sectionTitle}>Process Review</h2>
+        </div>
+        <strong style={{ color: "#f8fafc", fontSize: 24 }}>{execution.sessionExecutionScore ?? "N/A"} / 100</strong>
+      </div>
+      <div style={executionMetricGrid}>
+        <ExecutionMiniMetric label="Clean Wins" value={String(execution.cleanWins)} />
+        <ExecutionMiniMetric label="Clean Losses" value={String(execution.cleanLosses)} />
+        <ExecutionMiniMetric label="Undisciplined Wins" value={String(execution.undisciplinedWins)} warning />
+        <ExecutionMiniMetric label="Undisciplined Losses" value={String(execution.undisciplinedLosses)} warning />
+        <ExecutionMiniMetric label="Rule Adherence" value={`${toNumber(execution.ruleAdherencePercent).toFixed(0)}%`} />
+        <ExecutionMiniMetric label="Avoidable Impact" value={`${formatR(execution.avoidableImpactR)}R`} warning={toNumber(execution.avoidableImpactR) < 0} />
+      </div>
+      <p style={{ ...muted, marginTop: 12 }}>{execution.processBreakPoint}</p>
+      {execution.evidenceCoveragePercent != null && (
+        <p style={{ ...muted, marginTop: 8 }}>
+          {execution.evidenceConfidence === "LOW" || execution.evidenceConfidence === "VERY_LOW"
+            ? "Based on limited execution evidence"
+            : `Evidence coverage: ${execution.evidenceCoveragePercent}%`}
+        </p>
+      )}
+      {execution.preAnalysisComparison?.planAvailable && (
+        <div style={planAlignmentBox}>
+          <strong>Plan vs Execution</strong>
+          <div style={{ display: "grid", gap: 7, marginTop: 9 }}>
+            {execution.preAnalysisComparison.comparisons.slice(0, 5).map((item) => (
+              <PlanAlignmentLine key={item.type} item={item} />
+            ))}
+          </div>
+        </div>
+      )}
+      {execution.noTradeEvaluation && execution.noTradeEvaluation.status !== "NOT_APPLICABLE" && (
+        <div style={noTradeBox(execution.noTradeEvaluation.status)}>
+          <strong>Session Decision: {humanize(execution.noTradeEvaluation.status)}</strong>
+          <p>{execution.noTradeEvaluation.message}</p>
+        </div>
+      )}
+      {execution.lossResponse && (
+        <div style={lossResponseBox}>
+          <strong>Loss Response: {humanize(execution.lossResponse.classification)}</strong>
+          <p>{execution.lossResponse.message}</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PlanAlignmentLine({ item }: { item: PlanComparisonItem }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, color: "#cbd5e1", fontSize: 13 }}>
+      <span>{humanize(item.type)}</span>
+      <strong style={{ color: item.status === "VIOLATED" ? "#fda4af" : item.status === "PARTIAL" ? "#fde68a" : item.status === "ALIGNED" ? "#bbf7d0" : "#94a3b8" }}>
+        {humanize(item.status)}
+      </strong>
+    </div>
+  );
+}
+
+function ExecutionMiniMetric({ label, value, warning }: { label: string; value: string; warning?: boolean }) {
+  return (
+    <div style={executionMiniMetric}>
+      <span style={smallLabel}>{label}</span>
+      <strong style={{ color: warning ? "#fda4af" : "#e0f2fe" }}>{value}</strong>
+    </div>
+  );
+}
+
 function Control({ label, children }: { label: string; children: React.ReactNode }) {
   return <label style={{ display: "grid", gap: 7 }}><span style={smallLabel}>{label}</span>{children}</label>;
 }
@@ -302,6 +396,10 @@ function formatTime(value?: string) { if (!value) return "-"; const parsed = new
 function tradeLabel(trade?: SessionTimelineTrade | null, fallback = "-") { return trade ? `${trade.symbol} ${trade.side ?? "UNKNOWN"} · ${formatCurrency(toNumber(trade.pnl))}` : fallback; }
 function holdLabel(trade?: SessionTimelineTrade | null, minutes?: number | null) { return trade ? `${trade.symbol} · ${minutes ?? 0}m` : "-"; }
 function hourLabel(hour?: number | null, pnl?: number | string | null, fallback = "-") { return hour == null ? fallback : `${String(hour).padStart(2, "0")}:00 · ${formatCurrency(toNumber(pnl))}`; }
+function formatR(value?: number | string | null) {
+  const parsed = toNumber(value);
+  return parsed.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+}
 
 const shell: CSSProperties = { marginTop: 8 };
 const topDeck: CSSProperties = { display: "grid", gap: 18 };
@@ -310,6 +408,7 @@ const input: CSSProperties = { width: "100%", padding: "12px 13px", borderRadius
 const headlineGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 };
 const filmLayout: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: 24, alignItems: "start", overflow: "visible" };
 const panel: CSSProperties = { padding: 20, borderRadius: 24, border: "1px solid rgba(56,189,248,0.18)", background: "linear-gradient(180deg, rgba(15,23,42,0.86), rgba(2,6,23,0.68))", boxShadow: "0 24px 80px rgba(0,0,0,0.24)", marginBottom: 18, minHeight: "auto", overflow: "visible" };
+const executionPanel: CSSProperties = { ...panel, borderRadius: 8, borderColor: "rgba(96,165,250,0.28)", background: "rgba(15,23,42,0.86)" };
 const sideRail: CSSProperties = { minWidth: 0, display: "flex", flexDirection: "column", gap: 24, minHeight: "auto", overflow: "visible" };
 const sectionHeader: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" };
 const sectionTitle: CSSProperties = { margin: "4px 0 0", color: "#f8fafc", fontSize: 24, letterSpacing: "-0.02em" };
@@ -331,6 +430,23 @@ const errorBox: CSSProperties = { padding: 13, borderRadius: 14, border: "1px so
 const loadingBox: CSSProperties = { padding: 18, color: "#cbd5e1", borderRadius: 16, border: "1px solid rgba(56,189,248,0.18)", background: "rgba(8,47,73,0.22)" };
 const emptyState: CSSProperties = { display: "grid", gap: 8, padding: 20, borderRadius: 18, border: "1px solid rgba(56,189,248,0.22)", background: "rgba(8,47,73,0.22)", color: "#cbd5e1" };
 const neutralEmptyText: CSSProperties = { color: "#cbd5e1", fontWeight: 850, margin: "12px 0 0" };
+const executionMetricGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginTop: 16 };
+const executionMiniMetric: CSSProperties = { padding: 12, borderRadius: 8, border: "1px solid rgba(148,163,184,0.16)", background: "rgba(2,6,23,0.42)", display: "grid", gap: 6 };
+const lossResponseBox: CSSProperties = { marginTop: 14, padding: 14, borderRadius: 8, border: "1px solid rgba(251,191,36,0.26)", background: "rgba(113,63,18,0.14)", color: "#fde68a" };
+const planAlignmentBox: CSSProperties = { marginTop: 14, padding: 14, borderRadius: 8, border: "1px solid rgba(56,189,248,0.22)", background: "rgba(8,47,73,0.2)", color: "#e0f2fe" };
+
+function noTradeBox(status: string): CSSProperties {
+  const positive = status === "SUCCESSFUL_NO_TRADE";
+  const warning = status === "PLAN_VIOLATED_BY_TRADE";
+  return {
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 8,
+    border: positive ? "1px solid rgba(52,211,153,0.3)" : warning ? "1px solid rgba(251,113,133,0.3)" : "1px solid rgba(148,163,184,0.2)",
+    background: positive ? "rgba(6,78,59,0.22)" : warning ? "rgba(127,29,29,0.2)" : "rgba(15,23,42,0.42)",
+    color: positive ? "#dcfce7" : warning ? "#fecdd3" : "#cbd5e1",
+  };
+}
 
 function gradeCard(grade?: string): CSSProperties {
   const color = grade === "A+" || grade === "A" ? "#6ee7b7" : grade === "B" ? "#bae6fd" : grade === "C" ? "#fde68a" : "#fda4af";

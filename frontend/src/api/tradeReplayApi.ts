@@ -2,6 +2,7 @@ import { api } from "./api";
 
 export type TradeReplayStatus =
   | "PENDING"
+  | "PROCESSING"
   | "WAITING_FOR_MARKET_DATA"
   | "FETCHING_DATA"
   | "ANALYZING"

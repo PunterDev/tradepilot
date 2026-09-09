@@ -4,6 +4,7 @@ import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.dto.account.TradingAccountRequest;
 import com.tradepilot.dto.account.TradingAccountResponse;
 import com.tradepilot.dto.account.TradingAccountRiskRequest;
+import com.tradepilot.ai.memory.service.TradeMemoryIndexService;
 import com.tradepilot.entity.TradingAccount;
 import com.tradepilot.entity.User;
 import com.tradepilot.enums.TradingAccountStatus;
@@ -24,6 +25,7 @@ public class TradingAccountService {
     private final UsageLimitService usageLimitService;
     private final PerformanceCacheInvalidationService cacheInvalidationService;
     private final TradeRepository tradeRepository;
+    private final TradeMemoryIndexService tradeMemoryIndexService;
 
     public TradingAccountResponse create(User user, TradingAccountRequest request) {
         requireUser(user);
@@ -69,6 +71,7 @@ public class TradingAccountService {
         requireUser(user);
         TradingAccount account = tradingAccountRepository.findByIdAndUser(accountId, user).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         importBatchRepository.deleteByAccountIdAndUser(accountId, user);
+        tradeMemoryIndexService.deleteAccountMemories(user.getId(), accountId);
         tradeRepository.deleteByAccountIdAndUser(accountId, user);
         tradingAccountRepository.delete(account);
         cacheInvalidationService.invalidateUserTradeDerivedCaches(user.getId());
@@ -88,11 +91,12 @@ public class TradingAccountService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public TradingAccountService(final TradingAccountRepository tradingAccountRepository, final ImportBatchRepository importBatchRepository, final UsageLimitService usageLimitService, final PerformanceCacheInvalidationService cacheInvalidationService, final TradeRepository tradeRepository) {
+    public TradingAccountService(final TradingAccountRepository tradingAccountRepository, final ImportBatchRepository importBatchRepository, final UsageLimitService usageLimitService, final PerformanceCacheInvalidationService cacheInvalidationService, final TradeRepository tradeRepository, final TradeMemoryIndexService tradeMemoryIndexService) {
         this.tradingAccountRepository = tradingAccountRepository;
         this.importBatchRepository = importBatchRepository;
         this.usageLimitService = usageLimitService;
         this.cacheInvalidationService = cacheInvalidationService;
         this.tradeRepository = tradeRepository;
+        this.tradeMemoryIndexService = tradeMemoryIndexService;
     }
 }

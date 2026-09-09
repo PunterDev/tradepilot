@@ -23,6 +23,7 @@ import {
   type AuthUser,
 } from "./api/authApi";
 import { getFeatureAvailability } from "./api/featureAvailabilityApi";
+import { getPreAnalysisAccess } from "./api/preAnalysisApi";
 import { deleteAccount } from "./api/accountApi";
 import { saveJournal } from "./api/journalApi";
 import AccountsSection from "./components/AccountsSection";
@@ -34,6 +35,7 @@ import VerifyEmailPage from "./components/VerifyEmailPage";
 import LockedFeaturePage, { type LockedFeaturePreview } from "./components/LockedFeaturePage";
 import { useDashboardData } from "./hooks/useDashboardData";
 import { useBillingUsage } from "./hooks/useBillingUsage";
+import { useActivationStatus } from "./hooks/useActivationStatus";
 import type { SelectedAccountId } from "./types/dashboard";
 import AppShell from "./layout/AppShell";
 import {
@@ -53,6 +55,13 @@ import {
 } from "./utils/accountSelection";
 import { creditsRemaining, hasFeature, type Feature } from "./utils/featureAccess";
 import { isFeatureEnabled, type FeatureAvailability, type ReleaseFeatureKey } from "./config/featureFlags";
+import { SeoLandingPage, seoLandingPages } from "./features/marketing/SeoLandingPage";
+import {
+  ACTIVATION_IMPORT_DESTINATION,
+  activationSourceFromSearch,
+  clearPendingActivationSource,
+  readPendingActivationSource,
+} from "./utils/activationRedirect";
 
 const disabledFeatureAvailability: FeatureAvailability = {
   v2FeaturesEnabled: false,
@@ -73,6 +82,7 @@ const FeatureFunnelsPage = lazy(() => import("./features/admin/feature-funnels/F
 const FeatureUsagePage = lazy(() => import("./features/admin/feature-usage/FeatureUsagePage"));
 const ObservabilityPage = lazy(() => import("./features/admin/observability/ObservabilityPage"));
 const RetentionAnalyticsPage = lazy(() => import("./features/admin/retention/RetentionAnalyticsPage"));
+const SeoAnalyticsPage = lazy(() => import("./features/admin/seo/SeoAnalyticsPage"));
 const AdminUsersPage = lazy(() => import("./features/admin/users/AdminUsersPage"));
 const AnalyticsPage = lazy(() => import("./features/analytics/AnalyticsPage"));
 const BillingPage = lazy(() => import("./features/billing/BillingPage"));
@@ -85,10 +95,15 @@ const JourneyPage = lazy(() => import("./features/performance-timeline/JourneyPa
 const PlaybookPage = lazy(() => import("./features/playbook/PlaybookPage"));
 const PlaybookFormPage = lazy(() => import("./features/playbook/PlaybookFormPage"));
 const PlaybookDetailPage = lazy(() => import("./features/playbook/PlaybookDetailPage"));
+const PreAnalysisPage = lazy(() => import("./features/pre-analysis/PreAnalysisPage"));
 const HomePage = lazy(() => import("./features/marketing/HomePage"));
 const ContactPage = lazy(() => import("./features/marketing/ContactPage"));
 const PrivacyPage = lazy(() => import("./features/marketing/PrivacyPage"));
 const TermsPage = lazy(() => import("./features/marketing/TermsPage"));
+const NotFoundPage = lazy(() => import("./features/marketing/NotFoundPage"));
+const TradingExpectancyCalculatorPage = lazy(() => import("./features/marketing/TradingExpectancyCalculatorPage"));
+const OvertradingCalculatorPage = lazy(() => import("./features/marketing/OvertradingCalculatorPage"));
+const RevengeTradingCalculatorPage = lazy(() => import("./features/marketing/RevengeTradingCalculatorPage"));
 const SessionReviewPage = lazy(() => import("./features/session-review/SessionReviewPage"));
 const TradingDnaPage = lazy(() => import("./features/trading-dna/TradingDnaPage"));
 
@@ -366,7 +381,9 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
   const [journalNotes, setJournalNotes] = useState("");
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [featureAvailability, setFeatureAvailability] = useState<FeatureAvailability>(disabledFeatureAvailability);
+  const [preAnalysisAllowed, setPreAnalysisAllowed] = useState(false);
   const billing = useBillingUsage(true);
+  const activation = useActivationStatus(!isAdmin);
   const billingResult = new URLSearchParams(location.search).get("billing");
   const creditCheckoutResult = new URLSearchParams(location.search).get("credits");
   const canAccess = (feature: Feature) => hasFeature(feature, user, billing.usage);
@@ -389,6 +406,20 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         if (active) {
           setFeatureAvailability(disabledFeatureAvailability);
         }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getPreAnalysisAccess()
+      .then((access) => {
+        if (active) setPreAnalysisAllowed(access.allowed);
+      })
+      .catch(() => {
+        if (active) setPreAnalysisAllowed(false);
       });
     return () => {
       active = false;
@@ -506,7 +537,10 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
       setCalendarYear(year);
       setCalendarMonth(month);
     },
-    onTradesSaved: billing.reload,
+    onTradesSaved: () => {
+      void billing.reload();
+      void activation.reload();
+    },
   });
 
   async function handleSaveJournal() {
@@ -584,6 +618,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
       setNewDefaultRiskAmount("");
       setShowAccountForm(false);
       void billing.reload();
+      void activation.reload();
       alert("Account created. You can import CSV into it now.");
     } catch (error) {
       console.error(error);
@@ -693,6 +728,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         user={user}
         accountCount={0}
         usage={billing.usage}
+        preAnalysisAllowed={preAnalysisAllowed}
         onLogout={onLogout}
       >
         <Routes>
@@ -703,6 +739,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           <Route path="/admin/feature-usage" element={<FeatureUsagePage />} />
           <Route path="/admin/feature-funnels" element={<FeatureFunnelsPage />} />
           <Route path="/admin/feature-funnels/:funnelKey" element={<FeatureFunnelsPage />} />
+          <Route path="/admin/analytics/seo" element={<SeoAnalyticsPage />} />
           <Route path="/admin/retention" element={<RetentionAnalyticsPage />} />
           <Route path="/admin/observability" element={<ObservabilityPage />} />
           <Route
@@ -786,6 +823,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
       accountCount={accounts.length}
       usage={billing.usage}
       featureAvailability={featureAvailability}
+      preAnalysisAllowed={preAnalysisAllowed}
       onLogout={onLogout}
     >
       <Routes>
@@ -810,6 +848,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
                 parsedImportCount={parsedImportCount}
                 importPreview={importPreview}
                 importFeedback={importFeedback}
+                activationStatus={activation.status}
                 showAccountForm={showAccountForm}
                 creatingAccount={creatingAccount}
                 newAccountName={newAccountName}
@@ -828,6 +867,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
                 onDefaultRiskAmountChange={setNewDefaultRiskAmount}
                 onCsvUpload={handleCsvUpload}
                 onSaveToDatabase={handleSaveToDatabase}
+                onTradeSelect={setSelectedTradeId}
                 showTradingDnaEntryPoint={isFeatureEnabled("TRADING_DNA", featureAvailability)}
               />
             )
@@ -1005,16 +1045,21 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         <Route
           path="/coach"
           element={
-            canAccess("DAILY_COACH") ? (
+            canAccess("DAILY_COACH") || activation.status?.proPreview?.available ? (
               <CoachPage
                 selectedAccountId={selectedAccountId}
                 usage={billing.usage}
+                activationStatus={activation.status}
                 onUsageChanged={billing.reload}
               />
             ) : (
               renderLockedFeature("DAILY_COACH")
             )
           }
+        />
+        <Route
+          path="/coach/pre-analysis"
+          element={preAnalysisAllowed ? <PreAnalysisPage /> : <Navigate to="/dashboard" replace />}
         />
         <Route
           path="/billing"
@@ -1122,6 +1167,16 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           element={
             user.role === "ADMIN" ? (
               <FeatureFunnelsPage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route
+          path="/admin/analytics/seo"
+          element={
+            user.role === "ADMIN" ? (
+              <SeoAnalyticsPage />
             ) : (
               <NotAuthorized />
             )
@@ -1636,9 +1691,11 @@ function billingBanner(type: "success" | "cancelled"): CSSProperties {
 
 function AuthRoutes() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const prerenderingPublicRoute = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("__prerender");
   const [session, setSession] = useState<AuthSession | null>(null);
   const [authNotice, setAuthNotice] = useState("");
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(!prerenderingPublicRoute);
   const [showIdleWarning, setShowIdleWarning] = useState(false);
   const [idleCountdownSeconds, setIdleCountdownSeconds] = useState(0);
   const warningTimerRef = useRef<number | null>(null);
@@ -1729,6 +1786,11 @@ function AuthRoutes() {
     let cancelled = false;
 
     async function verifyStoredSession() {
+      if (prerenderingPublicRoute) {
+        setCheckingAuth(false);
+        return;
+      }
+
       const stored = getStoredSession();
 
       if (!stored) {
@@ -1768,7 +1830,7 @@ function AuthRoutes() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, prerenderingPublicRoute]);
 
   useEffect(() => {
     function handleExpiredSession(event: Event) {
@@ -1816,11 +1878,16 @@ function AuthRoutes() {
   function handleAuthenticated(nextSession: AuthSession) {
     setAuthNotice("");
     setSession(nextSession);
-    navigate(nextSession.user.role === "ADMIN" ? "/admin" : "/dashboard", { replace: true });
+    const activationSource = activationSourceFromSearch(location.search) ?? readPendingActivationSource();
+    if (activationSource) {
+      clearPendingActivationSource();
+    }
+    navigate(nextSession.user.role === "ADMIN" ? "/admin" : activationSource ? ACTIVATION_IMPORT_DESTINATION : "/dashboard", { replace: true });
   }
 
   function authenticatedPath(nextSession: AuthSession) {
-    return nextSession.user.role === "ADMIN" ? "/admin" : "/dashboard";
+    const activationSource = activationSourceFromSearch(location.search) ?? readPendingActivationSource();
+    return nextSession.user.role === "ADMIN" ? "/admin" : activationSource ? ACTIVATION_IMPORT_DESTINATION : "/dashboard";
   }
 
   function handleLogout() {
@@ -1881,6 +1948,16 @@ function AuthRoutes() {
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/contact" element={<ContactPage />} />
+      <Route path="/tools/trading-expectancy-calculator" element={<TradingExpectancyCalculatorPage />} />
+      <Route path="/tools/overtrading-calculator" element={<OvertradingCalculatorPage />} />
+      <Route path="/tools/revenge-trading-calculator" element={<RevengeTradingCalculatorPage />} />
+      {Object.values(seoLandingPages).map((content) => (
+        <Route
+          key={content.path}
+          path={content.path}
+          element={<SeoLandingPage content={content} />}
+        />
+      ))}
       <Route
         path="/verify-email"
         element={
@@ -1914,11 +1991,7 @@ function AuthRoutes() {
               )}
             </>
           ) : (
-            <Navigate
-              to="/login"
-              replace
-              state={authNotice ? { sessionExpiredMessage: authNotice } : undefined}
-            />
+            <UnauthenticatedFallback authNotice={authNotice} />
           )
         }
       />
@@ -1926,14 +1999,102 @@ function AuthRoutes() {
   );
 }
 
+const privateRoutePrefixes = [
+  "/admin",
+  "/analytics",
+  "/billing",
+  "/calendar",
+  "/coach",
+  "/dashboard",
+  "/dev-tools",
+  "/journey",
+  "/leak-detector",
+  "/playbook",
+  "/session-review",
+  "/sessions",
+  "/trades",
+  "/trading-dna",
+];
+
+function UnauthenticatedFallback({ authNotice }: { authNotice: string }) {
+  const location = useLocation();
+  const isPrivateRoute = privateRoutePrefixes.some(
+    (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`)
+  );
+
+  if (isPrivateRoute) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={authNotice ? { sessionExpiredMessage: authNotice } : undefined}
+      />
+    );
+  }
+
+  return <NotFoundPage />;
+}
+
 function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <Suspense fallback={<RouteLoadingState />}>
         <AuthRoutes />
       </Suspense>
     </BrowserRouter>
   );
+}
+
+function ScrollToTop() {
+  const { hash, pathname } = useLocation();
+
+  useEffect(() => {
+    if (hash) {
+      let cancelled = false;
+      let attempts = 0;
+      let timeout: number | null = null;
+
+      const scrollToHashTarget = () => {
+        if (cancelled) return;
+
+        const target = document.getElementById(hash.slice(1));
+        if (target) {
+          target.scrollIntoView({ block: "start", behavior: "auto" });
+          return;
+        }
+
+        attempts += 1;
+        if (attempts < 20) {
+          timeout = window.setTimeout(scrollToHashTarget, 25);
+        }
+      };
+
+      scrollToHashTarget();
+
+      return () => {
+        cancelled = true;
+        if (timeout !== null) {
+          window.clearTimeout(timeout);
+        }
+      };
+    }
+
+    const scrollToRouteTop = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    };
+
+    scrollToRouteTop();
+    const frame = window.requestAnimationFrame(scrollToRouteTop);
+    const timeout = window.setTimeout(scrollToRouteTop, 0);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
+  }, [hash, pathname]);
+
+  return null;
 }
 
 function RouteLoadingState() {

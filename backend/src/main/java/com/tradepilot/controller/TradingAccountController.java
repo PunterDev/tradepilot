@@ -4,6 +4,10 @@ import com.tradepilot.dto.account.TradingAccountRequest;
 import com.tradepilot.dto.account.TradingAccountResponse;
 import com.tradepilot.dto.account.TradingAccountRiskRequest;
 import com.tradepilot.entity.User;
+import com.tradepilot.featureusage.FeatureKey;
+import com.tradepilot.featureusage.FeatureUsageAction;
+import com.tradepilot.featureusage.FeatureUsageEventType;
+import com.tradepilot.featureusage.FeatureUsageService;
 import com.tradepilot.service.TradingAccountService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -15,10 +19,13 @@ import java.util.List;
 @RequestMapping("/api/accounts")
 public class TradingAccountController {
     private final TradingAccountService tradingAccountService;
+    private final FeatureUsageService featureUsageService;
 
     @PostMapping
     public TradingAccountResponse create(@AuthenticationPrincipal User user, @Valid @RequestBody TradingAccountRequest request) {
-        return tradingAccountService.create(user, request);
+        TradingAccountResponse response = tradingAccountService.create(user, request);
+        featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.TRADING_ACCOUNT_CREATED, FeatureUsageEventType.USER_ACTION, response.getId(), "TRADING_ACCOUNT", response.getId().toString(), "accounts", null);
+        return response;
     }
 
     @GetMapping
@@ -38,7 +45,8 @@ public class TradingAccountController {
     }
 
     @java.lang.SuppressWarnings("all")
-    public TradingAccountController(final TradingAccountService tradingAccountService) {
+    public TradingAccountController(final TradingAccountService tradingAccountService, final FeatureUsageService featureUsageService) {
         this.tradingAccountService = tradingAccountService;
+        this.featureUsageService = featureUsageService;
     }
 }

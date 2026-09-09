@@ -24,13 +24,23 @@ public record FeatureAdoptionResponse(
         double overallAdoptionRate,
         double activeUserAdoptionRate,
         double eventsPerUser,
+        long repeatUsers,
         double repeatUsageRate,
         long previousPeriodUsers,
         long previousPeriodEvents,
+        long previousPeriodActiveEvents,
+        long previousPeriodPassiveEvents,
+        long previousPeriodAiGenerations,
+        long previousPeriodRepeatUsers,
+        double previousPeriodRepeatUsageRate,
         double userGrowthPercent,
         double eventGrowthPercent,
+        double adoptionDeltaPercentagePoints,
+        double activeActionGrowthPercent,
+        Double passiveToActiveConversionRate,
         double engagementScore,
         double opportunityScore,
+        String healthStatus,
         String status
 ) {
     public long getUniqueUsers() { return uniqueUsers; }

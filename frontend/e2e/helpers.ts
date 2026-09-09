@@ -50,13 +50,18 @@ export async function getDevSession(request: APIRequestContext) {
   }
 
   const auth = (await response.json()) as AuthResponse;
-  const meResponse = await request.get(`${apiBaseUrl}/auth/me`, {
-    headers: {
-      Authorization: `Bearer ${auth.token}`,
-    },
-    failOnStatusCode: false,
-    timeout: 5000,
-  });
+  let meResponse;
+  try {
+    meResponse = await request.get(`${apiBaseUrl}/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${auth.token}`,
+      },
+      failOnStatusCode: false,
+      timeout: 5000,
+    });
+  } catch {
+    return null;
+  }
 
   if (!meResponse.ok()) {
     return null;

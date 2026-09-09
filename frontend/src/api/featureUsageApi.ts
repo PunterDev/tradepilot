@@ -8,10 +8,15 @@ export type FeatureKey =
   | "AI_LEAK_DETECTOR"
   | "PERFORMANCE_TIMELINE"
   | "PLAYBOOK"
+  | "TRADING_MEMORY"
   | "SESSION_REVIEW"
+  | "AI_PRE_ANALYSIS"
+  | "TRADE_REPLAY"
+  | "EXECUTION_ENGINE"
   | "TRADE_DETAIL"
   | "CALENDAR_VIEW"
-  | "ANALYTICS_VIEW";
+  | "ANALYTICS_VIEW"
+  | "ACTIVATION";
 
 export type FeatureUsageCategory =
   | "JOURNALING"
@@ -44,6 +49,14 @@ export type FeatureUsageRange =
   | "CUSTOM";
 
 export type FeatureUsageActivity = "ALL" | "ACTIVE" | "PASSIVE" | "AI";
+
+export type FeatureUsageComparison = {
+  currentValue: number;
+  previousValue: number;
+  changePercent: number;
+  percentagePointDelta: number;
+  direction: "UP" | "DOWN" | "FLAT" | "NEW" | string;
+};
 
 export type FeatureUsageFilters = {
   range?: FeatureUsageRange;
@@ -92,13 +105,23 @@ export type FeatureAdoption = {
   overallAdoptionRate: number;
   activeUserAdoptionRate: number;
   eventsPerUser: number;
+  repeatUsers: number;
   repeatUsageRate: number;
   previousPeriodUsers: number;
   previousPeriodEvents: number;
+  previousPeriodActiveEvents: number;
+  previousPeriodPassiveEvents: number;
+  previousPeriodAiGenerations: number;
+  previousPeriodRepeatUsers: number;
+  previousPeriodRepeatUsageRate: number;
   userGrowthPercent: number;
   eventGrowthPercent: number;
+  adoptionDeltaPercentagePoints: number;
+  activeActionGrowthPercent: number;
+  passiveToActiveConversionRate?: number | null;
   engagementScore: number;
   opportunityScore: number;
+  healthStatus: string;
   status: string;
 };
 
@@ -112,6 +135,9 @@ export type FeatureUsageSummary = {
   activeUsers30d: number;
   activeUsers: number;
   totalEvents: number;
+  activeActions: number;
+  passiveViews: number;
+  aiGenerations: number;
   uniqueFeaturesUsed: number;
   avgEventsPerActiveUser: number;
   avgUniqueFeaturesPerActiveUser: number;
@@ -120,13 +146,37 @@ export type FeatureUsageSummary = {
   leastUsedFeature?: FeatureKey | null;
   highestVolumeFeature?: FeatureKey | null;
   highestAdoptionFeature?: FeatureKey | null;
+  highestActiveAdoptionFeature?: FeatureKey | null;
   lowestAdoptionFeature?: FeatureKey | null;
+  activeUsersComparison?: FeatureUsageComparison | null;
+  activeActionsComparison?: FeatureUsageComparison | null;
+  passiveViewsComparison?: FeatureUsageComparison | null;
+  aiGenerationsComparison?: FeatureUsageComparison | null;
+  featuresAdoptedComparison?: FeatureUsageComparison | null;
   insights: FeatureUsageInsight[];
+  activationFunnel: ActivationFunnelMetrics;
   dataQuality: FeatureUsageDataQualityIssue[];
   metadata: FeatureUsageMetadata[];
   selectedStartDate: string;
   selectedEndDate: string;
+  previousStartDate?: string;
+  previousEndDate?: string;
   generatedAt: string;
+};
+
+export type ActivationFunnelMetrics = {
+  signedUpUsers: number;
+  importedUsers: number;
+  firstInsightUsers: number;
+  secondAiFeatureUsers: number;
+  proConversionUsers: number;
+  medianSignupToFirstImportMinutes?: number | null;
+  medianFirstImportToFirstInsightMinutes?: number | null;
+  medianSignupToFirstInsightMinutes?: number | null;
+  signupToImportRate: number;
+  importToFirstInsightRate: number;
+  firstInsightToSecondAiRate: number;
+  firstInsightToProRate: number;
 };
 
 export type FeatureUsageTrends = {

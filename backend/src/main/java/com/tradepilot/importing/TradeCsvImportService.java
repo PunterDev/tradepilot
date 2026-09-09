@@ -6,7 +6,13 @@ import com.tradepilot.dto.trade.TradeImportRequest;
 import com.tradepilot.dto.trade.TradeImportSaveResponse;
 import com.tradepilot.dto.trade.TradeResponse;
 import com.tradepilot.entity.User;
+import com.tradepilot.featureusage.FeatureKey;
+import com.tradepilot.featureusage.FeatureUsageAction;
+import com.tradepilot.featureusage.FeatureUsageEventType;
+import com.tradepilot.featureusage.FeatureUsageRepository;
+import com.tradepilot.featureusage.FeatureUsageService;
 import com.tradepilot.repository.TradeRepository;
+import com.tradepilot.seoanalytics.SeoAnalyticsService;
 import com.tradepilot.service.TradeService;
 import com.tradepilot.service.TradingAccountService;
 import com.tradepilot.tradereplay.service.TradeReplayService;
@@ -29,6 +35,9 @@ public class TradeCsvImportService {
     private final TradeRepository tradeRepository;
     private final TradeService tradeService;
     private final TradeReplayService tradeReplayService;
+    private final FeatureUsageService featureUsageService;
+    private final FeatureUsageRepository featureUsageRepository;
+    private final SeoAnalyticsService seoAnalyticsService;
 
     public TradeCsvImportService(
             TopstepCsvParser topstepCsvParser,
@@ -36,7 +45,10 @@ public class TradeCsvImportService {
             TradingAccountService tradingAccountService,
             TradeRepository tradeRepository,
             TradeService tradeService,
-            TradeReplayService tradeReplayService
+            TradeReplayService tradeReplayService,
+            FeatureUsageService featureUsageService,
+            FeatureUsageRepository featureUsageRepository,
+            SeoAnalyticsService seoAnalyticsService
     ) {
         this.topstepCsvParser = topstepCsvParser;
         this.tradovateCsvParser = tradovateCsvParser;
@@ -44,21 +56,41 @@ public class TradeCsvImportService {
         this.tradeRepository = tradeRepository;
         this.tradeService = tradeService;
         this.tradeReplayService = tradeReplayService;
+        this.featureUsageService = featureUsageService;
+        this.featureUsageRepository = featureUsageRepository;
+        this.seoAnalyticsService = seoAnalyticsService;
     }
 
     public TradeImportPreviewResponse preview(User user, Long accountId, MultipartFile file) {
-        ParsedImport parsed = parse(user, accountId, file);
-        return toPreview(user, accountId, parsed);
+        featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_STARTED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", null);
+        try {
+            ParsedImport parsed = parse(user, accountId, file);
+            return toPreview(user, accountId, parsed);
+        } catch (RuntimeException ex) {
+            featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_FAILED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"stage\":\"preview\"}");
+            throw ex;
+        }
     }
 
     public TradeImportSaveResponse save(User user, Long accountId, MultipartFile file) {
-        ParsedImport parsed = parse(user, accountId, file);
-        TradeImportPreviewResponse preview = toPreview(user, accountId, parsed);
-        List<TradeResponse> saved = parsed.trades().isEmpty()
-                ? List.of()
-                : tradeService.importBrokerTrades(user, parsed.trades());
-        tradeReplayService.initializeAfterCommit(tradeService.getImportedTradesForReplayInitialization(user, saved.stream().map(TradeResponse::getId).toList()));
-        return new TradeImportSaveResponse(preview, saved, saved.size());
+        boolean firstImportAlreadyTracked = featureUsageRepository.existsByUserIdAndAction(user.getId(), FeatureUsageAction.FIRST_IMPORT_COMPLETED);
+        try {
+            ParsedImport parsed = parse(user, accountId, file);
+            TradeImportPreviewResponse preview = toPreview(user, accountId, parsed);
+            List<TradeResponse> saved = parsed.trades().isEmpty()
+                    ? List.of()
+                    : tradeService.importBrokerTrades(user, parsed.trades());
+            tradeReplayService.initializeAfterCommit(tradeService.getImportedTradesForReplayInitialization(user, saved.stream().map(TradeResponse::getId).toList()));
+            featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"savedRows\":" + saved.size() + "}");
+            if (!firstImportAlreadyTracked && !saved.isEmpty()) {
+                featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.FIRST_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"savedRows\":" + saved.size() + "}");
+                seoAnalyticsService.markFirstImportCompleted(user, null);
+            }
+            return new TradeImportSaveResponse(preview, saved, saved.size());
+        } catch (RuntimeException ex) {
+            featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_FAILED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"stage\":\"save\"}");
+            throw ex;
+        }
     }
 
     private ParsedImport parse(User user, Long accountId, MultipartFile file) {
@@ -147,6 +179,9 @@ public class TradeCsvImportService {
     }
 
     private String safeFileName(MultipartFile file) {
+        if (file == null) {
+            return "upload.csv";
+        }
         String name = file.getOriginalFilename();
         if (name == null || name.isBlank()) {
             return "upload.csv";

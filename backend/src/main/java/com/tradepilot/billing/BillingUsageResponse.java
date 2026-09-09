@@ -14,6 +14,7 @@ public class BillingUsageResponse {
     private Integer monthlyAiCreditsRemaining;
     private Integer purchasedAiCreditsBalance;
     private Integer totalAiCreditsAvailable;
+    private Map<String, Integer> featureCosts;
 
     @java.lang.SuppressWarnings("all")
     public BillingUsageResponse() {
@@ -75,6 +76,11 @@ public class BillingUsageResponse {
     }
 
     @java.lang.SuppressWarnings("all")
+    public Map<String, Integer> getFeatureCosts() {
+        return this.featureCosts;
+    }
+
+    @java.lang.SuppressWarnings("all")
     public void setPlan(final PlanType plan) {
         this.plan = plan;
     }
@@ -127,6 +133,11 @@ public class BillingUsageResponse {
     @java.lang.SuppressWarnings("all")
     public void setTotalAiCreditsAvailable(final Integer totalAiCreditsAvailable) {
         this.totalAiCreditsAvailable = totalAiCreditsAvailable;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setFeatureCosts(final Map<String, Integer> featureCosts) {
+        this.featureCosts = featureCosts;
     }
 
     @java.lang.Override

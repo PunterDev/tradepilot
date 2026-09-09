@@ -54,4 +54,14 @@ class CorsConfigTests {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("wildcard origin cannot be used");
     }
+
+    @Test
+    void productionRequiresCanonicalFrontendOrigin() {
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("production");
+
+        assertThatThrownBy(() -> new CorsConfig().corsFilter("https://tradepilotcoach.com", environment))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("https://www.tradepilotcoach.com");
+    }
 }

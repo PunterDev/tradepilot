@@ -17,16 +17,21 @@ import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
+import com.tradepilot.e2e.support.E2eTestData;
+import com.tradepilot.e2e.support.E2eTestDataSupport;
+
 public abstract class BaseTest {
     protected WebDriver driver;
     protected WebDriverWait wait;
     protected String baseUrl;
+    protected E2eTestData testData;
 
     @RegisterExtension
     FailureArtifactWatcher failureArtifacts = new FailureArtifactWatcher();
 
     @BeforeEach
     void setUp() {
+        testData = E2eTestDataSupport.prepare();
         baseUrl = E2eConfig.baseUrl();
         ChromeOptions options = new ChromeOptions();
         if (E2eConfig.headless()) {

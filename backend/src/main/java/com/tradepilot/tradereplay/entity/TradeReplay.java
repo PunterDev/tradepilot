@@ -128,4 +128,5 @@ public class TradeReplay {
     public void setReflectionQuestion(String reflectionQuestion) { this.reflectionQuestion = reflectionQuestion; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }

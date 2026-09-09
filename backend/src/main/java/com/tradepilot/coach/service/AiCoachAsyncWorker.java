@@ -1,5 +1,6 @@
 package com.tradepilot.coach.service;
 
+import com.tradepilot.activation.UserFeaturePreviewService;
 import com.tradepilot.coach.dto.CoachAiResponse;
 import com.tradepilot.coach.dto.CoachDeterministicSummary;
 import com.tradepilot.coach.entity.AiCoachSnapshot;
@@ -17,6 +18,7 @@ public class AiCoachAsyncWorker {
     private final CoachAiGeneratorService aiGeneratorService;
     private final CoachHashService hashService;
     private final CoachOutputConsistencyService consistencyService;
+    private final UserFeaturePreviewService previewService;
 
     @Async("aiTaskExecutor")
     public void generateAsync(Long snapshotId) {
@@ -44,21 +46,24 @@ public class AiCoachAsyncWorker {
             snapshot.setStatus(CoachSnapshotStatus.COMPLETED);
             snapshot.setErrorMessage(null);
             repository.save(snapshot);
+            previewService.consumeReservedWeeklyCoachPreview(snapshot.getUserId(), snapshot.getId());
             log.info("AI Coach generation completed. snapshotId={}", snapshot.getId());
         } catch (Exception e) {
             log.error("AI Coach generation failed. snapshotId={}", snapshotId, e);
             snapshot.setStatus(CoachSnapshotStatus.FAILED);
             snapshot.setErrorMessage(e.getMessage());
             repository.save(snapshot);
+            previewService.releaseReservedWeeklyCoachPreview(snapshot.getUserId(), snapshot.getId());
         }
     }
 
     @java.lang.SuppressWarnings("all")
-    public AiCoachAsyncWorker(final AiCoachSnapshotRepository repository, final CoachAnalyticsAggregator analyticsAggregator, final CoachAiGeneratorService aiGeneratorService, final CoachHashService hashService, final CoachOutputConsistencyService consistencyService) {
+    public AiCoachAsyncWorker(final AiCoachSnapshotRepository repository, final CoachAnalyticsAggregator analyticsAggregator, final CoachAiGeneratorService aiGeneratorService, final CoachHashService hashService, final CoachOutputConsistencyService consistencyService, final UserFeaturePreviewService previewService) {
         this.repository = repository;
         this.analyticsAggregator = analyticsAggregator;
         this.aiGeneratorService = aiGeneratorService;
         this.hashService = hashService;
         this.consistencyService = consistencyService;
+        this.previewService = previewService;
     }
 }

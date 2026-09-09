@@ -1,4 +1,5 @@
 import { api } from "./axios";
+import type { ExecutionSessionSummary } from "./executionApi";
 
 export type SessionReviewTrade = {
   id: number;
@@ -118,6 +119,7 @@ export type SessionReview = {
   creditsConsumed?: number;
   previousTradingDay?: string | null;
   nextTradingDay?: string | null;
+  execution?: ExecutionSessionSummary | null;
 };
 
 export async function getSessionReview(accountId: number, date: string) {

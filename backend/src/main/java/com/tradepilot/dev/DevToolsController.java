@@ -1,6 +1,7 @@
 package com.tradepilot.dev;
 
 import com.tradepilot.entity.User;
+import com.tradepilot.dev.e2e.E2eTestDataResponse;
 import com.tradepilot.tradereplay.dto.TradeReplayResetResult;
 import com.tradepilot.tradereplay.service.TradeReplayService;
 import org.springframework.http.HttpStatus;
@@ -35,6 +36,12 @@ public class DevToolsController {
     ) {
         assertEnabled();
         return demoDataService.reseedDemoFixtures(user, dryRun);
+    }
+
+    @PostMapping("/e2e/prepare")
+    public E2eTestDataResponse prepareE2eTestData() {
+        assertEnabled();
+        return demoDataService.prepareE2eTestData();
     }
 
     @DeleteMapping("/trades/{tradeId}/replay")

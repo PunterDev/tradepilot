@@ -12,6 +12,7 @@ import {
   type TradeReplayResponse,
   type TradeReplayStatus,
 } from "../../api/tradeReplayApi";
+import { isTradeReplayProcessingStatus } from "./tradeReplayStatus";
 
 type Props = {
   tradeId: number;
@@ -20,8 +21,6 @@ type Props = {
 
 const POLL_INTERVAL_MS = 2500;
 const MAX_POLL_ATTEMPTS = 36;
-
-const processingStatuses: Array<TradeReplayStatus | null> = ["PENDING", "FETCHING_DATA", "ANALYZING"];
 
 export default function AITradeReplayCard({ tradeId, enabled }: Props) {
   const [data, setData] = useState<TradeReplayResponse | null>(null);
@@ -48,7 +47,7 @@ export default function AITradeReplayCard({ tradeId, enabled }: Props) {
       .then((next) => {
         if (!cancelled) {
           setData(next);
-          if (processingStatuses.includes(next.status)) startPolling();
+          if (isTradeReplayProcessingStatus(next.status)) startPolling();
         }
       })
       .catch(() => {
@@ -115,7 +114,7 @@ export default function AITradeReplayCard({ tradeId, enabled }: Props) {
   const activeInsight = primaryInsights[activeInsightIndex] ?? primaryInsights[0] ?? null;
   const status = data?.status ?? null;
   const ready = status === "READY";
-  const processing = processingStatuses.includes(status);
+  const processing = isTradeReplayProcessingStatus(status);
   const demoReplayUnavailable = status === "DEMO_REPLAY_UNAVAILABLE";
 
   async function requestReplay(force = false) {
@@ -124,7 +123,7 @@ export default function AITradeReplayCard({ tradeId, enabled }: Props) {
     try {
       const next = force ? await regenerateTradeReplay(tradeId) : await generateTradeReplay(tradeId);
       setData(next);
-      if (processingStatuses.includes(next.status)) startPolling();
+      if (isTradeReplayProcessingStatus(next.status)) startPolling();
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to request trade replay.");
     } finally {
@@ -139,7 +138,7 @@ export default function AITradeReplayCard({ tradeId, enabled }: Props) {
     try {
       const next = await confirmReplayContract(tradeId, selectedContract);
       setData(next);
-      if (processingStatuses.includes(next.status)) startPolling();
+      if (isTradeReplayProcessingStatus(next.status)) startPolling();
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to confirm contract.");
     } finally {
@@ -160,7 +159,7 @@ export default function AITradeReplayCard({ tradeId, enabled }: Props) {
       try {
         const latest = await getTradeReplay(tradeId);
         setData(latest);
-        if (!processingStatuses.includes(latest.status)) stopPolling();
+        if (!isTradeReplayProcessingStatus(latest.status)) stopPolling();
       } catch {
         stopPolling();
         setError("Replay status could not be refreshed.");
@@ -198,7 +197,7 @@ export default function AITradeReplayCard({ tradeId, enabled }: Props) {
           )}
           {!demoReplayUnavailable && data?.replayId && (
             <button type="button" style={secondaryButton(loading)} disabled={loading || processing} onClick={() => void requestReplay(true)}>
-              Regenerate
+              {status === "FAILED" ? "Try Again" : "Regenerate"}
             </button>
           )}
         </div>

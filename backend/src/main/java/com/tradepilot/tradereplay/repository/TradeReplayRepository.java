@@ -5,9 +5,11 @@ import com.tradepilot.tradereplay.entity.TradeReplayStatus;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -15,6 +17,10 @@ import java.util.Optional;
 public interface TradeReplayRepository extends JpaRepository<TradeReplay, Long> {
     @EntityGraph(attributePaths = {"trade", "trade.account", "user"})
     Optional<TradeReplay> findByUserIdAndTradeId(Long userId, Long tradeId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from TradeReplay r join fetch r.trade t join fetch r.user u left join fetch t.account where r.id = :id")
+    Optional<TradeReplay> findByIdForUpdate(@Param("id") Long id);
 
     boolean existsByUserIdAndTradeId(Long userId, Long tradeId);
 

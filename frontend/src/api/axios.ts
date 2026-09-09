@@ -1,6 +1,6 @@
 import axios from "axios";
-
-export const TOKEN_STORAGE_KEY = "tradepilot_token";
+import { getAuthItem, removeAuthItem, TOKEN_STORAGE_KEY, USER_STORAGE_KEY } from "./authStorage";
+export { TOKEN_STORAGE_KEY } from "./authStorage";
 
 export const API_PREFIX = "/api/v1";
 
@@ -30,7 +30,7 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const token = getAuthItem(TOKEN_STORAGE_KEY);
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -48,8 +48,8 @@ api.interceptors.response.use(
       requestUrl.includes("/auth/login") || requestUrl.includes("/auth/register");
 
     if (status === 401 && !isAuthRequest) {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
-      localStorage.removeItem("tradepilot_user");
+      removeAuthItem(TOKEN_STORAGE_KEY);
+      removeAuthItem(USER_STORAGE_KEY);
       window.dispatchEvent(
         new CustomEvent("tradepilot:auth-expired", {
           detail: { reason: "expired" },

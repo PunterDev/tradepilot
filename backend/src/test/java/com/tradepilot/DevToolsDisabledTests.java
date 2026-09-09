@@ -21,7 +21,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@TestPropertySource(properties = "app.dev-tools-enabled=false")
+@TestPropertySource(properties = {
+        "app.dev-tools-enabled=false",
+        "app.dev-auth.enabled=true"
+})
 class DevToolsDisabledTests {
     @Autowired MockMvc mockMvc;
     @Autowired UserRepository userRepository;
@@ -48,6 +51,9 @@ class DevToolsDisabledTests {
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/dev/trades/123/replay")
                         .header("Authorization", "Bearer " + jwtService.generateToken(user)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/dev/e2e/prepare"))
                 .andExpect(status().isForbidden());
     }
 

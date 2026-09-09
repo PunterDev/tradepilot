@@ -8,6 +8,7 @@ import java.util.List;
 
 public final class TradingSessionPolicy {
     public static final ZoneId MARKET_ZONE = ZoneId.of("America/New_York");
+    public static final ZoneId TRADOVATE_BROKER_ZONE = ZoneId.of("America/Chicago");
 
     public static final LocalTime ASIA_START = LocalTime.of(18, 0);
     public static final LocalTime ASIA_END = LocalTime.of(3, 0);

@@ -6,6 +6,7 @@ E2E_DIR="$ROOT_DIR/e2e-tests"
 BACKEND_URL="${TRADEPILOT_BACKEND_URL:-http://localhost:8080}"
 FRONTEND_URL="${TRADEPILOT_FRONTEND_URL:-http://localhost:5173}"
 BASE_URL="${TRADEPILOT_BASE_URL:-$FRONTEND_URL}"
+API_BASE_URL="${E2E_API_URL:-$BACKEND_URL/api}"
 HEADLESS="${HEADLESS:-true}"
 
 BACKEND_PID=""
@@ -49,20 +50,18 @@ require_cmd curl
 
 mkdir -p "$E2E_DIR/test-output"
 
-if [[ -z "${TRADEPILOT_TEST_EMAIL:-}" || -z "${TRADEPILOT_TEST_PASSWORD:-}" ]]; then
-  echo "Missing TRADEPILOT_TEST_EMAIL or TRADEPILOT_TEST_PASSWORD." >&2
-  exit 2
-fi
-
 if ! curl -fsS "$BACKEND_URL/api/v1/features" >/dev/null 2>&1; then
   echo "Starting backend on $BACKEND_URL"
   (
     cd "$ROOT_DIR/backend"
-    mvn spring-boot:run
+    DEV_AUTH_ENABLED=true DEV_TOOLS_ENABLED=true RATE_LIMIT_AUTH_LOGIN_MAX=1000 mvn spring-boot:run
   ) > "$E2E_DIR/test-output/backend.log" 2>&1 &
   BACKEND_PID="$!"
 fi
 wait_for_url "$BACKEND_URL/api/v1/features" "backend"
+
+echo "Preparing deterministic Selenium E2E data"
+curl -fsS -X POST "$API_BASE_URL/dev/e2e/prepare" >/dev/null
 
 if ! curl -fsS "$FRONTEND_URL" >/dev/null 2>&1; then
   echo "Starting frontend on $FRONTEND_URL"
@@ -75,4 +74,4 @@ fi
 wait_for_url "$FRONTEND_URL" "frontend"
 
 cd "$E2E_DIR"
-mvn test -Dtradepilot.baseUrl="$BASE_URL" -Dheadless="$HEADLESS" "$@"
+mvn test -Dtradepilot.baseUrl="$BASE_URL" -Dtradepilot.apiBaseUrl="$API_BASE_URL" -Dheadless="$HEADLESS" "$@"

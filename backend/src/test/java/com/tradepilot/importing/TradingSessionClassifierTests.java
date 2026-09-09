@@ -20,6 +20,11 @@ class TradingSessionClassifierTests {
     }
 
     @Test
+    void tradovateBrokerTimezoneIsChicago() {
+        assertThat(TradingSessionPolicy.TRADOVATE_BROKER_ZONE).isEqualTo(ZoneId.of("America/Chicago"));
+    }
+
+    @Test
     void classifiesByExecutionInstantInCanonicalMarketTime() {
         OffsetDateTime chicagoClockTime = OffsetDateTime.parse("2026-07-15T08:35:00-05:00");
         assertThat(classifier.classify(chicagoClockTime)).isEqualTo(SessionType.NY_AM);
@@ -32,6 +37,43 @@ class TradingSessionClassifierTests {
     void classifiesExplicitMarketLocalTimestampsForOffsetlessTradovateRows() {
         assertThat(classifier.classifyMarketLocalTimestamp(LocalDateTime.parse("2026-06-16T09:45:00"))).isEqualTo(SessionType.NY_AM);
         assertThat(classifier.classifyMarketLocalTimestamp(LocalDateTime.parse("2026-06-16T13:15:00"))).isEqualTo(SessionType.NY_PM);
+    }
+
+    @Test
+    void classifiesSourceLocalTimestampsThroughCanonicalMarketZone() {
+        assertThat(classifier.classifySourceLocalTimestamp(
+                LocalDateTime.parse("2026-09-03T09:16:00"),
+                TradingSessionPolicy.TRADOVATE_BROKER_ZONE
+        )).isEqualTo(SessionType.NY_AM);
+        assertThat(LocalDateTime.parse("2026-09-03T09:16:00")
+                .atZone(TradingSessionPolicy.TRADOVATE_BROKER_ZONE)
+                .toInstant()
+                .atZone(TradingSessionPolicy.MARKET_ZONE)
+                .toLocalDateTime()).hasToString("2026-09-03T10:16");
+    }
+
+    @Test
+    void classifiesSummerAndWinterCentralSourceTimestampsWithIanaDstRules() {
+        assertThat(classifier.classifySourceLocalTimestamp(
+                LocalDateTime.parse("2026-07-15T08:35:00"),
+                TradingSessionPolicy.TRADOVATE_BROKER_ZONE
+        )).isEqualTo(SessionType.NY_AM);
+        assertThat(classifier.classifySourceLocalTimestamp(
+                LocalDateTime.parse("2026-01-15T08:35:00"),
+                TradingSessionPolicy.TRADOVATE_BROKER_ZONE
+        )).isEqualTo(SessionType.NY_AM);
+    }
+
+    @Test
+    void classifiesCentralSourceDstBoundaryUsingRegionRules() {
+        assertThat(classifier.classifySourceLocalTimestamp(
+                LocalDateTime.parse("2026-03-08T00:59:59"),
+                TradingSessionPolicy.TRADOVATE_BROKER_ZONE
+        )).isEqualTo(SessionType.ASIA);
+        assertThat(classifier.classifySourceLocalTimestamp(
+                LocalDateTime.parse("2026-03-08T03:00:00"),
+                TradingSessionPolicy.TRADOVATE_BROKER_ZONE
+        )).isEqualTo(SessionType.LONDON);
     }
 
     @Test

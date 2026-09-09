@@ -32,7 +32,7 @@ public class TradingMemoryHealthService {
     public TradingMemoryHealthResponse health() {
         boolean v2Enabled = featureFlagService.isEnabled(Feature.TRADING_MEMORY);
         boolean memoryEnabled = properties.isEnabled();
-        QdrantCollectionValidationResult qdrant = memoryEnabled ? vectorClient.validateCollection() : QdrantCollectionValidationResult.unavailable("Trading Memory is disabled.");
+        QdrantCollectionValidationResult qdrant = memoryEnabled && v2Enabled ? vectorClient.validateCollection() : QdrantCollectionValidationResult.unavailable("Trading Memory is disabled.");
         Map<String, Object> embedding = new LinkedHashMap<>();
         embedding.put("configured", properties.getEmbeddingModel() != null && !properties.getEmbeddingModel().isBlank());
         embedding.put("model", properties.getEmbeddingModel());

@@ -10,7 +10,7 @@ export default function MobileNav({ items }: Props) {
   return (
     <nav className="tradepilot-mobile-nav" style={mobileNav}>
       {items.slice(0, 7).map((item) => (
-        <NavLink key={item.to} to={item.to} style={({ isActive }) => mobileLink(isActive)}>
+        <NavLink key={item.to} to={item.to} end style={({ isActive }) => mobileLink(isActive)}>
           <span style={mobileLabel}>{item.label}</span>
           {item.locked && <span style={mobileBadge}>PRO</span>}
         </NavLink>

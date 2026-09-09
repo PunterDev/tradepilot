@@ -26,6 +26,9 @@ public class TradeMemory {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @Column(name = "account_id")
+    private Long accountId;
+
     @Column(name = "vector_point_id", nullable = false)
     private UUID vectorPointId;
 
@@ -120,6 +123,8 @@ public class TradeMemory {
     public void setTradeId(Long tradeId) { this.tradeId = tradeId; }
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
+    public Long getAccountId() { return accountId; }
+    public void setAccountId(Long accountId) { this.accountId = accountId; }
     public UUID getVectorPointId() { return vectorPointId; }
     public void setVectorPointId(UUID vectorPointId) { this.vectorPointId = vectorPointId; }
     public Integer getMemoryVersion() { return memoryVersion; }

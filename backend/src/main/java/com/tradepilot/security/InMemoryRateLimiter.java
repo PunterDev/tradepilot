@@ -1,6 +1,7 @@
 package com.tradepilot.security;
 
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.time.Clock;
 import java.util.Iterator;
@@ -8,7 +9,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
-public class InMemoryRateLimiter {
+@ConditionalOnProperty(name = "app.rate-limit.store", havingValue = "memory", matchIfMissing = true)
+public class InMemoryRateLimiter implements RateLimiter {
     private final Clock clock;
     private final Map<String, RateLimitWindow> windows = new ConcurrentHashMap<>();
 
@@ -20,6 +22,7 @@ public class InMemoryRateLimiter {
         this.clock = clock;
     }
 
+    @Override
     public synchronized RateLimitResult check(String key, int maxRequests, long windowSeconds) {
         if (maxRequests <= 0) {
             return RateLimitResult.blocked(Math.max(1, windowSeconds));

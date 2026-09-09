@@ -14,12 +14,9 @@ import com.tradepilot.e2e.pages.LoginPage;
 class LoginTest extends BaseTest {
     @Test
     void validUserCanLogin() {
-        String email = requiredEnv("TRADEPILOT_TEST_EMAIL");
-        String password = requiredEnv("TRADEPILOT_TEST_PASSWORD");
-
         DashboardPage dashboard = new LoginPage(driver, wait)
             .open(baseUrl)
-            .login(email, password);
+            .login(testData.proUser().email(), testData.proUser().password());
 
         assertTrue(dashboard.isDisplayed(), "Dashboard should be visible after login");
         assertFalse(dashboard.currentPath().equals("/login"), "Valid login should navigate away from /login");

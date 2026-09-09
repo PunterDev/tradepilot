@@ -7,6 +7,11 @@ This document describes the deterministic path for creating a brand-new TradePil
 For a new empty production database, the canonical schema is:
 
 1. `backend/src/main/resources/db/migration/V001__fresh_production_schema.sql`
+2. `backend/src/main/resources/db/migration/V002__first_insight_activation.sql`
+3. `backend/src/main/resources/db/migration/V003__seo_acquisition_analytics.sql`
+4. `backend/src/main/resources/db/migration/V004__seo_analytics_hardening.sql`
+5. `backend/src/main/resources/db/migration/V005__ai_credit_purchase_schema_alignment.sql`
+6. `backend/src/main/resources/db/migration/V006__distributed_rate_limit_windows.sql`
 
 Spring Boot now runs Flyway before Hibernate starts. Production must run with:
 
@@ -72,7 +77,8 @@ The Flyway baseline intentionally does not carry forward obsolete historical sta
 
 - `users_purchased_ai_credits_balance_nonnegative` is not created. Refund/dispute reversal policy can make purchased credits negative when credits were consumed before reversal.
 - Old enum/check constraints that were repeatedly dropped and recreated are collapsed into the current accepted values.
-- Stripe event ordering, subscription state, checkout attempt, credit purchase ledger, PaymentIntent/Charge uniqueness, and reason-aware refund/dispute columns are included directly.
+- Stripe event ordering, subscription state, checkout attempt, credit purchase ledger, PaymentIntent/Charge uniqueness, and reason-aware refund/dispute columns are included directly or aligned by Flyway follow-up migrations.
+- Production shared rate-limit state is added by `V006__distributed_rate_limit_windows.sql`.
 - Historical correction scripts that add columns after table creation are flattened into the baseline.
 
 ## Dependency Order
@@ -144,6 +150,158 @@ Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 If Docker is unavailable, ordinary local `mvn test` may skip this Testcontainers check. That skipped local result is developer-friendly only; it is not acceptable for production database bootstrap approval.
+
+## One-Time Legacy Local Database Adoption
+
+This section is only for a local PostgreSQL database that already existed before Flyway became the schema owner and now fails with:
+
+```text
+Found non-empty schema(s) "public" but no schema history table.
+```
+
+Do not enable `baselineOnMigrate=true` globally and do not baseline at the latest version. The baseline version must be the newest migration that is already materially reflected in the existing database. The next migration after the baseline must still run normally.
+
+For the current legacy-local failure mode, choose baseline version `004` only if the metadata checks below prove that V001 through V004 are already represented and V005 is not fully represented. This keeps `V005__ai_credit_purchase_schema_alignment.sql` pending so Flyway applies the data-safe `ai_credit_purchases` null backfill, `NOT NULL` alignment, and accounting constraints.
+
+Run these read-only checks against the local database before baselining:
+
+```sql
+select to_regclass('public.flyway_schema_history') as flyway_history_table;
+
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name in (
+      'users',
+      'ai_credit_purchases',
+      'processed_stripe_events',
+      'stripe_subscription_states',
+      'stripe_checkout_attempts',
+      'user_feature_previews',
+      'seo_acquisition_events',
+      'user_acquisition_attribution'
+  )
+order by table_name;
+
+select column_name, data_type, character_maximum_length, is_nullable, column_default
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'seo_acquisition_events'
+  and column_name in ('anonymous_id', 'event_id')
+order by column_name;
+
+select indexname
+from pg_indexes
+where schemaname = 'public'
+  and indexname in (
+      'ux_seo_acq_events_event_id_not_null',
+      'ux_users_stripe_customer_id_not_null',
+      'ux_users_stripe_subscription_id_not_null',
+      'uk_ai_credit_purchases_checkout_session',
+      'ux_ai_credit_purchases_payment_intent_not_null',
+      'ux_ai_credit_purchases_charge_not_null'
+  )
+order by indexname;
+
+select column_name, is_nullable, column_default
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'ai_credit_purchases'
+  and column_name in (
+      'refunded_amount_cents',
+      'reversed_credits',
+      'refund_reversal_credits',
+      'dispute_reversal_credits',
+      'dispute_restored_credits'
+  )
+order by column_name;
+
+select conname
+from pg_constraint
+where connamespace = 'public'::regnamespace
+  and conname in (
+      'chk_ai_credit_purchases_refunded_amount_nonnegative',
+      'chk_ai_credit_purchases_reversed_credits_nonnegative',
+      'chk_ai_credit_purchases_refund_reversal_nonnegative',
+      'chk_ai_credit_purchases_dispute_reversal_nonnegative',
+      'chk_ai_credit_purchases_dispute_restored_nonnegative',
+      'chk_ai_credit_purchases_dispute_restored_lte_reversal'
+  )
+order by conname;
+
+select
+    count(*) filter (where refunded_amount_cents is null) as refunded_amount_nulls,
+    count(*) filter (where reversed_credits is null) as reversed_credits_nulls,
+    count(*) filter (where refund_reversal_credits is null) as refund_reversal_nulls,
+    count(*) filter (where dispute_reversal_credits is null) as dispute_reversal_nulls,
+    count(*) filter (where dispute_restored_credits is null) as dispute_restored_nulls
+from ai_credit_purchases;
+```
+
+If V001 through V004 are present and the V005 `ai_credit_purchases` checks are missing or nullable, inspect the pending Flyway state from the repository root:
+
+```bash
+backend/scripts/flyway-dev.sh flyway:info
+```
+
+The helper reads `backend/src/main/resources/application-dev.yml`, resolves the same `spring.datasource` values the dev Spring profile uses, writes them to a restrictive temporary Flyway config file, and deletes that file on exit. It does not print the password or require copying the password into shell history. `application-dev.yml` remains local-only and ignored by Git.
+
+Run the explicit baseline from the repository root:
+
+```bash
+backend/scripts/flyway-dev.sh \
+  flyway:baseline \
+  -Dflyway.baselineVersion=004 \
+  -Dflyway.baselineDescription="legacy schema through V004"
+```
+
+Then run the pending migration:
+
+```bash
+backend/scripts/flyway-dev.sh flyway:migrate
+```
+
+Verify that V005 actually ran:
+
+```sql
+select installed_rank, version, description, type, success
+from flyway_schema_history
+order by installed_rank;
+
+select column_name, is_nullable, column_default
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'ai_credit_purchases'
+  and column_name in (
+      'refunded_amount_cents',
+      'reversed_credits',
+      'refund_reversal_credits',
+      'dispute_reversal_credits',
+      'dispute_restored_credits'
+  )
+order by column_name;
+
+select conname
+from pg_constraint
+where connamespace = 'public'::regnamespace
+  and conname in (
+      'chk_ai_credit_purchases_refunded_amount_nonnegative',
+      'chk_ai_credit_purchases_reversed_credits_nonnegative',
+      'chk_ai_credit_purchases_refund_reversal_nonnegative',
+      'chk_ai_credit_purchases_dispute_reversal_nonnegative',
+      'chk_ai_credit_purchases_dispute_restored_nonnegative',
+      'chk_ai_credit_purchases_dispute_restored_lte_reversal'
+  )
+order by conname;
+```
+
+After the baseline and migration, start the backend with Flyway enabled and Hibernate validation:
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+The dev profile must use `FLYWAY_ENABLED=true` and `JPA_DDL_AUTO=validate` or equivalent local overrides. Startup must complete without Hibernate attempting schema mutation. If any V001-V004 metadata check fails, do not use baseline version `004`; either repair the legacy schema first or baseline to the last version that is genuinely present, then let Flyway run every later migration.
 
 ## Production Deployment Gate
 

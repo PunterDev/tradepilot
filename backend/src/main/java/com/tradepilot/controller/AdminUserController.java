@@ -3,12 +3,15 @@ package com.tradepilot.controller;
 import com.tradepilot.dto.admin.AdminPlanChangeRequest;
 import com.tradepilot.dto.admin.AdminUserDetailResponse;
 import com.tradepilot.dto.admin.AdminUserResponse;
+import com.tradepilot.dto.admin.UserFeatureEntitlementRequest;
+import com.tradepilot.dto.admin.UserFeatureEntitlementResponse;
 import com.tradepilot.dto.common.PagedResponse;
 import com.tradepilot.entity.User;
 import com.tradepilot.service.AdminUserService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -48,6 +51,16 @@ public class AdminUserController {
     @PostMapping("/{userId}/remove-admin")
     public AdminUserResponse removeAdmin(@AuthenticationPrincipal User admin, @PathVariable Long userId, @Valid @RequestBody AdminPlanChangeRequest request) {
         return adminUserService.removeAdmin(admin, userId, request);
+    }
+
+    @GetMapping("/{userId}/feature-entitlements")
+    public List<UserFeatureEntitlementResponse> featureEntitlements(@PathVariable Long userId) {
+        return adminUserService.featureEntitlements(userId);
+    }
+
+    @PutMapping("/{userId}/feature-entitlements")
+    public UserFeatureEntitlementResponse setFeatureEntitlement(@AuthenticationPrincipal User admin, @PathVariable Long userId, @RequestBody UserFeatureEntitlementRequest request) {
+        return adminUserService.setFeatureEntitlement(admin, userId, request);
     }
 
     @java.lang.SuppressWarnings("all")

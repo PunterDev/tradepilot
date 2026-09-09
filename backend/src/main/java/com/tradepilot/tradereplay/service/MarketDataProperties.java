@@ -18,6 +18,7 @@ public class MarketDataProperties {
     private long workerInitialDelayMs = 60_000;
     private long workerFixedDelayMs = 300_000;
     private boolean cacheEnabled = true;
+    private long staleProcessingTimeoutMinutes = 5;
 
     public String getProvider() { return provider; }
     public void setProvider(String provider) { this.provider = provider; }
@@ -39,6 +40,8 @@ public class MarketDataProperties {
     public void setWorkerFixedDelayMs(long workerFixedDelayMs) { this.workerFixedDelayMs = workerFixedDelayMs; }
     public boolean isCacheEnabled() { return cacheEnabled; }
     public void setCacheEnabled(boolean cacheEnabled) { this.cacheEnabled = cacheEnabled; }
+    public long getStaleProcessingTimeoutMinutes() { return staleProcessingTimeoutMinutes; }
+    public void setStaleProcessingTimeoutMinutes(long staleProcessingTimeoutMinutes) { this.staleProcessingTimeoutMinutes = staleProcessingTimeoutMinutes; }
 
     public static class Databento {
         private String apiKey = "";

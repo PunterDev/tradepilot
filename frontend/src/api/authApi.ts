@@ -1,6 +1,6 @@
 import { api, TOKEN_STORAGE_KEY } from "./axios";
-
-const USER_STORAGE_KEY = "tradepilot_user";
+import { getAuthItem, removeAuthItem, setAuthItem, USER_STORAGE_KEY } from "./authStorage";
+import type { SeoAttributionPayload } from "./seoAnalyticsApi";
 
 export type AuthUser = {
   id: number;
@@ -41,6 +41,7 @@ export type LoginRequest = {
 
 export type RegisterRequest = LoginRequest & {
   name: string;
+  seoAttribution?: SeoAttributionPayload | null;
 };
 
 export type MessageResponse = {
@@ -66,13 +67,13 @@ function toSession(auth: AuthResponse): AuthSession {
 }
 
 export function persistSession(session: AuthSession) {
-  localStorage.setItem(TOKEN_STORAGE_KEY, session.token);
-  localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(session.user));
+  setAuthItem(TOKEN_STORAGE_KEY, session.token);
+  setAuthItem(USER_STORAGE_KEY, JSON.stringify(session.user));
 }
 
 export function getStoredSession(): AuthSession | null {
-  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-  const rawUser = localStorage.getItem(USER_STORAGE_KEY);
+  const token = getAuthItem(TOKEN_STORAGE_KEY);
+  const rawUser = getAuthItem(USER_STORAGE_KEY);
 
   if (!token || !rawUser) return null;
 
@@ -109,8 +110,8 @@ export async function getCurrentUser(): Promise<AuthUser> {
 }
 
 export function logout() {
-  localStorage.removeItem(TOKEN_STORAGE_KEY);
-  localStorage.removeItem(USER_STORAGE_KEY);
+  removeAuthItem(TOKEN_STORAGE_KEY);
+  removeAuthItem(USER_STORAGE_KEY);
 }
 
 export async function verifyEmail(token: string): Promise<MessageResponse> {

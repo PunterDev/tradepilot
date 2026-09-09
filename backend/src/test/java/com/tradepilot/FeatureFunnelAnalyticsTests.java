@@ -122,6 +122,36 @@ class FeatureFunnelAnalyticsTests {
         assertThat(usersJson.get(0).has("email")).isFalse();
     }
 
+    @Test
+    void adminFeatureUsageSummaryIncludesActivationMedianTimeToFirstInsight() throws Exception {
+        User admin = createUser("admin-activation-funnel@tradepilot.local", UserRole.ADMIN, PlanType.PRO);
+        User user = createUser("activation-funnel@trader.local", UserRole.USER, PlanType.FREE);
+        LocalDateTime signupAt = LocalDateTime.now().minusDays(1);
+        save(user, FeatureKey.ACTIVATION, FeatureUsageAction.USER_SIGNED_UP, FeatureUsageEventType.USER_ACTION, signupAt);
+        save(user, FeatureKey.ACTIVATION, FeatureUsageAction.FIRST_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, signupAt.plusMinutes(12));
+        save(user, FeatureKey.ACTIVATION, FeatureUsageAction.FIRST_INSIGHT_GENERATED, FeatureUsageEventType.AI_GENERATION, signupAt.plusMinutes(30));
+        save(user, FeatureKey.ACTIVATION, FeatureUsageAction.SECOND_AI_FEATURE_USED, FeatureUsageEventType.AI_GENERATION, signupAt.plusMinutes(35));
+        save(user, FeatureKey.ACTIVATION, FeatureUsageAction.PRO_CONVERSION, FeatureUsageEventType.USER_ACTION, signupAt.plusMinutes(40));
+
+        String response = mockMvc.perform(get("/api/admin/feature-usage/summary")
+                        .param("range", "LAST_30_DAYS")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(admin)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode activation = objectMapper.readTree(response).get("activationFunnel");
+        assertThat(activation.get("signedUpUsers").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(activation.get("importedUsers").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(activation.get("firstInsightUsers").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(activation.get("medianSignupToFirstImportMinutes").asDouble()).isEqualTo(12.0);
+        assertThat(activation.get("medianFirstImportToFirstInsightMinutes").asDouble()).isEqualTo(18.0);
+        assertThat(activation.get("medianSignupToFirstInsightMinutes").asDouble()).isEqualTo(30.0);
+        assertThat(activation.get("firstInsightToSecondAiRate").asDouble()).isGreaterThan(0);
+        assertThat(activation.get("firstInsightToProRate").asDouble()).isGreaterThan(0);
+    }
+
     private User createUser(String email, UserRole role, PlanType plan) {
         return userRepository.save(User.builder()
                 .name(email)

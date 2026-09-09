@@ -5,6 +5,8 @@ import com.tradepilot.dto.ai.AiTradeReviewRequest;
 import com.tradepilot.dto.ai.AiTradeReviewResponse;
 import com.tradepilot.entity.User;
 import com.tradepilot.featureusage.FeatureKey;
+import com.tradepilot.featureusage.FeatureUsageAction;
+import com.tradepilot.featureusage.FeatureUsageEventType;
 import com.tradepilot.featureusage.FeatureUsageService;
 import com.tradepilot.service.AiTradeReviewService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,6 +20,7 @@ public class AiController {
 
     @PostMapping("/trade-review")
     public AiTradeReviewResponse reviewTrade(@AuthenticationPrincipal User user, @RequestBody AiTradeReviewRequest request) {
+        featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.FIRST_INSIGHT_GENERATION_STARTED, FeatureUsageEventType.AI_GENERATION, null, "TRADE", request.getTradeId() == null ? null : request.getTradeId().toString(), "trade_review", null);
         AiTradeReviewResponse response = aiTradeReviewService.reviewTrade(user, request);
         featureUsageService.track(user, FeatureKey.AI_REVIEW);
         return response;
@@ -25,6 +28,7 @@ public class AiController {
 
     @PostMapping("/trade-review/async")
     public AiTradeReviewJobResponse startAsyncTradeReview(@AuthenticationPrincipal User user, @RequestBody AiTradeReviewRequest request) {
+        featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.FIRST_INSIGHT_GENERATION_STARTED, FeatureUsageEventType.AI_GENERATION, null, "TRADE", request.getTradeId() == null ? null : request.getTradeId().toString(), "trade_review_async", null);
         AiTradeReviewJobResponse response = aiTradeReviewService.startAsyncReview(user, request);
         featureUsageService.track(user, FeatureKey.AI_REVIEW);
         return response;

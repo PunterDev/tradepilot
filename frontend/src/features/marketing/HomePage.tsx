@@ -5,6 +5,7 @@ import { getFeatureAvailability } from "../../api/featureAvailabilityApi";
 import { isFeatureEnabled, type FeatureAvailability } from "../../config/featureFlags";
 import { getEnabledProMarketingBenefits } from "../../config/planBenefits";
 import { marketingPricing } from "../../config/marketingPricing";
+import { trackSeoCtaClick, trackSeoLandingPageView } from "../../utils/seoAttribution";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
 
@@ -184,6 +185,7 @@ export default function HomePage() {
   const [availability, setAvailability] = useState<FeatureAvailability>(disabledV2Availability);
 
   useEffect(() => {
+    trackSeoLandingPageView("/");
     let mounted = true;
 
     getFeatureAvailability()
@@ -222,21 +224,32 @@ export default function HomePage() {
   return (
     <MarketingShell>
       <Seo
-        title="TradePilot | AI Trading Journal for Futures Traders"
-        description="Import futures trades, analyze execution metrics, detect costly trading patterns, and receive daily and weekly coaching based on your actual performance."
+        title="TradePilot - AI Trading Journal for Futures & Prop Firm Traders"
+        description="Analyze your futures trading, uncover revenge trading, overtrading and costly behavioral patterns, and get AI-powered coaching. Built for futures and prop-firm traders."
         structuredData={{
           "@context": "https://schema.org",
-          "@type": "SoftwareApplication",
-          name: "TradePilot",
-          applicationCategory: "FinanceApplication",
-          operatingSystem: "Web",
-          url: "https://www.tradepilotcoach.com",
-          description: "AI-powered trading journal and performance analytics software for futures traders.",
-          offers: {
-            "@type": "Offer",
-            price: "29.99",
-            priceCurrency: "USD",
-          },
+          "@graph": [
+            {
+              "@type": "Organization",
+              name: "TradePilot",
+              url: "https://www.tradepilotcoach.com",
+              logo: "https://www.tradepilotcoach.com/assets/tradepilot-logo-homepage.png",
+            },
+            {
+              "@type": "SoftwareApplication",
+              name: "TradePilot",
+              applicationCategory: "FinanceApplication",
+              operatingSystem: "Web",
+              url: "https://www.tradepilotcoach.com",
+              description: "AI trading journal and behavioral trading coach for futures and prop-firm traders.",
+              offers: {
+                "@type": "Offer",
+                name: "Free",
+                price: "0",
+                priceCurrency: "USD",
+              },
+            },
+          ],
         }}
       />
 
@@ -255,13 +268,19 @@ export default function HomePage() {
                 : "Import your futures trades, review your execution metrics, uncover costly habits, and get clear daily and weekly coaching based on your actual trading data."}
             </p>
             <div className="marketing-hero-actions">
-              <Link className="marketing-button primary" to="/register">Start Journaling Free</Link>
+              <Link
+                className="marketing-button primary"
+                to="/register"
+                onClick={() => trackSeoCtaClick("/", "Start Journaling Free", "/register")}
+              >
+                Start Journaling Free
+              </Link>
               <a className="marketing-button ghost" href="#how-it-works">See How It Works</a>
             </div>
             <p className="marketing-trust-copy">
               {showTradingMemory
-                ? "Your trades. Your patterns. Your personalized coaching."
-                : "Built for futures and prop firm traders. No signals. No trade calls. No promises of profit."}
+                ? "AI trading journal and behavioral coach built for futures and prop-firm traders. Import Topstep and Tradovate trade history by CSV."
+                : "Built for futures and prop-firm traders. Import Topstep and Tradovate trade history by CSV. No signals. No trade calls. No promises of profit."}
             </p>
             <div className="marketing-proof-row compact" aria-label="TradePilot product highlights">
               {(showTradingMemory ? v2HeroBadges : v1HeroBadges).map((badge) => (
@@ -353,7 +372,7 @@ export default function HomePage() {
         <section className="marketing-section trading-memory-section" id="trading-memory">
           <div className="marketing-container trading-memory-grid">
             <div>
-              <div className="marketing-eyebrow">New in TradePilot V2</div>
+              <div className="marketing-eyebrow">Private beta</div>
               <h2 className="marketing-section-title">TradePilot remembers how you trade.</h2>
               <p className="marketing-section-copy">
                 Every reviewed trade becomes part of your private trading memory. When you analyze a new trade,
@@ -388,7 +407,13 @@ export default function HomePage() {
                 <div className="feature-bullet" key={feature}>{feature}</div>
               ))}
             </div>
-            <Link className="marketing-button primary flagship-cta" to="/register">Find My Biggest Leak</Link>
+            <Link
+              className="marketing-button primary flagship-cta"
+              to="/register"
+              onClick={() => trackSeoCtaClick("/", "Find My Biggest Leak", "/register")}
+            >
+              Find My Biggest Leak
+            </Link>
           </div>
           <div className="flagship-panel">
             <LeakReportMockup compact />
@@ -442,7 +467,13 @@ export default function HomePage() {
             <p className="coach-disclaimer">
               TradePilot analyzes historical execution. It does not provide trade signals or predict market direction.
             </p>
-            <Link className="marketing-button primary story-cta" to="/register">Try the AI Coach</Link>
+            <Link
+              className="marketing-button primary story-cta"
+              to="/register"
+              onClick={() => trackSeoCtaClick("/", "Try the AI Coach", "/register")}
+            >
+              Try the AI Coach
+            </Link>
           </article>
           <DailyCoachMockup />
         </div>
@@ -565,7 +596,7 @@ export default function HomePage() {
             <article className="pricing-card pro">
               <div className="pricing-card-top">
                 <h3>{marketingPricing.pro.name}</h3>
-                <span className="popular-badge">AI Coach</span>
+                <span className="popular-badge">Limited access</span>
               </div>
               <div className="pricing-price">{marketingPricing.pro.price}</div>
               <p className="marketing-section-copy">{marketingPricing.pro.description}</p>
@@ -580,12 +611,12 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Link className="marketing-button primary pricing-cta" to="/register">Start Pro</Link>
+              <Link className="marketing-button primary pricing-cta" to="/register">Join Pro waitlist</Link>
             </article>
           </div>
           <p className="pricing-note">
             AI usage is subject to the monthly credit allowance. Cached AI results remain viewable without consuming credits.
-            Stripe-secured checkout happens after account creation.
+            Pro availability is currently limited while public payments are being prepared.
           </p>
         </div>
       </section>
@@ -711,7 +742,7 @@ function LeakReportMockup({ compact = false }: { compact?: boolean }) {
       </div>
       <div className="report-stats">
         <div>
-          <span>Money Lost / Month</span>
+          <span>Illustrative monthly impact</span>
           <strong className="loss">-$1,257</strong>
         </div>
         <div>

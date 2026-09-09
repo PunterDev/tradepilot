@@ -27,6 +27,7 @@ with required_tables(table_name) as (
         ('processed_stripe_events'),
         ('stripe_subscription_states'),
         ('stripe_checkout_attempts'),
+        ('user_feature_previews'),
         ('feature_usage_events'),
         ('api_request_metrics'),
         ('slow_request_events'),
@@ -49,7 +50,8 @@ with required_tables(table_name) as (
         ('trade_replays'),
         ('market_candles'),
         ('trade_replay_insights'),
-        ('trade_memories')
+        ('trade_memories'),
+        ('rate_limit_windows')
 )
 select 'required_table' as check_name,
        r.table_name,
@@ -89,11 +91,20 @@ with required_columns(table_name, column_name) as (
         ('stripe_subscription_states', 'last_event_created'),
         ('stripe_checkout_attempts', 'user_id'),
         ('stripe_checkout_attempts', 'stripe_checkout_session_id'),
+        ('user_feature_previews', 'user_id'),
+        ('user_feature_previews', 'feature_key'),
+        ('user_feature_previews', 'status'),
+        ('user_feature_previews', 'reserved_resource_id'),
         ('trades', 'original_broker_symbol'),
         ('trades', 'contract_symbol'),
         ('trades', 'contract_symbol_source'),
+        ('trade_memories', 'account_id'),
         ('trade_memories', 'last_error_code'),
-        ('trade_memories', 'last_error_message')
+        ('trade_memories', 'last_error_message'),
+        ('rate_limit_windows', 'rate_key'),
+        ('rate_limit_windows', 'window_start'),
+        ('rate_limit_windows', 'request_count'),
+        ('rate_limit_windows', 'expires_at')
 )
 select 'required_column' as check_name,
        r.table_name || '.' || r.column_name as object_name,
@@ -115,8 +126,12 @@ with required_indexes(index_name) as (
         ('processed_stripe_events_event_id_key'),
         ('stripe_subscription_states_subscription_id_key'),
         ('uk_stripe_checkout_attempts_user'),
+        ('uk_user_feature_previews_user_feature'),
         ('idx_processed_stripe_events_stripe_created'),
-        ('idx_stripe_subscription_states_last_event_created')
+        ('idx_stripe_subscription_states_last_event_created'),
+        ('idx_user_feature_previews_user_status'),
+        ('rate_limit_windows_pkey'),
+        ('idx_rate_limit_windows_expires_at')
 )
 select 'required_index_or_unique' as check_name,
        r.index_name,
@@ -132,13 +147,17 @@ order by r.index_name;
 
 with required_constraints(constraint_name) as (
     values
+        ('chk_ai_credit_purchases_refunded_amount_nonnegative'),
+        ('chk_ai_credit_purchases_reversed_credits_nonnegative'),
         ('chk_ai_credit_purchases_refund_reversal_nonnegative'),
         ('chk_ai_credit_purchases_dispute_reversal_nonnegative'),
         ('chk_ai_credit_purchases_dispute_restored_nonnegative'),
         ('chk_ai_credit_purchases_dispute_restored_lte_reversal'),
         ('ai_credit_usage_monthly_credits_nonnegative'),
         ('ai_credit_usage_purchased_credits_nonnegative'),
+        ('chk_user_feature_previews_status'),
         ('chk_users_subscription_status')
+        ,('chk_rate_limit_windows_request_count_nonnegative')
 )
 select 'required_constraint' as check_name,
        r.constraint_name,
@@ -165,5 +184,55 @@ select 'flyway_expected_version' as check_name,
            from flyway_schema_history
            where version = '001'
              and description = 'fresh production schema'
+             and success = true
+       ) then 'OK' else 'MISSING' end as result;
+
+select 'flyway_expected_version' as check_name,
+       'V002__first_insight_activation' as object_name,
+       case when exists (
+           select 1
+           from flyway_schema_history
+           where version = '002'
+             and description = 'first insight activation'
+             and success = true
+       ) then 'OK' else 'MISSING' end as result;
+
+select 'flyway_expected_version' as check_name,
+       'V003__seo_acquisition_analytics' as object_name,
+       case when exists (
+           select 1
+           from flyway_schema_history
+           where version = '003'
+             and description = 'seo acquisition analytics'
+             and success = true
+       ) then 'OK' else 'MISSING' end as result;
+
+select 'flyway_expected_version' as check_name,
+       'V004__seo_analytics_hardening' as object_name,
+       case when exists (
+           select 1
+           from flyway_schema_history
+           where version = '004'
+             and description = 'seo analytics hardening'
+             and success = true
+       ) then 'OK' else 'MISSING' end as result;
+
+select 'flyway_expected_version' as check_name,
+       'V005__ai_credit_purchase_schema_alignment' as object_name,
+       case when exists (
+           select 1
+           from flyway_schema_history
+           where version = '005'
+             and description = 'ai credit purchase schema alignment'
+             and success = true
+       ) then 'OK' else 'MISSING' end as result;
+
+select 'flyway_expected_version' as check_name,
+       'V006__distributed_rate_limit_windows' as object_name,
+       case when exists (
+           select 1
+           from flyway_schema_history
+           where version = '006'
+             and description = 'distributed rate limit windows'
              and success = true
        ) then 'OK' else 'MISSING' end as result;

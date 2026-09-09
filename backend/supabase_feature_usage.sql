@@ -35,11 +35,13 @@ END $$;
 ALTER TABLE feature_usage_events
     ADD CONSTRAINT chk_feature_usage_events_feature
     CHECK (feature IN (
+        'ACTIVATION',
         'AI_REVIEW',
         'DAILY_COACH',
         'WEEKLY_COACH',
         'TRADING_DNA',
         'SESSION_REVIEW',
+        'AI_PRE_ANALYSIS',
         'TRADE_DETAIL',
         'CALENDAR_VIEW',
         'ANALYTICS_VIEW'

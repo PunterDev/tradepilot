@@ -69,6 +69,11 @@ export default function DashboardQuickActions({
   const canImport = selectedAccountId !== "" && selectedAccountId !== "ALL";
   const canSave = canImport && tradeCount > 0 && Boolean(fileName) && Boolean(importPreview) && !parsing && !saving;
   const pickerDisabled = !canImport || parsing || saving;
+  const importStatusLabel = tradeCount > 0
+    ? `${tradeCount} parsed`
+    : fileName && importFeedback?.type === "error"
+      ? `${fileName} selected — import validation failed`
+      : "No file parsed";
 
   return (
     <div style={grid}>
@@ -245,7 +250,7 @@ export default function DashboardQuickActions({
             {saving ? "Saving..." : "Save Trades"}
           </button>
           <span style={mutedText}>
-            {tradeCount > 0 ? `${tradeCount} parsed` : "No file parsed"}
+            {importStatusLabel}
           </span>
         </div>
         {importFeedback && (

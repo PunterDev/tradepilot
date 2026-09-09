@@ -25,6 +25,7 @@ export default function SidebarNav({ items }: Props) {
           <NavLink
             key={item.to}
             to={item.to}
+            end
             data-testid={navTestId(item)}
             style={({ isActive }) => navLink(isActive)}
           >

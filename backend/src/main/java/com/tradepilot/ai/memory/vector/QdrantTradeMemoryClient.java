@@ -22,7 +22,7 @@ import java.util.*;
 public class QdrantTradeMemoryClient implements TradingMemoryVectorClient {
     private static final Logger log = LoggerFactory.getLogger(QdrantTradeMemoryClient.class);
     private static final List<String> REQUIRED_PAYLOAD_FIELDS = List.of(
-            "userId", "tradeId", "instrument", "direction", "setup", "mistake", "emotion", "session", "tradeDate", "memoryVersion"
+            "userId", "accountId", "tradeId", "instrument", "direction", "setup", "mistake", "emotion", "session", "tradeDate", "memoryVersion"
     );
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
@@ -132,6 +132,7 @@ public class QdrantTradeMemoryClient implements TradingMemoryVectorClient {
         Map<String, Object> qdrantPayload = new LinkedHashMap<>();
         qdrantPayload.put("tradeId", String.valueOf(payload.tradeId()));
         qdrantPayload.put("userId", String.valueOf(payload.userId()));
+        qdrantPayload.put("accountId", payload.accountId() == null ? null : String.valueOf(payload.accountId()));
         qdrantPayload.put("instrument", payload.instrument());
         qdrantPayload.put("direction", payload.direction());
         qdrantPayload.put("setup", payload.setup());
@@ -146,7 +147,7 @@ public class QdrantTradeMemoryClient implements TradingMemoryVectorClient {
 
     @Override
     public List<VectorSearchResult> search(Long userId, List<Double> queryVector, Long excludeTradeId, int limit) {
-        return search(new TradingMemorySearchRequest(userId, queryVector, excludeTradeId, limit, null, null, null, null, null));
+        return search(new TradingMemorySearchRequest(userId, queryVector, excludeTradeId, limit, null, null, null, null, null, null));
     }
 
     @Override
@@ -158,6 +159,9 @@ public class QdrantTradeMemoryClient implements TradingMemoryVectorClient {
         Map<String, Object> mustUser = Map.of("key", "userId", "match", Map.of("value", String.valueOf(request.userId())));
         List<Object> must = new ArrayList<>();
         must.add(mustUser);
+        if (request.accountId() != null) {
+            must.add(Map.of("key", "accountId", "match", Map.of("value", String.valueOf(request.accountId()))));
+        }
         addMatch(must, "setup", request.setup());
         addMatch(must, "instrument", request.instrument());
         addMatch(must, "direction", request.direction());
@@ -187,15 +191,25 @@ public class QdrantTradeMemoryClient implements TradingMemoryVectorClient {
 
     @Override
     public void delete(UUID pointId) {
-        if (!isAvailable() || pointId == null) return;
+        if (!configured() || pointId == null) return;
         Map<String, Object> body = Map.of("points", List.of(pointId.toString()));
         restTemplate.exchange(baseUrl() + "/collections/" + properties.getCollectionName() + "/points/delete?wait=true", HttpMethod.POST, entity(body), String.class);
     }
 
     @Override
     public void deleteByUserId(Long userId) {
-        if (!isAvailable() || userId == null) return;
+        if (!configured() || userId == null) return;
         Map<String, Object> filter = Map.of("must", List.of(Map.of("key", "userId", "match", Map.of("value", String.valueOf(userId)))));
+        restTemplate.exchange(baseUrl() + "/collections/" + properties.getCollectionName() + "/points/delete?wait=true", HttpMethod.POST, entity(Map.of("filter", filter)), String.class);
+    }
+
+    @Override
+    public void deleteByUserIdAndAccountId(Long userId, Long accountId) {
+        if (!configured() || userId == null || accountId == null) return;
+        Map<String, Object> filter = Map.of("must", List.of(
+                Map.of("key", "userId", "match", Map.of("value", String.valueOf(userId))),
+                Map.of("key", "accountId", "match", Map.of("value", String.valueOf(accountId)))
+        ));
         restTemplate.exchange(baseUrl() + "/collections/" + properties.getCollectionName() + "/points/delete?wait=true", HttpMethod.POST, entity(Map.of("filter", filter)), String.class);
     }
 

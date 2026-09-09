@@ -10,4 +10,5 @@ export type BillingUsage = {
   monthlyAiCreditsRemaining?: number;
   purchasedAiCreditsBalance?: number;
   totalAiCreditsAvailable?: number;
+  featureCosts?: Record<string, number>;
 };

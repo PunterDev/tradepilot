@@ -37,6 +37,11 @@ public class TradeReplayService {
     private static final String INTERVAL = "1m";
     private static final String ANALYSIS_VERSION = "trade-replay-deterministic-v1";
     private static final int MAX_RETURNED_CANDLES = 400;
+    private static final Set<TradeReplayStatus> ACTIVE_STATUSES = EnumSet.of(
+            TradeReplayStatus.PENDING,
+            TradeReplayStatus.FETCHING_DATA,
+            TradeReplayStatus.ANALYZING
+    );
     private final FeatureFlagService featureFlagService;
     private final MarketDataProperties properties;
     private final TradeRepository tradeRepository;
@@ -65,7 +70,7 @@ public class TradeReplayService {
         this.contractSymbolNormalizer = contractSymbolNormalizer;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public TradeReplayResponse getReplay(User user, Long tradeId, boolean includeCandles) {
         requireEnabled();
         Trade trade = ownedTrade(user, tradeId);
@@ -78,6 +83,7 @@ public class TradeReplayService {
         if (replay.isEmpty()) {
             return emptyResponse(trade);
         }
+        recoverIfStale(replay.get(), "view");
         featureUsageService.track(user, FeatureKey.TRADE_REPLAY, FeatureUsageAction.TRADE_REPLAY_VIEWED, FeatureUsageEventType.PAGE_VIEW, trade.getAccount() == null ? null : trade.getAccount().getId(), null);
         return toResponse(replay.get(), includeCandles);
     }
@@ -91,7 +97,31 @@ public class TradeReplayService {
                     trade.getId(), trade.getExternalTradeKey());
             return markDemoUnavailable(trade);
         }
-        TradeReplay replay = createOrUpdateReplay(trade);
+        Optional<TradeReplay> existing = replayRepository.findByUserIdAndTradeId(user.getId(), tradeId);
+        if (existing.isPresent() && isActive(existing.get())) {
+            if (isStale(existing.get(), Instant.now())) {
+                markStaleFailed(existing.get(), "generate");
+            } else {
+                log.info(
+                        "Trade Replay generation skipped because an active replay is already running. tradeId={}, replayId={}, contract={}, previousStatus={}, provider={}, processingStartedAt={}, elapsedMs={}",
+                        trade.getId(),
+                        existing.get().getId(),
+                        existing.get().getResolvedProviderSymbol(),
+                        existing.get().getStatus(),
+                        existing.get().getProvider(),
+                        existing.get().getUpdatedAt(),
+                        elapsedSinceUpdated(existing.get())
+                );
+                return toResponse(existing.get(), true);
+            }
+        }
+        TradeReplay replay;
+        try {
+            replay = createOrUpdateReplay(trade);
+        } catch (RuntimeException ex) {
+            replay = markInitialPreparationFailed(trade, ex);
+            return toResponse(replay, true);
+        }
         featureUsageService.track(user, FeatureKey.TRADE_REPLAY, force ? FeatureUsageAction.TRADE_REPLAY_REGENERATED : FeatureUsageAction.TRADE_REPLAY_REQUESTED, FeatureUsageEventType.USER_ACTION, trade.getAccount() == null ? null : trade.getAccount().getId(), null);
         if (force || replay.getStatus() != TradeReplayStatus.READY) {
             processReplay(replay.getId(), force);
@@ -215,6 +245,9 @@ public class TradeReplayService {
         List<TradeReplay> runnable = replayRepository.findRunnable(List.of(TradeReplayStatus.PENDING, TradeReplayStatus.WAITING_FOR_MARKET_DATA, TradeReplayStatus.FAILED), Instant.now(), PageRequest.of(0, 10));
         for (TradeReplay replay : runnable) {
             try {
+                if (isActive(replay) && isStale(replay, Instant.now())) {
+                    markStaleFailed(replay, "worker");
+                }
                 processReplay(replay.getId(), false);
             } catch (RuntimeException ex) {
                 log.warn("Replay worker failed safely. replayId={}, reason={}", replay.getId(), ex.getClass().getSimpleName());
@@ -224,7 +257,21 @@ public class TradeReplayService {
 
     @Transactional
     public void processReplay(Long replayId, boolean force) {
-        TradeReplay replay = replayRepository.findById(replayId).orElseThrow(() -> new ResourceNotFoundException("Trade replay not found"));
+        TradeReplay replay = replayRepository.findByIdForUpdate(replayId).orElseThrow(() -> new ResourceNotFoundException("Trade replay not found"));
+        TradeReplayStatus previousStatus = replay.getStatus();
+        Instant processingStartedAt = Instant.now();
+        long startedMs = System.currentTimeMillis();
+        if (isActive(replay) && isStale(replay, processingStartedAt)) {
+            markStaleFailed(replay, "process");
+        }
+        try {
+            processReplayInternal(replay, force, previousStatus, processingStartedAt, startedMs);
+        } catch (RuntimeException ex) {
+            failReplayAfterException(replay, ex, processingStartedAt, startedMs);
+        }
+    }
+
+    private void processReplayInternal(TradeReplay replay, boolean force, TradeReplayStatus previousStatus, Instant processingStartedAt, long startedMs) {
         if (!force && replay.getStatus() == TradeReplayStatus.READY) return;
         Trade trade = replay.getTrade();
         if (!DemoReplayEligibility.isReplayAllowed(trade)) {
@@ -236,11 +283,13 @@ public class TradeReplayService {
             replay.setProvider(null);
             replay.setResolvedProviderSymbol(null);
             replayRepository.save(replay);
+            logLifecycle(replay, previousStatus, TradeReplayStatus.DEMO_REPLAY_UNAVAILABLE, processingStartedAt, startedMs);
             return;
         }
         prepareReplayFields(replay, trade);
         if (replay.getStatus() == TradeReplayStatus.UNSUPPORTED_INSTRUMENT || replay.getStatus() == TradeReplayStatus.CONTRACT_RESOLUTION_FAILED) {
             replayRepository.save(replay);
+            logLifecycle(replay, previousStatus, replay.getStatus(), processingStartedAt, startedMs);
             return;
         }
         Instant now = Instant.now();
@@ -250,6 +299,7 @@ public class TradeReplayService {
             replay.setSanitizedFailureMessage("Replay will be eligible after T+1 historical data is available.");
             replayRepository.save(replay);
             track(replay, FeatureUsageAction.TRADE_REPLAY_WAITING_FOR_DATA);
+            logLifecycle(replay, previousStatus, TradeReplayStatus.WAITING_FOR_MARKET_DATA, processingStartedAt, startedMs);
             return;
         }
         HistoricalMarketDataProvider provider = providerRegistry.activeProvider();
@@ -269,12 +319,17 @@ public class TradeReplayService {
             replay.setFailureCode("PROVIDER_NOT_CONFIGURED");
             replay.setSanitizedFailureMessage("Historical market data provider is not configured.");
             replayRepository.save(replay);
+            logLifecycle(replay, previousStatus, TradeReplayStatus.PROVIDER_NOT_CONFIGURED, processingStartedAt, startedMs);
             return;
         }
+        replay.setFailureCode(null);
+        replay.setSanitizedFailureMessage(null);
+        replay.setNextRetryAt(null);
         List<MarketCandle> cached = properties.isCacheEnabled() ? loadCandles(replay) : List.of();
         if (cached.size() < expectedMinimumCandles(replay)) {
             replay.setStatus(TradeReplayStatus.FETCHING_DATA);
             replayRepository.saveAndFlush(replay);
+            logLifecycle(replay, previousStatus, TradeReplayStatus.FETCHING_DATA, processingStartedAt, startedMs);
             track(replay, FeatureUsageAction.TRADE_REPLAY_PROVIDER_REQUESTED);
             log.info(
                     "Trade Replay market data request prepared. tradeId={}, replayId={}, symbol={}, contractSymbol={}, contractSymbolSource={}, originalBrokerSymbol={}, resolvedProviderSymbol={}, entryTime={}, exitTime={}, tradeTimeZone={}, entryUtc={}, exitUtc={}, requestStartUtc={}, requestEndUtc={}, provider={}, dataset={}, schema={}",
@@ -307,6 +362,7 @@ public class TradeReplayService {
             if (!result.success()) {
                 failReplay(replay, result.failureCode(), result.sanitizedMessage());
                 track(replay, FeatureUsageAction.TRADE_REPLAY_PROVIDER_FAILED);
+                logLifecycle(replay, TradeReplayStatus.FETCHING_DATA, replay.getStatus(), processingStartedAt, startedMs);
                 return;
             }
             if (properties.isCacheEnabled()) {
@@ -321,10 +377,12 @@ public class TradeReplayService {
             replay.setFailureCode("NOT_ENOUGH_DATA");
             replay.setSanitizedFailureMessage("Not enough one-minute candles were available to reconstruct this replay.");
             replayRepository.save(replay);
+            logLifecycle(replay, previousStatus, TradeReplayStatus.NOT_ENOUGH_DATA, processingStartedAt, startedMs);
             return;
         }
         replay.setStatus(TradeReplayStatus.ANALYZING);
         replayRepository.saveAndFlush(replay);
+        logLifecycle(replay, previousStatus, TradeReplayStatus.ANALYZING, processingStartedAt, startedMs);
         TradeReplayAnalysis analysis = analysisEngine.analyze(trade, cached.stream().map(this::toHistorical).toList(), canonicalRoot(replay.getResolvedProviderSymbol()));
         replay.setMetricsJson(writeJson(analysis.metrics()));
         replay.setAiSummary(analysis.summary());
@@ -338,6 +396,7 @@ public class TradeReplayService {
         insightRepository.deleteByReplayId(saved.getId());
         insightRepository.saveAll(analysis.insights().stream().map(draft -> toInsight(saved, draft)).toList());
         track(saved, FeatureUsageAction.TRADE_REPLAY_GENERATED);
+        logLifecycle(saved, TradeReplayStatus.ANALYZING, TradeReplayStatus.READY, processingStartedAt, startedMs);
     }
 
     @Transactional
@@ -368,6 +427,37 @@ public class TradeReplayService {
         } catch (DataIntegrityViolationException ex) {
             return replayRepository.findByUserIdAndTradeId(trade.getUser().getId(), trade.getId()).orElseThrow(() -> ex);
         }
+    }
+
+    private TradeReplay markInitialPreparationFailed(Trade trade, RuntimeException ex) {
+        TradeReplay replay = replayRepository.findByUserIdAndTradeId(trade.getUser().getId(), trade.getId()).orElseGet(TradeReplay::new);
+        TradeReplayStatus previousStatus = replay.getStatus();
+        if (replay.getId() == null) {
+            replay.setUser(trade.getUser());
+            replay.setTrade(trade);
+        }
+        replay.setOriginalBrokerSymbol(brokerSymbol(trade));
+        replay.setCandleInterval(INTERVAL);
+        replay.setStatus(TradeReplayStatus.FAILED);
+        replay.setFailureCode("CONTRACT_RESOLUTION_ERROR");
+        replay.setSanitizedFailureMessage("Replay contract resolution failed before processing. You can retry.");
+        replay.setProvider(null);
+        replay.setResolvedProviderSymbol(null);
+        TradeReplay saved = replayRepository.saveAndFlush(replay);
+        log.warn(
+                "Trade Replay initial preparation failed. tradeId={}, replayId={}, contract={}, previousStatus={}, newStatus={}, provider={}, processingStartedAt={}, elapsedMs={}, failureCode={}, reason={}",
+                trade.getId(),
+                saved.getId(),
+                saved.getResolvedProviderSymbol(),
+                previousStatus,
+                saved.getStatus(),
+                saved.getProvider(),
+                saved.getUpdatedAt(),
+                0,
+                saved.getFailureCode(),
+                ex.getClass().getSimpleName()
+        );
+        return saved;
     }
 
     private void prepareReplayFields(TradeReplay replay, Trade trade) {
@@ -464,6 +554,106 @@ public class TradeReplayService {
             replay.setNextRetryAt(null);
         }
         replayRepository.save(replay);
+    }
+
+    private void recoverIfStale(TradeReplay replay, String source) {
+        if (isActive(replay) && isStale(replay, Instant.now())) {
+            markStaleFailed(replay, source);
+        }
+    }
+
+    private boolean isActive(TradeReplay replay) {
+        return replay != null && ACTIVE_STATUSES.contains(replay.getStatus());
+    }
+
+    private boolean isStale(TradeReplay replay, Instant now) {
+        if (!isActive(replay)) {
+            return false;
+        }
+        Instant updatedAt = replay.getUpdatedAt() == null ? replay.getCreatedAt() : replay.getUpdatedAt();
+        return updatedAt != null && updatedAt.plus(staleProcessingTimeout()).isBefore(now);
+    }
+
+    private Duration staleProcessingTimeout() {
+        return Duration.ofMinutes(Math.max(1, properties.getStaleProcessingTimeoutMinutes()));
+    }
+
+    private void markStaleFailed(TradeReplay replay, String source) {
+        TradeReplayStatus previous = replay.getStatus();
+        long elapsedMs = elapsedSinceUpdated(replay);
+        Instant processingStartedAt = replay.getUpdatedAt() == null ? replay.getCreatedAt() : replay.getUpdatedAt();
+        replay.setStatus(TradeReplayStatus.FAILED);
+        replay.setFailureCode("REPLAY_PROCESSING_STALE");
+        replay.setSanitizedFailureMessage("Replay processing stalled before completion. You can regenerate it safely.");
+        replay.setNextRetryAt(null);
+        replayRepository.saveAndFlush(replay);
+        log.warn(
+                "Trade Replay stale processing recovered. source={}, tradeId={}, replayId={}, contract={}, previousStatus={}, newStatus={}, provider={}, processingStartedAt={}, elapsedMs={}, failureCode={}",
+                source,
+                replay.getTrade() == null ? null : replay.getTrade().getId(),
+                replay.getId(),
+                replay.getResolvedProviderSymbol(),
+                previous,
+                replay.getStatus(),
+                replay.getProvider(),
+                processingStartedAt,
+                elapsedMs,
+                replay.getFailureCode()
+        );
+    }
+
+    private void failReplayAfterException(TradeReplay replay, RuntimeException ex, Instant processingStartedAt, long startedMs) {
+        TradeReplayStatus previous = replay.getStatus();
+        String code = failureCodeForException(ex);
+        replay.setStatus(TradeReplayStatus.FAILED);
+        replay.setFailureCode(code);
+        replay.setSanitizedFailureMessage("Replay generation failed before completion. You can retry.");
+        replay.setNextRetryAt(null);
+        replayRepository.save(replay);
+        log.warn(
+                "Trade Replay lifecycle failed. tradeId={}, replayId={}, contract={}, previousStatus={}, newStatus={}, provider={}, processingStartedAt={}, elapsedMs={}, failureCode={}, reason={}",
+                replay.getTrade() == null ? null : replay.getTrade().getId(),
+                replay.getId(),
+                replay.getResolvedProviderSymbol(),
+                previous,
+                replay.getStatus(),
+                replay.getProvider(),
+                processingStartedAt,
+                System.currentTimeMillis() - startedMs,
+                code,
+                ex.getClass().getSimpleName()
+        );
+    }
+
+    private String failureCodeForException(RuntimeException ex) {
+        String name = ex.getClass().getSimpleName();
+        if (name.contains("Contract")) {
+            return "CONTRACT_RESOLUTION_ERROR";
+        }
+        if (name.contains("Http") || name.contains("RestClient") || name.contains("ResourceAccess")) {
+            return "PROVIDER_ERROR";
+        }
+        return "REPLAY_EXECUTION_ERROR";
+    }
+
+    private void logLifecycle(TradeReplay replay, TradeReplayStatus previousStatus, TradeReplayStatus newStatus, Instant processingStartedAt, long startedMs) {
+        log.info(
+                "Trade Replay lifecycle transition. tradeId={}, replayId={}, contract={}, previousStatus={}, newStatus={}, provider={}, processingStartedAt={}, elapsedMs={}, failureCode={}",
+                replay.getTrade() == null ? null : replay.getTrade().getId(),
+                replay.getId(),
+                replay.getResolvedProviderSymbol(),
+                previousStatus,
+                newStatus,
+                replay.getProvider(),
+                processingStartedAt,
+                System.currentTimeMillis() - startedMs,
+                replay.getFailureCode()
+        );
+    }
+
+    private long elapsedSinceUpdated(TradeReplay replay) {
+        Instant updatedAt = replay.getUpdatedAt() == null ? replay.getCreatedAt() : replay.getUpdatedAt();
+        return updatedAt == null ? -1 : Duration.between(updatedAt, Instant.now()).toMillis();
     }
 
     private boolean retryableProviderFailure(String code) {

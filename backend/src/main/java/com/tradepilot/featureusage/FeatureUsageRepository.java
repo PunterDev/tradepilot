@@ -27,6 +27,10 @@ public interface FeatureUsageRepository extends JpaRepository<FeatureUsageEvent,
 
     List<FeatureUsageEvent> findByUserIdInAndCreatedAtGreaterThanEqual(List<Long> userIds, LocalDateTime start);
 
+    List<FeatureUsageEvent> findByUserIdOrderByCreatedAtAscIdAsc(Long userId);
+
+    boolean existsByUserIdAndAction(Long userId, FeatureUsageAction action);
+
     @Query("""
             select e
             from FeatureUsageEvent e
@@ -116,11 +120,19 @@ public interface FeatureUsageRepository extends JpaRepository<FeatureUsageEvent,
     );
 
     @Query("""
-            select e.feature, e.userId, count(e), min(e.createdAt), max(e.createdAt)
+            select e.feature,
+                   e.userId,
+                   count(e),
+                   sum(case when e.eventType in (com.tradepilot.featureusage.FeatureUsageEventType.PAGE_VIEW, com.tradepilot.featureusage.FeatureUsageEventType.ANALYTICS_VIEW, com.tradepilot.featureusage.FeatureUsageEventType.AI_CACHED_READ) then 1 else 0 end),
+                   sum(case when e.eventType = com.tradepilot.featureusage.FeatureUsageEventType.AI_GENERATION then 1 else 0 end),
+                   min(e.createdAt),
+                   max(e.createdAt),
+                   count(distinct cast(e.createdAt as LocalDate))
             from FeatureUsageEvent e
             join User u on u.id = e.userId
             where e.createdAt >= :start and e.createdAt < :end
               and (:plan is null or u.plan = :plan)
+              and (:eventType is null or e.eventType = :eventType)
               and (:excludeAdmins = false or u.role <> :adminRole)
             group by e.feature, e.userId
             """)
@@ -128,6 +140,7 @@ public interface FeatureUsageRepository extends JpaRepository<FeatureUsageEvent,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
             @Param("plan") PlanType plan,
+            @Param("eventType") FeatureUsageEventType eventType,
             @Param("excludeAdmins") boolean excludeAdmins,
             @Param("adminRole") UserRole adminRole
     );
@@ -138,6 +151,7 @@ public interface FeatureUsageRepository extends JpaRepository<FeatureUsageEvent,
             join User u on u.id = e.userId
             where e.createdAt >= :start and e.createdAt < :end
               and (:plan is null or u.plan = :plan)
+              and (:eventType is null or e.eventType = :eventType)
               and (:excludeAdmins = false or u.role <> :adminRole)
             group by cast(e.createdAt as LocalDate), e.feature
             order by cast(e.createdAt as LocalDate)
@@ -146,6 +160,7 @@ public interface FeatureUsageRepository extends JpaRepository<FeatureUsageEvent,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
             @Param("plan") PlanType plan,
+            @Param("eventType") FeatureUsageEventType eventType,
             @Param("excludeAdmins") boolean excludeAdmins,
             @Param("adminRole") UserRole adminRole
     );

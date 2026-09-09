@@ -7,10 +7,13 @@ import {
   makeUserAdmin,
   removeUserAdmin,
   searchAdminUsers,
+  getUserFeatureEntitlements,
+  setUserFeatureEntitlement,
   upgradeUserToPro,
   type AdminTradeCleanupResponse,
   type AdminUserDetail,
   type AdminUserRecord,
+  type UserFeatureEntitlement,
 } from "../../../api/adminUsersApi";
 import PageHeader from "../../../layout/PageHeader";
 import { button, card, input, label, mutedText, sectionTitle } from "../../../styles/dashboardStyles";
@@ -404,6 +407,8 @@ function UserDetail({
         </div>
       </section>
 
+      <PrivateBetaEntitlements userId={user.id} />
+
       <section style={subCard}>
         <h3 style={smallTitle}>Contact History</h3>
         {detail.contactMessages.length === 0 ? (
@@ -428,6 +433,57 @@ function UserDetail({
         ))}
       </section>
     </div>
+  );
+}
+
+function PrivateBetaEntitlements({ userId }: { userId: number }) {
+  const [items, setItems] = useState<UserFeatureEntitlement[]>([]);
+  const [reason, setReason] = useState("Founder/private beta access");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const enabled = items.some((item) => item.entitlementKey === "AI_PRE_ANALYSIS_BETA" && item.enabled);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    getUserFeatureEntitlements(userId)
+      .then((data) => active && setItems(data))
+      .catch((err) => active && setError(extractApiError(err, "Unable to load feature entitlements.")))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [userId]);
+
+  async function toggle(nextEnabled: boolean) {
+    setSaving(true);
+    setError("");
+    try {
+      const saved = await setUserFeatureEntitlement(userId, {
+        entitlementKey: "AI_PRE_ANALYSIS_BETA",
+        enabled: nextEnabled,
+        reason,
+      });
+      setItems((current) => [...current.filter((item) => item.entitlementKey !== saved.entitlementKey), saved]);
+    } catch (err) {
+      setError(extractApiError(err, "Unable to update feature entitlement."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section style={subCard}>
+      <h3 style={smallTitle}>Private Beta</h3>
+      <Detail label="AI Pre-Analysis" value={loading ? "Loading" : enabled ? "Enabled" : "Disabled"} />
+      <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason" style={input} />
+      {error && <p style={{ ...mutedText, color: "#fecaca" }}>{error}</p>}
+      <div style={actionRow}>
+        <button type="button" onClick={() => toggle(true)} disabled={saving || enabled} style={actionButton(saving || enabled)}>Grant AI Pre-Analysis</button>
+        <button type="button" onClick={() => toggle(false)} disabled={saving || !enabled} style={dangerActionButton(saving || !enabled)}>Revoke</button>
+      </div>
+    </section>
   );
 }
 

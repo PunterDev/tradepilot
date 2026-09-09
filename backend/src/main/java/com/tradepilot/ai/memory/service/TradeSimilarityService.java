@@ -14,6 +14,7 @@ import com.tradepilot.billing.FeatureAccessService;
 import com.tradepilot.config.FeatureFlagService;
 import com.tradepilot.entity.Trade;
 import com.tradepilot.entity.User;
+import com.tradepilot.exception.ResourceNotFoundException;
 import com.tradepilot.featureusage.FeatureKey;
 import com.tradepilot.featureusage.FeatureUsageAction;
 import com.tradepilot.featureusage.FeatureUsageEventType;
@@ -74,7 +75,7 @@ public class TradeSimilarityService {
             return disabled(tradeId);
         }
         featureAccessService.requireFeature(user, Feature.TRADING_MEMORY);
-        Trade currentTrade = tradeRepository.findByIdAndUser_Id(tradeId, user.getId()).orElseThrow(() -> new IllegalArgumentException("Trade not found."));
+        Trade currentTrade = tradeRepository.findByIdAndUser_Id(tradeId, user.getId()).orElseThrow(() -> new ResourceNotFoundException("Trade not found"));
         TradeMemory memory = memoryRepository.findByTradeIdAndUserId(tradeId, user.getId()).orElse(null);
         if (memory == null || memory.getEmbeddingStatus() == EmbeddingStatus.STALE) {
             return new TradingMemoryResponse(tradeId, TradingMemoryStatus.PENDING, null, 0, null, null, null, List.of(), null, "Building this trade's memory.", false);
@@ -98,7 +99,10 @@ public class TradeSimilarityService {
                     .toList();
             List<Long> ids = filtered.stream().map(VectorSearchResult::tradeId).distinct().toList();
             Map<Long, Trade> tradesById = tradeRepository.findByUser_IdAndIdIn(user.getId(), ids).stream().collect(Collectors.toMap(Trade::getId, Function.identity()));
-            Map<Long, TradeMemory> memoriesByTradeId = memoryRepository.findByUserIdAndTradeIdIn(user.getId(), ids).stream().collect(Collectors.toMap(TradeMemory::getTradeId, Function.identity()));
+            List<TradeMemory> hydratedMemories = currentTrade.getAccount() == null
+                    ? memoryRepository.findByUserIdAndTradeIdIn(user.getId(), ids)
+                    : memoryRepository.findByUserIdAndAccountIdAndTradeIdIn(user.getId(), currentTrade.getAccount().getId(), ids);
+            Map<Long, TradeMemory> memoriesByTradeId = hydratedMemories.stream().collect(Collectors.toMap(TradeMemory::getTradeId, Function.identity()));
             int removedDuringHydration = ids.size() - tradesById.size();
             if (removedDuringHydration > 0) {
                 log.warn("trading_memory_cross_user_candidate_removed userId={}, tradeId={}, removed={}", user.getId(), tradeId, removedDuringHydration);
@@ -189,7 +193,8 @@ public class TradeSimilarityService {
         if (lookbackDays != null && lookbackDays > 0 && currentTrade.getTradeDate() != null) {
             tradeDateFrom = currentTrade.getTradeDate().minusDays(lookbackDays);
         }
-        return new TradingMemorySearchRequest(user.getId(), queryVector, tradeId, Math.min(properties.getMaxLimit() * 3, safeLimit * 3), setup, instrument, direction, null, tradeDateFrom);
+        Long accountId = currentTrade.getAccount() == null ? null : currentTrade.getAccount().getId();
+        return new TradingMemorySearchRequest(user.getId(), queryVector, tradeId, Math.min(properties.getMaxLimit() * 3, safeLimit * 3), accountId, setup, instrument, direction, null, tradeDateFrom);
     }
 
     private boolean matchesRequestedFilters(Trade currentTrade, SimilarTradeResponse candidate, boolean sameSetup, boolean sameInstrument, boolean sameDirection, Integer lookbackDays) {

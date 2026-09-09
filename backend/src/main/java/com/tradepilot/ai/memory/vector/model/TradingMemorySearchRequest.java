@@ -8,6 +8,7 @@ public record TradingMemorySearchRequest(
         List<Double> queryVector,
         Long excludeTradeId,
         int limit,
+        Long accountId,
         String setup,
         String instrument,
         String direction,

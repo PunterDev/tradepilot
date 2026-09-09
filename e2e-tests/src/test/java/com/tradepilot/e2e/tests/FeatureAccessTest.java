@@ -8,18 +8,17 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 
 import com.tradepilot.e2e.base.BaseTest;
+import com.tradepilot.e2e.pages.DashboardPage;
 import com.tradepilot.e2e.pages.LoginPage;
 
 @Tag("e2e")
 class FeatureAccessTest extends BaseTest {
     @Test
     void freeUserSeesUpgradePromptForProFeature() {
-        String email = requiredEnv("TRADEPILOT_FREE_TEST_EMAIL");
-        String password = requiredEnv("TRADEPILOT_FREE_TEST_PASSWORD");
-
-        new LoginPage(driver, wait)
+        DashboardPage dashboard = new LoginPage(driver, wait)
                 .open(baseUrl)
-                .login(email, password);
+                .login(testData.freeUser().email(), testData.freeUser().password());
+        assertTrue(dashboard.isDisplayed(), "Free user should land on the dashboard before feature navigation");
 
         driver.get(baseUrl + "/session-review");
 
@@ -30,12 +29,10 @@ class FeatureAccessTest extends BaseTest {
 
     @Test
     void proUserCanAccessSameFeature() {
-        String email = requiredEnv("TRADEPILOT_TEST_EMAIL");
-        String password = requiredEnv("TRADEPILOT_TEST_PASSWORD");
-
-        new LoginPage(driver, wait)
+        DashboardPage dashboard = new LoginPage(driver, wait)
                 .open(baseUrl)
-                .login(email, password);
+                .login(testData.proUser().email(), testData.proUser().password());
+        assertTrue(dashboard.isDisplayed(), "Pro user should land on the dashboard before feature navigation");
 
         driver.get(baseUrl + "/session-review");
 

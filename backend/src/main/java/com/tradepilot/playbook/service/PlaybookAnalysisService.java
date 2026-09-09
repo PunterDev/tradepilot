@@ -5,6 +5,7 @@ import com.tradepilot.billing.Feature;
 import com.tradepilot.billing.FeatureAccessService;
 import com.tradepilot.billing.UsageLimitService;
 import com.tradepilot.entity.User;
+import com.tradepilot.exception.ResourceNotFoundException;
 import com.tradepilot.playbook.dto.*;
 import com.tradepilot.playbook.entity.PlaybookAnalysisSnapshot;
 import com.tradepilot.playbook.entity.PlaybookChecklistItem;
@@ -164,6 +165,6 @@ public class PlaybookAnalysisService {
     }
 
     private PlaybookSetup setup(User user, Long setupId) {
-        return setupRepository.findByIdAndUser_Id(setupId, user.getId()).orElseThrow(() -> new IllegalArgumentException("Playbook setup not found."));
+        return setupRepository.findByIdAndUser_Id(setupId, user.getId()).orElseThrow(() -> new ResourceNotFoundException("Playbook setup not found"));
     }
 }
