@@ -1,10 +1,16 @@
 {
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc && VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://127.0.0.1:8080/api} vite build && npm run prerender",
+    "build:app": "tsc && VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://127.0.0.1:8080/api} vite build",
+    "playwright:install": "playwright install chromium",
+    "preprerender": "npm run playwright:install",
     "prerender": "node scripts/prerender-public-pages.mjs",
+    "build": "npm run build:app && npm run prerender",
     "preview": "vite preview",
     "e2e": "playwright test"
+  },
+  "engines": {
+    "node": "22.x"
   },
   "dependencies": {
     "@tailwindcss/vite": "4.2.4",
