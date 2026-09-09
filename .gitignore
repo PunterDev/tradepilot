@@ -53,6 +53,7 @@ backend/*.trace.db
 frontend/node_modules/
 frontend/dist/
 frontend/build/
+frontend/.prerender-ssr/
 frontend/playwright-report/
 frontend/test-results/
 e2e-tests/target/
