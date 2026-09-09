@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,26 +10,118 @@ const distDir = path.join(projectRoot, "dist");
 const routes = JSON.parse(await readFile(path.join(projectRoot, "seo-public-routes.json"), "utf8"));
 const port = Number(process.env.PRERENDER_PORT ?? 4173);
 const origin = `http://127.0.0.1:${port}`;
-const viteBin = path.join(projectRoot, "node_modules", ".bin", process.platform === "win32" ? "vite.cmd" : "vite");
 
-function waitForServer(processHandle) {
+const contentTypes = new Map([
+  [".css", "text/css; charset=utf-8"],
+  [".html", "text/html; charset=utf-8"],
+  [".ico", "image/x-icon"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".map", "application/json; charset=utf-8"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".webp", "image/webp"],
+  [".woff", "font/woff"],
+  [".woff2", "font/woff2"],
+]);
+
+function safeStaticPath(pathname) {
+  const relativePath = path.posix.normalize(pathname).replace(/^\/+/, "") || "index.html";
+  const candidate = path.resolve(distDir, relativePath);
+  if (candidate !== distDir && !candidate.startsWith(`${distDir}${path.sep}`)) {
+    return null;
+  }
+  return { candidate, hasExtension: path.extname(relativePath).length > 0 };
+}
+
+async function serveStaticFile(request, response) {
+  const requestUrl = new URL(request.url ?? "/", origin);
+  const resolved = safeStaticPath(requestUrl.pathname);
+  if (!resolved) {
+    response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Invalid static path");
+    return;
+  }
+
+  let filePath = resolved.candidate;
+  try {
+    const body = await readFile(filePath);
+    response.writeHead(200, {
+      "Content-Type": contentTypes.get(path.extname(filePath)) ?? "application/octet-stream",
+      "Cache-Control": "no-store",
+    });
+    response.end(body);
+  } catch (error) {
+    if (resolved.hasExtension || error?.code !== "ENOENT") {
+      response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("Static file not found");
+      return;
+    }
+
+    filePath = path.join(distDir, "index.html");
+    try {
+      const body = await readFile(filePath);
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      response.end(body);
+    } catch (fallbackError) {
+      response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end(`Unable to serve prerender fallback: ${fallbackError?.code ?? "unknown error"}`);
+    }
+  }
+}
+
+function startStaticServer() {
+  const server = createServer((request, response) => {
+    serveStaticFile(request, response).catch((error) => {
+      response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end(`Prerender static server error: ${error instanceof Error ? error.message : "unknown error"}`);
+    });
+  });
+
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("Timed out waiting for Vite preview during prerender."));
-    }, 30_000);
+    const onError = (error) => {
+      reject(new Error(`Prerender static server failed to bind ${origin}: ${error.code ?? error.message}`));
+    };
+    server.once("error", onError);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", onError);
+      resolve(server);
+    });
+  });
+}
 
-    processHandle.stdout.on("data", (chunk) => {
-      const text = chunk.toString();
-      if (text.includes(`:${port}`) || text.includes(`127.0.0.1:${port}`)) {
-        clearTimeout(timeout);
-        resolve();
+async function waitForServer(server) {
+  const deadline = Date.now() + 45_000;
+  let lastError = "no response";
+
+  while (Date.now() < deadline) {
+    if (!server.listening) {
+      throw new Error(`Prerender static server stopped before readiness: ${lastError}`);
+    }
+    try {
+      const response = await fetch(origin, { signal: AbortSignal.timeout(2_000) });
+      if (response.status >= 200 && response.status < 400) {
+        return;
       }
-    });
+      lastError = `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "unknown request error";
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 
-    processHandle.once("exit", (code) => {
-      clearTimeout(timeout);
-      reject(new Error(`Vite preview exited before prerender could run. Code: ${code}`));
-    });
+  throw new Error(`Timed out waiting for prerender static server at ${origin}: ${lastError}`);
+}
+
+function closeServer(server) {
+  if (!server?.listening) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
   });
 }
 
@@ -106,23 +198,13 @@ async function normalizeHead(page, route) {
   }, expectedCanonical);
 }
 
-const server = spawn(viteBin, ["preview", "--host", "127.0.0.1", "--port", String(port)], {
-  cwd: projectRoot,
-  env: {
-    ...process.env,
-    VITE_API_BASE_URL: process.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8080/api",
-  },
-  stdio: ["ignore", "pipe", "pipe"],
-});
-
-server.stderr.on("data", (chunk) => {
-  process.stderr.write(chunk);
-});
-
+let server;
+let browser;
 try {
+  server = await startStaticServer();
   await waitForServer(server);
 
-  const browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
   for (const route of routes) {
@@ -140,8 +222,7 @@ try {
     await writeFile(outputPath, html);
     console.log(`prerendered ${route}`);
   }
-
-  await browser.close();
 } finally {
-  server.kill();
+  await browser?.close();
+  await closeServer(server);
 }
