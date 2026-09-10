@@ -68,14 +68,14 @@ export default function ContactPage() {
   return (
     <MarketingShell>
       <Seo
-        title="Contact TradePilot | AI Trading Journal Support"
-        description="Contact TradePilot for questions about AI trading journals, futures analytics, CSV imports, billing, and trader coaching workflows."
+        title="Contact TradePilot Coach | AI Trading Journal Support"
+        description="Contact TradePilot Coach for questions about AI trading journals, futures analytics, CSV imports, billing, and trader coaching workflows."
         path="/contact"
       />
       <section className="policy-hero contact-hero">
         <div className="marketing-container">
           <div className="marketing-eyebrow">Contact Us</div>
-          <h1 className="marketing-title">Talk to TradePilot</h1>
+          <h1 className="marketing-title">Talk to TradePilot Coach</h1>
           <p className="marketing-subtitle">
             Questions about journaling, prop firm workflows, AI coaching, or billing? Send a note and we will get back to you soon.
           </p>

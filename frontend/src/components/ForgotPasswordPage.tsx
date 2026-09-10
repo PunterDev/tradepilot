@@ -2,6 +2,7 @@ import { useState } from "react";
 import type React from "react";
 import { useNavigate } from "react-router-dom";
 import { forgotPassword } from "../api/authApi";
+import Seo from "./Seo";
 import {
   AuthIntro,
   authButtonStyle,
@@ -40,6 +41,12 @@ export default function ForgotPasswordPage() {
 
   return (
     <main style={authPageStyle}>
+      <Seo
+        title="Reset Your TradePilot Coach Password"
+        description="Request a password reset for your TradePilot Coach account."
+        path="/forgot-password"
+        robots="noindex,nofollow"
+      />
       <AuthIntro />
       <section style={authFormShellStyle}>
         <div style={authPanelStyle}>

@@ -4,15 +4,15 @@ import { expect, test, type Page } from "@playwright/test";
 
 const siteUrl = "https://www.tradepilotcoach.com";
 const expectancyCalculatorPath = "/tools/trading-expectancy-calculator";
-const expectancyCalculatorTitle = "Trading Expectancy Calculator for Futures Traders | TradePilot";
+const expectancyCalculatorTitle = "Trading Expectancy Calculator for Futures Traders | TradePilot Coach";
 const expectancyCalculatorDescription =
   "Calculate your trading expectancy using win rate, average win and average loss. See your expected value per trade and understand what your trading performance means.";
 const overtradingCalculatorPath = "/tools/overtrading-calculator";
-const overtradingCalculatorTitle = "Overtrading Calculator: Compare Early vs Later Trades | TradePilot";
+const overtradingCalculatorTitle = "Overtrading Calculator: Compare Early vs Later Trades | TradePilot Coach";
 const overtradingCalculatorDescription =
   "Compare your early trades with later trades to see whether your win rate, expectancy and P&L deteriorate as you continue trading.";
 const revengeCalculatorPath = "/tools/revenge-trading-calculator";
-const revengeCalculatorTitle = "Revenge Trading Calculator: Analyze Performance After Losses | TradePilot";
+const revengeCalculatorTitle = "Revenge Trading Calculator: Analyze Performance After Losses | TradePilot Coach";
 const revengeCalculatorDescription =
   "Compare your normal trading performance with trades taken after losses and consecutive losses to see whether your results deteriorate after losing trades.";
 const calculatorCta = "Find My Trading Leaks";
@@ -63,9 +63,9 @@ const landingPages = [
   {
     path: "/futures-trading-journal",
     keyword: "futures trading journal",
-    title: "Futures Trading Journal With AI Coaching | TradePilot",
+    title: "Futures Trading Journal With AI Coaching | TradePilot Coach",
     description:
-      "Journal NQ, MNQ, ES and MES futures trades, uncover costly trading patterns, review sessions and get AI-powered coaching with TradePilot.",
+      "Journal NQ, MNQ, ES and MES futures trades, uncover costly trading patterns, review sessions and get AI-powered coaching with TradePilot Coach.",
     h1: "A Trading Journal Built for Futures Traders",
     cta: "Analyze My Futures Trades",
     links: [
@@ -79,9 +79,9 @@ const landingPages = [
   {
     path: "/topstep-trading-journal",
     keyword: "Topstep trading journal",
-    title: "Topstep Trading Journal & AI Trade Analysis | TradePilot",
+    title: "Topstep Trading Journal & AI Trade Analysis | TradePilot Coach",
     description:
-      "Import your Topstep trade history into TradePilot to analyze performance, trading behavior, sessions and recurring mistakes.",
+      "Import your Topstep trade history into TradePilot Coach to analyze performance, trading behavior, sessions and recurring mistakes.",
     h1: "AI Trading Journal for Topstep Traders",
     cta: "Import My Topstep History",
     links: [
@@ -93,9 +93,9 @@ const landingPages = [
   {
     path: "/tradovate-trading-journal",
     keyword: "Tradovate trading journal",
-    title: "Tradovate Trading Journal With AI Insights | TradePilot",
+    title: "Tradovate Trading Journal With AI Insights | TradePilot Coach",
     description:
-      "Import Tradovate futures trades into TradePilot and uncover patterns in your performance, risk, sessions and trading behavior.",
+      "Import Tradovate futures trades into TradePilot Coach and uncover patterns in your performance, risk, sessions and trading behavior.",
     h1: "Turn Your Tradovate Trades Into Actionable Insights",
     cta: "Analyze My Tradovate Trades",
     links: [
@@ -107,9 +107,9 @@ const landingPages = [
   {
     path: "/prop-firm-trading-journal",
     keyword: "prop firm trading journal",
-    title: "Prop Firm Trading Journal for Futures Traders | TradePilot",
+    title: "Prop Firm Trading Journal for Futures Traders | TradePilot Coach",
     description:
-      "Analyze prop-firm trading performance, rule-breaking patterns, overtrading and costly behavior with TradePilot's AI-powered trading journal.",
+      "Analyze prop-firm trading performance, rule-breaking patterns, overtrading and costly behavior with TradePilot Coach's AI-powered trading journal.",
     h1: "A Trading Journal Built for Prop Firm Traders",
     cta: "Find My Biggest Trading Leak",
     links: [
@@ -121,9 +121,9 @@ const landingPages = [
   {
     path: "/ai-trading-journal",
     keyword: "AI trading journal",
-    title: "AI Trading Journal for Futures Traders | TradePilot",
+    title: "AI Trading Journal for Futures Traders | TradePilot Coach",
     description:
-      "TradePilot uses AI to analyze completed trades, identify behavioral patterns and help futures traders review what is actually hurting their performance.",
+      "TradePilot Coach uses AI to analyze completed trades, identify behavioral patterns and help futures traders review what is actually hurting their performance.",
     h1: "AI That Analyzes Your Trading - Not Predicts It",
     cta: "Analyze My Trading Free",
     links: [
@@ -135,7 +135,7 @@ const landingPages = [
   {
     path: "/trading-psychology",
     keyword: "trading psychology",
-    title: "Trading Psychology You Can Actually Measure | TradePilot",
+    title: "Trading Psychology You Can Actually Measure | TradePilot Coach",
     description:
       "Learn how futures traders can measure revenge trading, overtrading, rule breaking, discipline issues and post-loss behavior using completed trade history.",
     h1: "Trading Psychology You Can Actually Measure",
@@ -151,7 +151,7 @@ const landingPages = [
   {
     path: "/revenge-trading",
     keyword: "revenge trading",
-    title: "Revenge Trading: How to Identify and Measure It | TradePilot",
+    title: "Revenge Trading: How to Identify and Measure It | TradePilot Coach",
     description:
       "Learn what revenge trading looks like, how to identify it in your futures trade history, and how to measure what trading after losses may be costing you.",
     h1: "Revenge Trading: Stop Guessing and Measure the Pattern",
@@ -166,7 +166,7 @@ const landingPages = [
   {
     path: "/overtrading",
     keyword: "overtrading",
-    title: "Overtrading: Signs, Causes & How to Measure It | TradePilot",
+    title: "Overtrading: Signs, Causes & How to Measure It | TradePilot Coach",
     description:
       "Learn the signs of overtrading, why trade count alone is not enough, and how futures traders can measure whether too many trades are hurting performance.",
     h1: "Are You Losing Money Because You Trade Too Much?",
@@ -181,7 +181,7 @@ const landingPages = [
   {
     path: "/trading-discipline",
     keyword: "trading discipline",
-    title: "Trading Discipline: Measure It Instead of Relying on Willpower | TradePilot",
+    title: "Trading Discipline: Measure It Instead of Relying on Willpower | TradePilot Coach",
     description:
       "Learn how to improve trading discipline by measuring rule adherence, session behavior, sizing consistency and repeated decision patterns.",
     h1: "Trading Discipline Becomes Easier to Improve When You Can Measure It",
@@ -196,7 +196,7 @@ const landingPages = [
   {
     path: "/breaking-trading-rules",
     keyword: "breaking trading rules",
-    title: "Why Traders Keep Breaking Their Own Rules | TradePilot",
+    title: "Why Traders Keep Breaking Their Own Rules | TradePilot Coach",
     description:
       "Understand why traders break trading rules and how to measure the trigger, violation, cost and adjustment in a futures trading journal.",
     h1: "You Know the Rule. Why Do You Keep Breaking It?",
@@ -211,7 +211,7 @@ const landingPages = [
   {
     path: "/trading-after-losses",
     keyword: "trading after losses",
-    title: "Trading After Losses: What Happens to Your Performance? | TradePilot",
+    title: "Trading After Losses: What Happens to Your Performance? | TradePilot Coach",
     description:
       "Learn how to analyze trading after losses by comparing baseline trades, trades after one loss, and trades after consecutive losses.",
     h1: "What Happens to Your Trading After You Lose?",

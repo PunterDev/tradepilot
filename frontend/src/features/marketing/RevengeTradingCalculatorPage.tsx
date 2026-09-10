@@ -10,7 +10,7 @@ const PAGE_PATH = "/tools/revenge-trading-calculator";
 const TOOL_ID = "revenge_trading_calculator";
 const CTA_LABEL = "Find My Trading Leaks";
 const CTA_SOURCE = "revenge-trading-calculator";
-const TITLE = "Revenge Trading Calculator: Analyze Performance After Losses | TradePilot";
+const TITLE = "Revenge Trading Calculator: Analyze Performance After Losses | TradePilot Coach";
 const DESCRIPTION =
   "Compare your normal trading performance with trades taken after losses and consecutive losses to see whether your results deteriorate after losing trades.";
 const MAX_VALUE = 1_000_000_000;
@@ -522,10 +522,10 @@ export default function RevengeTradingCalculatorPage() {
       <section className="marketing-section">
         <div className="marketing-container audience-panel seo-link-panel revenge-link-panel">
           <div>
-            <div className="marketing-eyebrow">TradePilot bridge</div>
-            <h2 className="marketing-section-title">Want TradePilot to Find These Patterns Automatically?</h2>
+            <div className="marketing-eyebrow">TradePilot Coach bridge</div>
+            <h2 className="marketing-section-title">Want TradePilot Coach to Find These Patterns Automatically?</h2>
             <p className="marketing-section-copy">
-              Import your completed Topstep or Tradovate trades and let TradePilot analyze historical patterns around losses, sessions, trade frequency, instruments and trading behavior automatically.
+              Import your completed Topstep or Tradovate trades and let TradePilot Coach analyze historical patterns around losses, sessions, trade frequency, instruments and trading behavior automatically.
             </p>
             <Link
               className="marketing-button primary"
@@ -685,7 +685,7 @@ function RevengeResultPanel({ result }: { result: RevengeResult }) {
           <li>Add trades taken after one loss.</li>
           <li>Add trades taken after two consecutive losses.</li>
         </ol>
-        <p>TradePilot compares expectancy, win rate and estimated performance gaps once the groups have valid aggregate inputs.</p>
+        <p>TradePilot Coach compares expectancy, win rate and estimated performance gaps once the groups have valid aggregate inputs.</p>
       </aside>
     );
   }

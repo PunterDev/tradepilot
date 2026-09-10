@@ -45,11 +45,11 @@ type LandingPageContent = {
 const softwareApplicationSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "TradePilot",
+  name: "TradePilot Coach",
   applicationCategory: "FinanceApplication",
   operatingSystem: "Web",
   url: SITE_URL,
-  description: "AI trading journal and behavioral trading coach for futures and prop-firm traders.",
+  description: "AI trading journal, execution intelligence, and performance coaching for futures and prop-firm traders.",
   offers: [
     {
       "@type": "Offer",
@@ -64,13 +64,13 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
   "/futures-trading-journal": {
     path: "/futures-trading-journal",
     keyword: "futures trading journal",
-    title: "Futures Trading Journal With AI Coaching | TradePilot",
+    title: "Futures Trading Journal With AI Coaching | TradePilot Coach",
     description:
-      "Journal NQ, MNQ, ES and MES futures trades, uncover costly trading patterns, review sessions and get AI-powered coaching with TradePilot.",
+      "Journal NQ, MNQ, ES and MES futures trades, uncover costly trading patterns, review sessions and get AI-powered coaching with TradePilot Coach.",
     h1: "A Trading Journal Built for Futures Traders",
     eyebrow: "Futures trading journal",
     intro:
-      "TradePilot helps futures traders import completed trade history, measure execution, and review the behaviors that keep showing up after the closing bell.",
+      "TradePilot Coach helps futures traders import completed trade history, measure execution, and review the behaviors that keep showing up after the closing bell.",
     cta: "Analyze My Futures Trades",
     secondaryCta: "Compare Imports",
     proof: ["Topstep and Tradovate CSV import", "R-multiple analytics", "Session review", "AI coaching"],
@@ -80,14 +80,14 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
         eyebrow: "Futures context",
         title: "Generic journals can miss the behaviors futures traders care about.",
         copy:
-          "NQ, MNQ, ES and MES traders need more than a blank note field. TradePilot organizes contract, direction, size, session, P&L, and 1R context so the review starts from the market you actually traded.",
+          "NQ, MNQ, ES and MES traders need more than a blank note field. TradePilot Coach organizes contract, direction, size, session, P&L, and 1R context so the review starts from the market you actually traded.",
         bullets: ["Track futures symbols and normalized contracts", "Review long and short execution separately", "Connect trade outcomes to time-of-day behavior"],
       },
       {
         eyebrow: "Behavioral review",
         title: "Turn trade history into a repeatable coaching loop.",
         copy:
-          "After import, TradePilot helps you inspect performance patterns, session quality, overtrading, revenge trading, and sizing mistakes using your own completed trades.",
+          "After import, TradePilot Coach helps you inspect performance patterns, session quality, overtrading, revenge trading, and sizing mistakes using your own completed trades.",
         bullets: ["R-multiple analytics when account risk is configured", "Session analysis for market-time behavior", "AI reviews and Daily or Weekly Coach where available"],
       },
       {
@@ -99,7 +99,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       },
     ],
     comparison: {
-      title: "What TradePilot Helps Futures Traders Review",
+      title: "What TradePilot Coach Helps Futures Traders Review",
       rows: [
         ["Import", "Manual entry or spreadsheets", "Topstep and Tradovate CSV workflows"],
         ["Risk", "Raw dollars only", "R-multiple analytics when 1R is configured"],
@@ -117,25 +117,25 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       {
         question: "Can I journal NQ, MNQ, ES and MES trades?",
         answer:
-          "TradePilot supports futures trade records and uses futures point values for supported import workflows. Unsupported contracts are rejected with validation rather than forced into bad analytics.",
+          "TradePilot Coach supports futures trade records and uses futures point values for supported import workflows. Unsupported contracts are rejected with validation rather than forced into bad analytics.",
       },
       {
-        question: "Does TradePilot predict futures trades?",
+        question: "Does TradePilot Coach predict futures trades?",
         answer:
-          "No. TradePilot analyzes trades that already happened. It does not provide market predictions, trade signals, or financial advice.",
+          "No. TradePilot Coach analyzes trades that already happened. It does not provide market predictions, trade signals, or financial advice.",
       },
     ],
   },
   "/topstep-trading-journal": {
     path: "/topstep-trading-journal",
     keyword: "Topstep trading journal",
-    title: "Topstep Trading Journal & AI Trade Analysis | TradePilot",
+    title: "Topstep Trading Journal & AI Trade Analysis | TradePilot Coach",
     description:
-      "Import your Topstep trade history into TradePilot to analyze performance, trading behavior, sessions and recurring mistakes.",
+      "Import your Topstep trade history into TradePilot Coach to analyze performance, trading behavior, sessions and recurring mistakes.",
     h1: "AI Trading Journal for Topstep Traders",
     eyebrow: "Topstep CSV workflow",
     intro:
-      "TradePilot imports supported Topstep orders_export.csv history so futures traders can review completed trades, sessions, and repeated execution mistakes in one private journal.",
+      "TradePilot Coach imports supported Topstep orders_export.csv history so futures traders can review completed trades, sessions, and repeated execution mistakes in one private journal.",
     cta: "Import My Topstep History",
     secondaryCta: "See Futures Journal",
     proof: ["orders_export.csv support", "One source AccountName per file", "Duplicate-safe keys", "AI coaching"],
@@ -145,21 +145,21 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
         eyebrow: "Actual import support",
         title: "Built around Topstep order-history exports, not vague copy.",
         copy:
-          "TradePilot currently supports the Topstep orders_export.csv shape. Filled opening and closing executions are reconstructed into completed futures trades; cancelled rows and unfinished positions are ignored or reported during preview.",
+          "TradePilot Coach currently supports the Topstep orders_export.csv shape. Filled opening and closing executions are reconstructed into completed futures trades; cancelled rows and unfinished positions are ignored or reported during preview.",
         bullets: ["Requires the supported Topstep order-history headers", "Rejects multiple AccountName values in one file for MVP safety", "Uses Topstep-prefixed duplicate keys"],
       },
       {
         eyebrow: "Prop-firm behavior",
         title: "Review the mistakes that tend to repeat in evaluations.",
         copy:
-          "Use TradePilot to study whether losses cluster after a bad start, whether size changes under stress, and whether your trading worsens in specific sessions.",
+          "Use TradePilot Coach to study whether losses cluster after a bad start, whether size changes under stress, and whether your trading worsens in specific sessions.",
         bullets: ["Futures performance review", "Behavioral pattern analysis", "Session Review and AI coaching where available"],
       },
       {
         eyebrow: "Workflow",
         title: "Export, upload, review, and discover patterns.",
         copy:
-          "After account setup, upload the supported CSV, preview what TradePilot found, save valid trades, then use dashboard and AI review tools to inspect your data.",
+          "After account setup, upload the supported CSV, preview what TradePilot Coach found, save valid trades, then use dashboard and AI review tools to inspect your data.",
         bullets: ["CSV import into your selected trading account", "Preview warnings for unsupported rows", "Completed trades feed calendar, analytics, and coaching"],
       },
     ],
@@ -170,28 +170,28 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
     ],
     faq: [
       {
-        question: "Which Topstep file does TradePilot support?",
+        question: "Which Topstep file does TradePilot Coach support?",
         answer:
-          "TradePilot supports the Topstep orders_export.csv order-history export with required headers such as Id, AccountName, ContractName, Status, Size, Side, FilledAt, ExecutePrice, PositionDisposition, and CreationDisposition.",
+          "TradePilot Coach supports the Topstep orders_export.csv order-history export with required headers such as Id, AccountName, ContractName, Status, Size, Side, FilledAt, ExecutePrice, PositionDisposition, and CreationDisposition.",
       },
       {
         question: "Can one Topstep file include multiple source accounts?",
         answer:
-          "Not currently. For MVP safety, TradePilot rejects Topstep files that contain more than one AccountName value.",
+          "Not currently. For MVP safety, TradePilot Coach rejects Topstep files that contain more than one AccountName value.",
       },
     ],
-    disclaimer: "TradePilot is an independent product and is not affiliated with or endorsed by Topstep.",
+    disclaimer: "TradePilot Coach is an independent product and is not affiliated with or endorsed by Topstep.",
   },
   "/tradovate-trading-journal": {
     path: "/tradovate-trading-journal",
     keyword: "Tradovate trading journal",
-    title: "Tradovate Trading Journal With AI Insights | TradePilot",
+    title: "Tradovate Trading Journal With AI Insights | TradePilot Coach",
     description:
-      "Import Tradovate futures trades into TradePilot and uncover patterns in your performance, risk, sessions and trading behavior.",
+      "Import Tradovate futures trades into TradePilot Coach and uncover patterns in your performance, risk, sessions and trading behavior.",
     h1: "Turn Your Tradovate Trades Into Actionable Insights",
     eyebrow: "Tradovate CSV journal",
     intro:
-      "TradePilot turns supported Tradovate futures CSV history into a private review workspace for performance, risk, session behavior, and AI-powered trade analysis.",
+      "TradePilot Coach turns supported Tradovate futures CSV history into a private review workspace for performance, risk, session behavior, and AI-powered trade analysis.",
     cta: "Analyze My Tradovate Trades",
     secondaryCta: "Explore AI Journal",
     proof: ["Tradovate-compatible CSV", "Session classification", "Futures P&L checks", "Free and Pro plans"],
@@ -201,21 +201,21 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
         eyebrow: "Why journal Tradovate trades",
         title: "Your platform records fills. Your journal should explain behavior.",
         copy:
-          "TradePilot imports supported Tradovate trade CSVs, normalizes futures contracts where possible, and organizes entries, exits, direction, quantity, P&L, and session context for review.",
+          "TradePilot Coach imports supported Tradovate trade CSVs, normalizes futures contracts where possible, and organizes entries, exits, direction, quantity, P&L, and session context for review.",
         bullets: ["Supports TradePilot-compatible Tradovate trade CSV fields", "Uses explicit side fields where present", "Falls back to buy/sell timestamp order when needed"],
       },
       {
         eyebrow: "Import workflow",
         title: "Move from raw export to reviewable trades.",
         copy:
-          "Upload a supported Tradovate CSV after selecting a trading account. TradePilot validates rows, reconciles supported futures P&L within tolerance, and saves valid trades into the dashboard.",
+          "Upload a supported Tradovate CSV after selecting a trading account. TradePilot Coach validates rows, reconciles supported futures P&L within tolerance, and saves valid trades into the dashboard.",
         bullets: ["Duplicate protection uses deterministic external trade keys", "Offset-less timestamps are treated as New York market-local time", "Calendar, analytics, Session Review, and coaching use the imported records"],
       },
       {
         eyebrow: "AI review",
         title: "Find trading leaks without turning AI into a signal service.",
         copy:
-          "TradePilot analyzes completed Tradovate trades for behavioral patterns such as overtrading, weak sessions, sizing mistakes, and rule-breaking themes.",
+          "TradePilot Coach analyzes completed Tradovate trades for behavioral patterns such as overtrading, weak sessions, sizing mistakes, and rule-breaking themes.",
         bullets: ["AI Trade Review for selected trades where available", "AI Leak Detector and coaching on eligible plans", "No predictions or trade recommendations"],
       },
     ],
@@ -226,9 +226,9 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
     ],
     faq: [
       {
-        question: "Does TradePilot connect directly to Tradovate?",
+        question: "Does TradePilot Coach connect directly to Tradovate?",
         answer:
-          "No direct API connection is claimed here. TradePilot supports CSV import for compatible Tradovate trade exports.",
+          "No direct API connection is claimed here. TradePilot Coach supports CSV import for compatible Tradovate trade exports.",
       },
       {
         question: "How are Tradovate sessions classified?",
@@ -236,18 +236,18 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
           "Tradovate CSV timestamps are treated as America/New_York market-local timestamps for session classification.",
       },
     ],
-    disclaimer: "TradePilot is an independent product and is not affiliated with or endorsed by Tradovate.",
+    disclaimer: "TradePilot Coach is an independent product and is not affiliated with or endorsed by Tradovate.",
   },
   "/prop-firm-trading-journal": {
     path: "/prop-firm-trading-journal",
     keyword: "prop firm trading journal",
-    title: "Prop Firm Trading Journal for Futures Traders | TradePilot",
+    title: "Prop Firm Trading Journal for Futures Traders | TradePilot Coach",
     description:
-      "Analyze prop-firm trading performance, rule-breaking patterns, overtrading and costly behavior with TradePilot's AI-powered trading journal.",
+      "Analyze prop-firm trading performance, rule-breaking patterns, overtrading and costly behavior with TradePilot Coach's AI-powered trading journal.",
     h1: "A Trading Journal Built for Prop Firm Traders",
     eyebrow: "Prop firm trading journal",
     intro:
-      "TradePilot helps futures prop-firm traders study discipline, session deterioration, and repeated evaluation mistakes using completed trades instead of promises or signals.",
+      "TradePilot Coach helps futures prop-firm traders study discipline, session deterioration, and repeated evaluation mistakes using completed trades instead of promises or signals.",
     cta: "Find My Biggest Trading Leak",
     secondaryCta: "See Topstep Workflow",
     proof: ["No signals", "No trade calls", "No profit promises", "Behavioral review"],
@@ -257,21 +257,21 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
         eyebrow: "Evaluation pressure",
         title: "Passing rules is not the same as keeping discipline.",
         copy:
-          "Prop-firm traders often know the rules and still break process after consecutive losses, a green start, or a frustrating session. TradePilot helps identify whether the recurring problem is strategy, timing, sizing, or behavior.",
+          "Prop-firm traders often know the rules and still break process after consecutive losses, a green start, or a frustrating session. TradePilot Coach helps identify whether the recurring problem is strategy, timing, sizing, or behavior.",
         bullets: ["Continuing after consecutive losses", "Overtrading after a poor start", "Oversizing when trying to recover"],
       },
       {
         eyebrow: "Behavioral leaks",
         title: "See how costly habits show up across completed trades.",
         copy:
-          "Use TradePilot to review repeated evaluation mistakes: weak session selection, broken rules, inconsistent execution, and deterioration late in a trading day.",
+          "Use TradePilot Coach to review repeated evaluation mistakes: weak session selection, broken rules, inconsistent execution, and deterioration late in a trading day.",
         bullets: ["Session deterioration analysis", "Rule-breaking and mistake themes", "R-multiple context when configured"],
       },
       {
         eyebrow: "Clear boundaries",
         title: "A coach for review, not a shortcut around risk.",
         copy:
-          "TradePilot does not tell you what to trade next and does not imply that any trader will pass a challenge or become profitable.",
+          "TradePilot Coach does not tell you what to trade next and does not imply that any trader will pass a challenge or become profitable.",
         bullets: ["No signals", "No trade calls", "No promises of profit"],
       },
     ],
@@ -282,27 +282,27 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
     ],
     faq: [
       {
-        question: "Will TradePilot help me pass a prop challenge?",
+        question: "Will TradePilot Coach help me pass a prop challenge?",
         answer:
-          "TradePilot can help you review your own completed trades and behavior. It does not guarantee passing an evaluation or improving trading outcomes.",
+          "TradePilot Coach can help you review your own completed trades and behavior. It does not guarantee passing an evaluation or improving trading outcomes.",
       },
       {
-        question: "Is TradePilot only for Topstep traders?",
+        question: "Is TradePilot Coach only for Topstep traders?",
         answer:
-          "No. TradePilot is built for futures and prop-firm traders broadly, with current CSV import support for compatible Tradovate and Topstep exports.",
+          "No. TradePilot Coach is built for futures and prop-firm traders broadly, with current CSV import support for compatible Tradovate and Topstep exports.",
       },
     ],
   },
   "/ai-trading-journal": {
     path: "/ai-trading-journal",
     keyword: "AI trading journal",
-    title: "AI Trading Journal for Futures Traders | TradePilot",
+    title: "AI Trading Journal for Futures Traders | TradePilot Coach",
     description:
-      "TradePilot uses AI to analyze completed trades, identify behavioral patterns and help futures traders review what is actually hurting their performance.",
+      "TradePilot Coach uses AI to analyze completed trades, identify behavioral patterns and help futures traders review what is actually hurting their performance.",
     h1: "AI That Analyzes Your Trading - Not Predicts It",
     eyebrow: "AI trading journal",
     intro:
-      "TradePilot uses AI as a review layer for completed trades. It studies your actual history, highlights repeated behaviors, and helps you decide what to review before the next session.",
+      "TradePilot Coach uses AI as a review layer for completed trades. It studies your actual history, highlights repeated behaviors, and helps you decide what to review before the next session.",
     cta: "Analyze My Trading Free",
     secondaryCta: "See Futures Journal",
     proof: ["Completed-trade analysis", "Behavioral patterns", "Session insights", "Weekly coaching"],
@@ -310,28 +310,28 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
     sections: [
       {
         eyebrow: "Positioning",
-        title: "AI signals predict. TradePilot reviews.",
+        title: "AI signals predict. TradePilot Coach reviews.",
         copy:
-          "TradePilot does not forecast market direction, issue trade calls, or recommend entries. It analyzes trades you already took so you can understand what behavior is hurting your process.",
+          "TradePilot Coach does not forecast market direction, issue trade calls, or recommend entries. It analyzes trades you already took so you can understand what behavior is hurting your process.",
         bullets: ["Reviews historical execution", "Uses your own trade records and metadata", "Keeps recommendations focused on review and process"],
       },
       {
         eyebrow: "What AI reviews",
         title: "From individual trade decisions to weekly patterns.",
         copy:
-          "Depending on your plan and enabled features, TradePilot can support AI Trade Review, Session Review, Daily Coach, Weekly Coach, Trading DNA, and AI Leak Detector workflows.",
+          "Depending on your plan and enabled features, TradePilot Coach can support AI Trade Review, Session Review, Daily Coach, Weekly Coach, and AI Leak Detector workflows.",
         bullets: ["Trade-level decisions and context", "Session-level strengths and mistakes", "Recurring behavior across your history"],
       },
       {
         eyebrow: "Guardrails",
         title: "Useful coaching needs honest limitations.",
         copy:
-          "TradePilot uses limited-data states and cached results where appropriate. AI usage is subject to monthly credit allowances, and all trading remains risky.",
+          "TradePilot Coach uses limited-data states and cached results where appropriate. AI usage is subject to monthly credit allowances, and all trading remains risky.",
         bullets: ["Free plan includes monthly AI credits", "Pro includes 100 monthly AI credits", "No financial advice or market predictions"],
       },
     ],
     comparison: {
-      title: "AI Signals vs. TradePilot",
+      title: "AI Signals vs. TradePilot Coach",
       rows: [
         ["Goal", "Tell you what to trade next", "Explain what happened in trades you took"],
         ["Data", "Market prediction inputs", "Your completed trade history and notes"],
@@ -347,7 +347,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       {
         question: "Does an AI trading journal give signals?",
         answer:
-          "TradePilot does not. It uses AI to analyze completed trades, session behavior, and repeated patterns from your own trading history.",
+          "TradePilot Coach does not. It uses AI to analyze completed trades, session behavior, and repeated patterns from your own trading history.",
       },
       {
         question: "What can I do after the first insight?",
@@ -359,13 +359,13 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
   "/trading-psychology": {
     path: "/trading-psychology",
     keyword: "trading psychology",
-    title: "Trading Psychology You Can Actually Measure | TradePilot",
+    title: "Trading Psychology You Can Actually Measure | TradePilot Coach",
     description:
       "Learn how futures traders can measure revenge trading, overtrading, rule breaking, discipline issues and post-loss behavior using completed trade history.",
     h1: "Trading Psychology You Can Actually Measure",
     eyebrow: "Behavioral trading analysis",
     intro:
-      "Trading psychology is easier to improve when it becomes visible in your data. TradePilot helps traders review completed trades for repeated behavior, not vague motivation.",
+      "Trading psychology is easier to improve when it becomes visible in your data. TradePilot Coach helps traders review completed trades for repeated behavior, not vague motivation.",
     cta: "Measure My Trading Behavior",
     secondaryCta: "Read About Revenge Trading",
     proof: ["Revenge trading", "Overtrading", "Rule breaking", "Post-loss behavior"],
@@ -386,10 +386,10 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
         bullets: ["Compare baseline trades with trigger-state trades", "Review frequency and expectancy changes", "Look for behavior that repeats across weeks"],
       },
       {
-        eyebrow: "TradePilot's role",
+        eyebrow: "TradePilot Coach's role",
         title: "AI reviews the trades already in your journal.",
         copy:
-          "TradePilot does not diagnose emotions or predict markets. It analyzes completed futures trades, notes, sessions, sizing, and outcomes so traders can choose a concrete review priority.",
+          "TradePilot Coach does not diagnose emotions or predict markets. It analyzes completed futures trades, notes, sessions, sizing, and outcomes so traders can choose a concrete review priority.",
         bullets: ["No trade calls", "No guaranteed outcomes", "Historical patterns do not guarantee future performance"],
       },
     ],
@@ -415,16 +415,16 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
           "Some emotional states cannot be measured directly, but the behaviors connected to them can often be reviewed through timing, sizing, frequency, setup notes, rule violations, and post-loss performance.",
       },
       {
-        question: "Does TradePilot cure discipline problems?",
+        question: "Does TradePilot Coach cure discipline problems?",
         answer:
-          "No. TradePilot helps traders identify and review historical patterns. The trader remains responsible for risk, decisions, and process changes.",
+          "No. TradePilot Coach helps traders identify and review historical patterns. The trader remains responsible for risk, decisions, and process changes.",
       },
     ],
   },
   "/revenge-trading": {
     path: "/revenge-trading",
     keyword: "revenge trading",
-    title: "Revenge Trading: How to Identify and Measure It | TradePilot",
+    title: "Revenge Trading: How to Identify and Measure It | TradePilot Coach",
     description:
       "Learn what revenge trading looks like, how to identify it in your futures trade history, and how to measure what trading after losses may be costing you.",
     h1: "Revenge Trading: Stop Guessing and Measure the Pattern",
@@ -454,7 +454,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
         eyebrow: "Example",
         title: "A hypothetical revenge-trading segment.",
         copy:
-          "Example only, not TradePilot user results: trades before a second consecutive loss are +$860, while trades afterward are -$1,740. The useful question is whether your own history shows a similar shift.",
+          "Example only, not TradePilot Coach user results: trades before a second consecutive loss are +$860, while trades afterward are -$1,740. The useful question is whether your own history shows a similar shift.",
         bullets: ["Baseline P&L before the trigger", "Post-trigger P&L and average R", "Time between trades after losses"],
       },
     ],
@@ -489,7 +489,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
   "/overtrading": {
     path: "/overtrading",
     keyword: "overtrading",
-    title: "Overtrading: Signs, Causes & How to Measure It | TradePilot",
+    title: "Overtrading: Signs, Causes & How to Measure It | TradePilot Coach",
     description:
       "Learn the signs of overtrading, why trade count alone is not enough, and how futures traders can measure whether too many trades are hurting performance.",
     h1: "Are You Losing Money Because You Trade Too Much?",
@@ -553,7 +553,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
   "/trading-discipline": {
     path: "/trading-discipline",
     keyword: "trading discipline",
-    title: "Trading Discipline: Measure It Instead of Relying on Willpower | TradePilot",
+    title: "Trading Discipline: Measure It Instead of Relying on Willpower | TradePilot Coach",
     description:
       "Learn how to improve trading discipline by measuring rule adherence, session behavior, sizing consistency and repeated decision patterns.",
     h1: "Trading Discipline Becomes Easier to Improve When You Can Measure It",
@@ -609,7 +609,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
   "/breaking-trading-rules": {
     path: "/breaking-trading-rules",
     keyword: "breaking trading rules",
-    title: "Why Traders Keep Breaking Their Own Rules | TradePilot",
+    title: "Why Traders Keep Breaking Their Own Rules | TradePilot Coach",
     description:
       "Understand why traders break trading rules and how to measure the trigger, violation, cost and adjustment in a futures trading journal.",
     h1: "You Know the Rule. Why Do You Keep Breaking It?",
@@ -673,7 +673,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
   "/trading-after-losses": {
     path: "/trading-after-losses",
     keyword: "trading after losses",
-    title: "Trading After Losses: What Happens to Your Performance? | TradePilot",
+    title: "Trading After Losses: What Happens to Your Performance? | TradePilot Coach",
     description:
       "Learn how to analyze trading after losses by comparing baseline trades, trades after one loss, and trades after consecutive losses.",
     h1: "What Happens to Your Trading After You Lose?",
@@ -793,7 +793,7 @@ export function SeoLandingPage({ content }: { content: LandingPageContent }) {
             </div>
             <p className="marketing-trust-copy">
               {isBehavioralPage
-                ? "TradePilot analyzes completed trades and historical behavior. No signals, trade calls, market predictions, or profit promises."
+                ? "TradePilot Coach analyzes completed trades and historical behavior. No signals, trade calls, market predictions, or profit promises."
                 : "Import Topstep and Tradovate trade history by CSV. No signals, trade calls, or profit promises."}
             </p>
             <div className="marketing-proof-row compact" aria-label={`${content.keyword} highlights`}>
@@ -813,7 +813,7 @@ export function SeoLandingPage({ content }: { content: LandingPageContent }) {
               <div className="marketing-eyebrow">Workflow</div>
               <h2 className="marketing-section-title">From Search to First Personalized Insight</h2>
               <p className="marketing-section-copy">
-                The path is simple: open a free account, import a supported CSV, then review the first insight TradePilot can support from your data.
+                The path is simple: open a free account, import a supported CSV, then review the first insight TradePilot Coach can support from your data.
               </p>
             </header>
             <div className="workflow-flow" aria-label={`${content.keyword} workflow`}>
@@ -853,13 +853,13 @@ export function SeoLandingPage({ content }: { content: LandingPageContent }) {
               <div className="comparison-row comparison-header" role="row">
                 <div role="columnheader">Area</div>
                 <div role="columnheader">Common Approach</div>
-                <div role="columnheader">TradePilot</div>
+                <div role="columnheader">TradePilot Coach</div>
               </div>
               {content.comparison.rows.map(([area, common, tradepilot]) => (
                 <div className="comparison-row" role="row" key={area}>
                   <div role="cell" data-label="Area">{area}</div>
                   <div role="cell" data-label="Common Approach">{common}</div>
-                  <div role="cell" data-label="TradePilot">{tradepilot}</div>
+                  <div role="cell" data-label="TradePilot Coach">{tradepilot}</div>
                 </div>
               ))}
             </div>
@@ -871,7 +871,7 @@ export function SeoLandingPage({ content }: { content: LandingPageContent }) {
         <div className="marketing-container audience-panel seo-link-panel">
           <div>
             <div className="marketing-eyebrow">Keep exploring</div>
-            <h2 className="marketing-section-title">Related TradePilot Pages</h2>
+            <h2 className="marketing-section-title">Related TradePilot Coach Pages</h2>
             <p className="marketing-section-copy">
               Use these focused pages to compare import workflows, futures journaling, prop-firm review, and AI coaching.
             </p>
@@ -904,7 +904,7 @@ export function SeoLandingPage({ content }: { content: LandingPageContent }) {
           <div className="final-cta">
             <h2 className="marketing-section-title">Ready to review the trades you already took?</h2>
             <p className="marketing-section-copy">
-              Start with a free TradePilot account, import supported CSV history, and use your first review loop to find the behavior worth fixing next.
+              Start with a free TradePilot Coach account, import supported CSV history, and use your first review loop to find the behavior worth fixing next.
             </p>
             <div className="final-cta-actions">
               <TrackedCta content={content} label={content.cta} to="/register" primary />
@@ -944,8 +944,8 @@ function TrackedCta({
 
 function SeoInsightPanel({ content }: { content: LandingPageContent }) {
   return (
-    <aside className="seo-insight-panel" aria-label={`${content.keyword} TradePilot preview`}>
-      <div className="report-kicker">TradePilot review loop</div>
+    <aside className="seo-insight-panel" aria-label={`${content.keyword} TradePilot Coach preview`}>
+      <div className="report-kicker">TradePilot Coach review loop</div>
       <h2>Completed trades become coaching data.</h2>
       <div className="seo-insight-metrics">
         <div>

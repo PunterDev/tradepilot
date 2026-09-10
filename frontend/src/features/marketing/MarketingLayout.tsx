@@ -24,23 +24,24 @@ export function MarketingNavbar() {
         <Link className="marketing-logo" to="/">
           <span className="marketing-navbar-logo">
             <img
-              src="/assets/tradepilot-logo-navbar.png"
-              alt="TradePilot"
-              width={1460}
-              height={430}
+              src="/assets/tradepilot-coach-logo.png"
+              alt="TradePilot Coach"
+              width={1120}
+              height={340}
             />
           </span>
         </Link>
         <div className="marketing-nav-links">
           <a href="/#features">Features</a>
           <a href="/#how-it-works">How It Works</a>
-          <a href="/#ai-coach">AI Coach</a>
           <a href="/#pricing">Pricing</a>
+          <a href="/tools/trading-expectancy-calculator">Free Tools</a>
+          <a href="/futures-trading-journal">Resources</a>
           <a href="/#faq">FAQ</a>
         </div>
         <div className="marketing-nav-actions">
-          <Link className="marketing-button ghost" to="/login">Login</Link>
-          <Link className="marketing-button primary" to="/register">Get Started</Link>
+          <Link className="marketing-button ghost" to="/login">Sign In</Link>
+          <Link className="marketing-button primary" to="/register">Start Free</Link>
         </div>
         <button
           type="button"
@@ -55,11 +56,12 @@ export function MarketingNavbar() {
         <div className={`marketing-mobile-panel ${mobileOpen ? "open" : ""}`}>
           <a className="marketing-button ghost" href="/#features">Features</a>
           <a className="marketing-button ghost" href="/#how-it-works">How It Works</a>
-          <a className="marketing-button ghost" href="/#ai-coach">AI Coach</a>
           <a className="marketing-button ghost" href="/#pricing">Pricing</a>
+          <Link className="marketing-button ghost" to="/tools/trading-expectancy-calculator">Free Tools</Link>
+          <Link className="marketing-button ghost" to="/futures-trading-journal">Resources</Link>
           <a className="marketing-button ghost" href="/#faq">FAQ</a>
-          <Link className="marketing-button ghost" to="/login">Login</Link>
-          <Link className="marketing-button primary" to="/register">Get Started</Link>
+          <Link className="marketing-button ghost" to="/login">Sign In</Link>
+          <Link className="marketing-button primary" to="/register">Start Free</Link>
         </div>
       </div>
     </nav>
@@ -72,7 +74,7 @@ export function MarketingFooter() {
   return (
     <footer className="marketing-footer">
       <div className="marketing-container marketing-footer-inner">
-        <div>TradePilot {year}</div>
+        <div className="marketing-footer-brand"><strong>TradePilot <span>Coach</span></strong><small>AI-powered trading performance and execution intelligence for futures traders.</small><em>{year}</em></div>
         <div className="marketing-footer-links">
           <div className="marketing-footer-group">
             <span>Product</span>

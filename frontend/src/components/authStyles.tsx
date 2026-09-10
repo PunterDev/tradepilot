@@ -103,27 +103,26 @@ export function AuthIntro() {
   return (
     <section style={authIntroStyle}>
       <div>
-        <div
+        <img
+          src="/assets/tradepilot-coach-logo.png"
+          alt="TradePilot Coach"
           style={{
-            color: "#6ee7b7",
-            fontSize: 13,
-            fontWeight: 900,
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
+            display: "block",
+            width: 208,
+            maxWidth: "100%",
+            height: "auto",
+            mixBlendMode: "screen",
           }}
-        >
-          TradePilot AI
-        </div>
+        />
         <h1 style={{ margin: "14px 0", fontSize: 52, lineHeight: 1, maxWidth: 620 }}>
-          Your trading cockpit, locked to your account.
+          Build a better trading review process.
         </h1>
         <p style={{ color: "#cbd5e1", fontSize: 18, lineHeight: 1.7, maxWidth: 620 }}>
-          Import trades, track prop firm performance, review behavior, and keep coach
-          snapshots tied to the trader who owns them.
+          Turn your trading history into actionable execution insights in a private workspace.
         </p>
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        {["JWT secured", "Private accounts", "AI coach history"].map((item) => (
+        {["Private accounts", "Execution review", "Coaching insights"].map((item) => (
           <span
             key={item}
             style={{

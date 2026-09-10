@@ -74,26 +74,26 @@ export default function AuthPage({ onAuthenticated, initialMode = "login", sessi
   const isRegister = mode === "register";
   const seoPath = location.pathname === "/register" || isRegister ? "/register" : "/login";
   const seoTitle = isRegister
-    ? "Create a TradePilot Account | AI Trading Journal for Futures Traders"
-    : "Login to TradePilot | AI Trading Journal and Futures Analytics";
+    ? "Create a TradePilot Coach Account | AI Trading Journal for Futures Traders"
+    : "Login to TradePilot Coach | AI Trading Journal and Futures Analytics";
   const seoDescription = isRegister
-    ? "Create your TradePilot account to import trades, track performance, and use AI coaching for futures trading improvement."
-    : "Log in to TradePilot to access your AI trading journal, futures analytics dashboard, coaching insights, and performance reports.";
+    ? "Create your TradePilot Coach account to import trades, track performance, and use AI coaching for futures trading improvement."
+    : "Log in to TradePilot Coach to access your AI trading journal, futures analytics dashboard, coaching insights, and performance reports.";
   const copy = useMemo(
     () =>
       isRegister
         ? {
             title: "Create your account",
-            subtitle: "Start with a private workspace for imports, journals, and AI coaching.",
+            subtitle: "Start with a private workspace for imports, journaling, and execution coaching.",
             action: "Create account",
             switchPrompt: "Already have an account?",
             switchAction: "Log in",
           }
         : {
             title: "Welcome back",
-            subtitle: "Log in to continue your TradePilot dashboard.",
+            subtitle: "Log in to continue your TradePilot Coach workspace.",
             action: "Log in",
-            switchPrompt: "New to TradePilot?",
+            switchPrompt: "New to TradePilot Coach?",
             switchAction: "Create an account",
           },
     [isRegister]

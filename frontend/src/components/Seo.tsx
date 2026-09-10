@@ -1,7 +1,8 @@
 import { Helmet } from "react-helmet-async";
 
 export const SITE_URL = "https://www.tradepilotcoach.com";
-const DEFAULT_OG_IMAGE = `${SITE_URL}/assets/tradepilot-logo-homepage.png`;
+const DEFAULT_OG_IMAGE = `${SITE_URL}/assets/tradepilot-coach-og.png`;
+const DEFAULT_SOCIAL_IMAGE_ALT = "TradePilot Coach AI execution intelligence dashboard preview";
 
 type SeoProps = {
   title: string;
@@ -55,11 +56,15 @@ export default function Seo({
       <meta property="og:type" content="website" />
       <meta property="og:url" content={resolvedOgUrl} />
       <meta property="og:image" content={resolvedImage} />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:image:alt" content={DEFAULT_SOCIAL_IMAGE_ALT} />
 
       <meta name="twitter:card" content={twitterCard} />
       <meta name="twitter:title" content={resolvedOgTitle} />
       <meta name="twitter:description" content={resolvedOgDescription} />
       <meta name="twitter:image" content={resolvedImage} />
+      <meta name="twitter:image:alt" content={DEFAULT_SOCIAL_IMAGE_ALT} />
 
       {structuredData && (
         <script type="application/ld+json">

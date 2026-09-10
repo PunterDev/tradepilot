@@ -5,6 +5,8 @@
     "build:ssr": "VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://127.0.0.1:8080/api} vite build --ssr src/prerender-entry.tsx --outDir .prerender-ssr",
     "prerender": "npm run build:ssr && node scripts/prerender-public-pages.mjs",
     "build": "npm run build:app && npm run prerender",
+    "generate:og": "node scripts/generate-tradepilot-coach-og.mjs",
+    "verify:og": "node scripts/verify-tradepilot-coach-og.mjs",
     "preview": "vite preview",
     "e2e": "playwright test"
   },

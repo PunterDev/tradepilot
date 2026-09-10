@@ -10,7 +10,7 @@ const PAGE_PATH = "/tools/trading-expectancy-calculator";
 const TOOL_ID = "trading_expectancy_calculator";
 const CTA_LABEL = "Find My Trading Leaks";
 const CTA_SOURCE = "expectancy-calculator";
-const TITLE = "Trading Expectancy Calculator for Futures Traders | TradePilot";
+const TITLE = "Trading Expectancy Calculator for Futures Traders | TradePilot Coach";
 const DESCRIPTION =
   "Calculate your trading expectancy using win rate, average win and average loss. See your expected value per trade and understand what your trading performance means.";
 const MAX_VALUE = 1_000_000_000;
@@ -365,10 +365,10 @@ export default function TradingExpectancyCalculatorPage() {
       <section className="marketing-section">
         <div className="marketing-container audience-panel seo-link-panel">
           <div>
-            <div className="marketing-eyebrow">TradePilot bridge</div>
-            <h2 className="marketing-section-title">Want TradePilot to Find What Changes Your Expectancy?</h2>
+            <div className="marketing-eyebrow">TradePilot Coach bridge</div>
+            <h2 className="marketing-section-title">Want TradePilot Coach to Find What Changes Your Expectancy?</h2>
             <p className="marketing-section-copy">
-              Expectancy tells you what your trading looks like overall. Import your completed Topstep or Tradovate trades and let TradePilot
+              Expectancy tells you what your trading looks like overall. Import your completed Topstep or Tradovate trades and let TradePilot Coach
               analyze historical patterns across losses, sessions, instruments and trading behavior.
             </p>
             <Link

@@ -5,7 +5,7 @@ import { MarketingShell } from "./MarketingLayout";
 const sections = [
   {
     title: "Information We Collect",
-    body: "We collect account details such as your name, email address, authentication information, trading account labels, imported trade records, journal notes, and usage activity inside TradePilot.",
+    body: "We collect account details such as your name, email address, authentication information, trading account labels, imported trade records, journal notes, and usage activity inside TradePilot Coach.",
   },
   {
     title: "How We Use Your Information",
@@ -17,11 +17,11 @@ const sections = [
   },
   {
     title: "AI Processing",
-    body: "TradePilot may process trade details, notes, and derived analytics with AI systems to generate reviews, coaching summaries, Trading DNA, and session feedback. TradePilot is a journaling and analytics tool. It does not provide financial advice, investment recommendations, or trade signals.",
+    body: "TradePilot Coach may process trade details, notes, and derived analytics with AI systems to generate reviews, coaching summaries, and session feedback. TradePilot Coach is a journaling and analytics tool. It does not provide financial advice, investment recommendations, or trade signals.",
   },
   {
     title: "Payments and Stripe",
-    body: "Paid subscriptions are processed by Stripe. TradePilot does not store full payment card numbers. Stripe may process payment details according to its own privacy and security terms.",
+    body: "Paid subscriptions are processed by Stripe. TradePilot Coach does not store full payment card numbers. Stripe may process payment details according to its own privacy and security terms.",
   },
   {
     title: "Data Security",
@@ -33,7 +33,7 @@ const sections = [
   },
   {
     title: "Contact",
-    body: "For privacy questions or account deletion requests, contact the TradePilot team through the support channel provided in the application.",
+    body: "For privacy questions or account deletion requests, contact the TradePilot Coach team through the support channel provided in the application.",
   },
 ];
 
@@ -41,14 +41,14 @@ export default function PrivacyPage() {
   return (
     <MarketingShell>
       <Seo
-        title="TradePilot Privacy Policy | AI Trading Journal Data Privacy"
-        description="Learn how TradePilot handles account data, imported trade records, AI processing, payments, and privacy for futures traders."
+        title="TradePilot Coach Privacy Policy | AI Trading Journal Data Privacy"
+        description="Learn how TradePilot Coach handles account data, imported trade records, AI processing, payments, and privacy for futures traders."
         path="/privacy"
       />
       <PolicyHero
         eyebrow="Privacy Policy"
         title="Privacy Policy"
-        copy="TradePilot is built around private trading data. This page explains what we collect, why we use it, and how AI and payments fit into the product."
+        copy="TradePilot Coach is built around private trading data. This page explains what we collect, why we use it, and how AI and payments fit into the product."
       />
       <PolicyContent sections={sections} />
     </MarketingShell>

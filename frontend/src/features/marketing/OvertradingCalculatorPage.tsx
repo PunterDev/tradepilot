@@ -10,7 +10,7 @@ const PAGE_PATH = "/tools/overtrading-calculator";
 const TOOL_ID = "overtrading_calculator";
 const CTA_LABEL = "Find My Trading Leaks";
 const CTA_SOURCE = "overtrading-calculator";
-const TITLE = "Overtrading Calculator: Compare Early vs Later Trades | TradePilot";
+const TITLE = "Overtrading Calculator: Compare Early vs Later Trades | TradePilot Coach";
 const DESCRIPTION =
   "Compare your early trades with later trades to see whether your win rate, expectancy and P&L deteriorate as you continue trading.";
 const MAX_VALUE = 1_000_000_000;
@@ -478,10 +478,10 @@ export default function OvertradingCalculatorPage() {
       <section className="marketing-section">
         <div className="marketing-container audience-panel seo-link-panel">
           <div>
-            <div className="marketing-eyebrow">TradePilot bridge</div>
-            <h2 className="marketing-section-title">Want TradePilot to Find Where Your Performance Drops?</h2>
+            <div className="marketing-eyebrow">TradePilot Coach bridge</div>
+            <h2 className="marketing-section-title">Want TradePilot Coach to Find Where Your Performance Drops?</h2>
             <p className="marketing-section-copy">
-              Import your completed Topstep or Tradovate trades and let TradePilot compare historical performance across trade number, sessions, losses, instruments and trading behavior.
+              Import your completed Topstep or Tradovate trades and let TradePilot Coach compare historical performance across trade number, sessions, losses, instruments and trading behavior.
             </p>
             <Link
               className="marketing-button primary"

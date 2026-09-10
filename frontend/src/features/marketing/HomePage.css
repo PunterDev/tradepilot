@@ -50,7 +50,7 @@
 
 .marketing-navbar-logo {
   display: block;
-  width: clamp(132px, 10vw, 150px);
+  width: clamp(184px, 15vw, 218px);
   line-height: 0;
 }
 
@@ -58,10 +58,11 @@
   display: block;
   width: 100%;
   height: auto;
-  max-height: 38px;
+  max-height: 64px;
   max-width: none;
   object-fit: contain;
   object-position: left center;
+  mix-blend-mode: screen;
 }
 
 .marketing-nav-links,
@@ -113,6 +114,16 @@
   font-size: 15px;
 }
 
+.marketing-hero-actions .marketing-button.primary {
+  padding-inline: 30px;
+  box-shadow: 0 20px 54px rgba(45, 212, 191, 0.32);
+}
+
+.marketing-hero-actions .marketing-button.ghost {
+  color: #d8e4f5;
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
 .marketing-button.primary {
   border: 0;
   color: #00140c;
@@ -143,13 +154,13 @@
 }
 
 .marketing-hero {
-  padding: 82px 0 54px;
+  padding: 88px 0 62px;
 }
 
 .marketing-hero-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.12fr) minmax(390px, 0.88fr);
-  gap: clamp(34px, 4vw, 50px);
+  grid-template-columns: minmax(0, 1.22fr) minmax(360px, 0.78fr);
+  gap: clamp(40px, 4.5vw, 62px);
   align-items: center;
 }
 
@@ -169,27 +180,84 @@
 }
 
 .marketing-title {
-  margin: 22px 0 18px;
+  margin: 26px 0 22px;
   max-width: 900px;
   color: #f8fafc;
-  font-size: clamp(48px, 5.1vw, 72px);
+  font-size: clamp(50px, 5.25vw, 74px);
   line-height: 0.98;
   letter-spacing: -0.035em;
 }
+
+.brand-accent { color: #99f6e4; }
+
+.differentiation-section { padding-top: 46px; padding-bottom: 42px; }
+
+.journal-difference-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.72fr);
+  gap: clamp(34px, 7vw, 96px);
+  align-items: end;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(45, 212, 191, 0.18);
+}
+
+.journal-difference-layout .marketing-section-header { margin-bottom: 0; }
+.journal-difference-points { display: grid; gap: 0; }
+
+.journal-difference-points p {
+  margin: 0;
+  padding: 17px 0;
+  color: #d8e4f5;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.journal-difference-points p::before {
+  content: "01";
+  display: inline-block;
+  width: 38px;
+  color: #67e8f9;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.journal-difference-points p:nth-child(2)::before { content: "02"; }
+.journal-difference-points p:nth-child(3)::before { content: "03"; }
+
+.marketing-card-grid.execution-pillars { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.execution-intelligence-section { border-top: 1px solid rgba(45, 212, 191, 0.12); border-bottom: 1px solid rgba(45, 212, 191, 0.12); }
+
+.execution-intelligence-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 0.86fr); gap: clamp(28px, 5vw, 64px); align-items: center; }
+
+.execution-focus-mockup { padding: 26px; border: 1px solid rgba(45, 212, 191, 0.25); border-radius: 8px; background: #0b1624; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25); }
+.execution-focus-top { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.execution-focus-mockup h3 { margin: 8px 0 0; color: #f8fafc; font-size: 28px; }
+.execution-focus-mockup > strong { display: block; margin: 22px 0; color: #ccfbf1; font-size: 21px; line-height: 1.35; }
+.execution-score-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.execution-score-grid div, .execution-insight-row { border: 1px solid rgba(148, 163, 184, 0.13); background: rgba(15, 23, 42, 0.68); }
+.execution-score-grid div { padding: 14px; }
+.execution-score-grid span, .execution-insight-row span { display: block; color: #94a3b8; font-size: 12px; font-weight: 800; }
+.execution-score-grid b { display: block; margin-top: 5px; color: #a7f3d0; font-size: 20px; }
+.execution-insight-row { display: flex; justify-content: space-between; gap: 16px; padding: 13px 14px; margin-top: 10px; align-items: center; }
+.execution-insight-row strong { color: #e5eefc; text-align: right; }
+.execution-focus-mockup p { margin: 16px 0 0; color: #94a3b8; font-size: 13px; line-height: 1.55; }
 
 .marketing-subtitle {
   margin: 0;
   max-width: 670px;
   color: #b6c5da;
-  font-size: 19px;
-  line-height: 1.62;
+  font-size: 18px;
+  line-height: 1.66;
 }
 
 .marketing-hero-actions {
   display: flex;
   gap: 14px;
   flex-wrap: wrap;
-  margin-top: 30px;
+  margin-top: 34px;
 }
 
 .marketing-trust-copy {
@@ -220,6 +288,11 @@
   color: #cbd5e1;
   font-weight: 850;
   font-size: 14px;
+}
+
+.marketing-hero-grid .leak-report-mockup {
+  border-color: rgba(52, 211, 153, 0.18);
+  box-shadow: 0 28px 82px rgba(0, 0, 0, 0.42);
 }
 
 .hero-mockup {
@@ -412,6 +485,15 @@
 .leak-report-mockup.compact {
   min-height: 0;
   box-shadow: none;
+}
+
+.leak-report-mockup.compact .leak-report-header h2 {
+  max-width: 440px;
+  font-size: clamp(30px, 3vw, 42px);
+}
+
+.leak-report-mockup.compact .recovery-plan {
+  margin-top: 14px;
 }
 
 .leak-report-header,
@@ -797,6 +879,7 @@
 
 .flagship-section {
   position: relative;
+  padding-top: 82px;
 }
 
 .flagship-grid,
@@ -895,10 +978,15 @@
 }
 
 .flagship-panel {
-  padding: 12px;
+  padding: 18px;
   border-radius: 32px;
   border: 1px solid rgba(56, 189, 248, 0.16);
   background: rgba(2, 6, 23, 0.42);
+}
+
+.flagship-panel-emphasis {
+  border-color: rgba(45, 212, 191, 0.3);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.32);
 }
 
 .feature-bullet-grid {
@@ -979,51 +1067,53 @@
   width: fit-content;
 }
 
-.workflow-flow {
+.journey-steps {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin: 0 0 18px;
+  gap: clamp(22px, 3.2vw, 46px);
+  margin-top: 42px;
 }
 
-.workflow-flow span {
+.journey-step {
   position: relative;
-  min-height: 76px;
-  display: grid;
-  place-items: center;
-  border-radius: 18px;
-  color: #ccfbf1;
-  background:
-    linear-gradient(135deg, rgba(20, 184, 166, 0.18), rgba(34, 211, 238, 0.1)),
-    rgba(15, 23, 42, 0.68);
-  border: 1px solid rgba(45, 212, 191, 0.18);
-  font-size: 19px;
-  font-weight: 950;
+  min-height: 132px;
+  padding-right: 12px;
 }
 
-.workflow-flow span:not(:last-child)::after {
+.journey-step:not(:last-child)::after {
   content: "→";
   position: absolute;
-  right: -18px;
+  right: -24px;
+  top: 9px;
   color: #67e8f9;
   font-weight: 950;
   z-index: 1;
 }
 
-.step-card {
-  min-height: 190px;
+.journey-step > span {
   display: grid;
-  align-content: start;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(45, 212, 191, 0.32);
+  border-radius: 50%;
+  color: #99f6e4;
+  font-size: 13px;
+  font-weight: 950;
 }
 
-.step-note {
-  margin-top: 14px !important;
-  padding-top: 13px;
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
-  color: #94a3b8;
-  font-size: 13px !important;
-  line-height: 1.45 !important;
-  font-weight: 800;
+.journey-step h3 {
+  margin: 0 0 8px;
+  color: #f8fafc;
+  font-size: 23px;
+}
+
+.journey-step p {
+  margin: 0;
+  color: #9fb0c8;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 .comparison-table {
@@ -1060,7 +1150,7 @@
 
 .comparison-row > div:last-child {
   color: #d1fae5;
-  background: rgba(20, 184, 166, 0.08);
+  background: rgba(20, 184, 166, 0.13);
 }
 
 .comparison-header > div {
@@ -1068,6 +1158,11 @@
   background: rgba(2, 6, 23, 0.5);
   font-size: 17px;
   font-weight: 950;
+}
+
+.comparison-header > div:last-child {
+  color: #ccfbf1;
+  background: rgba(20, 184, 166, 0.19);
 }
 
 .status-pill {
@@ -1117,13 +1212,13 @@
 
 .story-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   margin-top: 24px;
 }
 
 .story-list span {
-  min-height: 116px;
+  min-height: 106px;
   padding: 16px;
   border-radius: 16px;
   color: #ccfbf1;
@@ -1149,7 +1244,7 @@
 .daily-coach-mockup h3 {
   margin: 0;
   color: #f8fafc;
-  font-size: 28px;
+  font-size: 30px;
   letter-spacing: -0.03em;
 }
 
@@ -1383,8 +1478,8 @@
     radial-gradient(circle at top right, rgba(52, 211, 153, 0.14), transparent 36%),
     rgba(15, 23, 42, 0.86);
   box-shadow:
-    0 30px 90px rgba(0, 0, 0, 0.3),
-    0 0 60px rgba(45, 212, 191, 0.12);
+    0 26px 74px rgba(0, 0, 0, 0.28),
+    0 0 46px rgba(45, 212, 191, 0.1);
 }
 
 .pricing-card-top {
@@ -1474,8 +1569,8 @@
 }
 
 .final-cta {
-  margin: 42px 0 0;
-  padding: 52px;
+  margin: 48px 0 0;
+  padding: 48px 52px;
   border-radius: 30px;
   text-align: center;
   border: 1px solid rgba(52, 211, 153, 0.26);
@@ -2423,6 +2518,12 @@
   color: #64748b;
 }
 
+.marketing-footer-brand { display: grid; gap: 7px; max-width: 310px; }
+.marketing-footer-brand strong { color: #f8fafc; font-size: 18px; }
+.marketing-footer-brand strong span { color: #a7f3d0; }
+.marketing-footer-brand small { color: #94a3b8; font-size: 13px; line-height: 1.5; }
+.marketing-footer-brand em { color: #64748b; font-size: 12px; font-style: normal; }
+
 .marketing-footer-links {
   display: grid;
   grid-template-columns: repeat(5, minmax(120px, 1fr));
@@ -2446,6 +2547,7 @@
 
 @media (max-width: 1020px) {
   .marketing-hero-grid,
+  .journal-difference-layout,
   .expectancy-hero-grid,
   .expectancy-calculator-card,
   .overtrading-hero-grid,
@@ -2464,6 +2566,7 @@
   }
 
   .marketing-card-grid,
+  .marketing-card-grid.execution-pillars,
   .marketing-card-grid.features,
   .marketing-card-grid.three,
   .expectancy-content-grid,
@@ -2472,7 +2575,7 @@
   .memory-capability-grid,
   .audience-panel,
   .steps-grid,
-  .workflow-flow,
+  .journey-steps,
   .recurring-pattern-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2482,7 +2585,7 @@
     grid-template-columns: 1fr;
   }
 
-  .workflow-flow span:nth-child(2)::after {
+  .journey-step::after {
     display: none;
   }
 
@@ -2526,11 +2629,11 @@
   }
 
   .marketing-navbar-logo {
-    width: clamp(110px, 32vw, 130px);
+    width: clamp(156px, 43vw, 180px);
   }
 
   .marketing-navbar-logo img {
-    max-height: 34px;
+    max-height: 54px;
   }
 
   .marketing-mobile-panel.open {
@@ -2586,12 +2689,12 @@
   .memory-metric-grid,
   .story-list,
   .audience-grid,
-  .workflow-flow,
+  .journey-steps,
   .faq-grid {
     grid-template-columns: 1fr;
   }
 
-  .workflow-flow span::after {
+  .journey-step::after {
     display: none;
   }
 
@@ -2615,7 +2718,8 @@
   .expectancy-content-grid,
   .seo-section-grid,
   .pricing-grid,
-  .steps-grid {
+  .steps-grid,
+  .journey-steps {
     grid-template-columns: 1fr;
   }
 
