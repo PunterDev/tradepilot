@@ -6,11 +6,13 @@ import com.tradepilot.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import java.util.Arrays;
 
 @Component
+@ConditionalOnProperty(name = "tradepilot.features.v2-enabled", havingValue = "true")
 public class PreAnalysisBetaEntitlementSeeder implements ApplicationRunner {
     private final UserRepository userRepository;
     private final FeatureEntitlementService entitlementService;

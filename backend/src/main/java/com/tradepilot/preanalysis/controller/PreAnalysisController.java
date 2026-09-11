@@ -10,12 +10,14 @@ import com.tradepilot.preanalysis.entity.PreAnalysisTimeframe;
 import com.tradepilot.preanalysis.service.PreAnalysisService;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @RestController
 @RequestMapping({"/api/pre-analysis", "/api/v1/pre-analysis"})
+@ConditionalOnProperty(name = "tradepilot.features.v2-enabled", havingValue = "true")
 public class PreAnalysisController {
     private final PreAnalysisService service;
 

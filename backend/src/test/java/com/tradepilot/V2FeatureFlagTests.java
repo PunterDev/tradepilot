@@ -79,6 +79,15 @@ class V2FeatureFlagTests {
     }
 
     @Test
+    void preAnalysisEndpointIsUnavailableWhenV2IsDisabled() throws Exception {
+        User user = createUser("v2-disabled-pre-analysis@example.com");
+        String token = login(user.getEmail());
+
+        mockMvc.perform(get("/api/pre-analysis/access").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void coachRemainsAvailableWhenV2IsDisabled() throws Exception {
         User user = createUser("v2-disabled-coach@example.com");
         TradingAccount account = createAccount(user);
