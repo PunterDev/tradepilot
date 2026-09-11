@@ -40,7 +40,7 @@ export default function AppShell({ user, accountCount, usage, featureAvailabilit
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
   const userNav: NavItem[] = baseNav.filter((item) => {
-    if (item.requiresPreAnalysis && !preAnalysisAllowed) return false;
+    if (item.requiresPreAnalysis && (!featureAvailability?.v2FeaturesEnabled || !preAnalysisAllowed)) return false;
     return !item.feature || isFeatureEnabled(item.feature, featureAvailability);
   }).map((item) => {
     const { feature: _feature, requiresPreAnalysis: _requiresPreAnalysis, ...navItem } = item;

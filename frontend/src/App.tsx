@@ -382,6 +382,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [featureAvailability, setFeatureAvailability] = useState<FeatureAvailability>(disabledFeatureAvailability);
   const [preAnalysisAllowed, setPreAnalysisAllowed] = useState(false);
+  const preAnalysisEnabled = featureAvailability.v2FeaturesEnabled && preAnalysisAllowed;
   const billing = useBillingUsage(true);
   const activation = useActivationStatus(!isAdmin);
   const billingResult = new URLSearchParams(location.search).get("billing");
@@ -728,7 +729,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         user={user}
         accountCount={0}
         usage={billing.usage}
-        preAnalysisAllowed={preAnalysisAllowed}
+        preAnalysisAllowed={preAnalysisEnabled}
         onLogout={onLogout}
       >
         <Routes>
@@ -823,7 +824,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
       accountCount={accounts.length}
       usage={billing.usage}
       featureAvailability={featureAvailability}
-      preAnalysisAllowed={preAnalysisAllowed}
+      preAnalysisAllowed={preAnalysisEnabled}
       onLogout={onLogout}
     >
       <Routes>
@@ -1059,7 +1060,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         />
         <Route
           path="/coach/pre-analysis"
-          element={preAnalysisAllowed ? <PreAnalysisPage /> : <Navigate to="/dashboard" replace />}
+          element={preAnalysisEnabled ? <PreAnalysisPage /> : <Navigate to="/dashboard" replace />}
         />
         <Route
           path="/billing"
