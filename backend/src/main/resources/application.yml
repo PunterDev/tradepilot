@@ -36,6 +36,18 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+  health:
+    probes:
+      enabled: true
+
 tradepilot:
   features:
     v2-enabled: ${V2_FEATURES_ENABLED:false}

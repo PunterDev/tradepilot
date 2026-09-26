@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const port = Number(process.env.E2E_FRONTEND_PORT ?? 5173);
 const host = process.env.E2E_FRONTEND_HOST ?? "localhost";
 const apiBaseURL = process.env.E2E_API_URL ?? process.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
+const productionSmoke = process.env.RUN_PROD_SMOKE === "true";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -17,7 +18,7 @@ export default defineConfig({
     trace: "on-first-retry",
     video: "retain-on-failure",
   },
-  webServer: {
+  webServer: productionSmoke ? undefined : {
     command: `npm run dev -- --host 127.0.0.1 --port ${port}`,
     url: `http://${host}:${port}`,
     reuseExistingServer: true,

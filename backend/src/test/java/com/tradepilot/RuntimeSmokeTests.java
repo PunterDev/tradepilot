@@ -58,6 +58,14 @@ class RuntimeSmokeTests {
     @Autowired PasswordEncoder passwordEncoder;
 
     @Test
+    void publicHealthEndpointReportsOnlyApplicationStatus() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value("UP"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.components").doesNotExist());
+    }
+
+    @Test
     void authenticatedCoreDashboardEndpointsReturnOk() throws Exception {
         User user = createUser("runtime-smoke@example.com");
         TradingAccount account = createAccount(user);
