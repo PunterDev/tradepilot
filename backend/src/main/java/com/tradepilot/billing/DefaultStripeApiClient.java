@@ -24,6 +24,16 @@ public class DefaultStripeApiClient implements StripeApiClient {
     }
 
     @Override
+    public Session retrieveCheckoutSession(String sessionId) throws StripeException {
+        return Session.retrieve(sessionId);
+    }
+
+    @Override
+    public void expireCheckoutSession(String sessionId) throws StripeException {
+        Session.retrieve(sessionId).expire();
+    }
+
+    @Override
     public Invoice retrieveInvoice(String invoiceId) throws StripeException {
         InvoiceRetrieveParams params = InvoiceRetrieveParams.builder()
                 .addExpand("customer")

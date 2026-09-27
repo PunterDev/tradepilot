@@ -12,6 +12,10 @@ public interface StripeApiClient {
 
     Subscription retrieveSubscription(String subscriptionId) throws StripeException;
 
+    Session retrieveCheckoutSession(String sessionId) throws StripeException;
+
+    void expireCheckoutSession(String sessionId) throws StripeException;
+
     Invoice retrieveInvoice(String invoiceId) throws StripeException;
 
     Customer createCustomer(User user) throws StripeException;

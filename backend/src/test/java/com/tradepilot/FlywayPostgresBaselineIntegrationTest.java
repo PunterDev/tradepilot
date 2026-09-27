@@ -56,7 +56,7 @@ class FlywayPostgresBaselineIntegrationTest {
         }
 
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(15);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(16);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
@@ -90,12 +90,15 @@ class FlywayPostgresBaselineIntegrationTest {
                     .isEqualTo("014");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '015' and success = true"))
                     .isEqualTo("015");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '016' and success = true"))
+                    .isEqualTo("016");
 
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
             assertApiRequestMetricsSchema(connection);
             assertTradeMemoriesSchema(connection);
             assertOtherV015SchemaAlignments(connection);
+            assertStripeCheckoutAttemptBillingCycle(connection);
             assertStripeIndexesAndConstraints(connection);
             assertNegativePurchasedCreditsAreAllowed(connection);
             assertVerifierScriptReportsOk(connection);
@@ -310,6 +313,10 @@ class FlywayPostgresBaselineIntegrationTest {
         assertVarcharColumn(connection, "trade_replay_insights", "insight_type", 50, "NO");
     }
 
+    private static void assertStripeCheckoutAttemptBillingCycle(Connection connection) throws SQLException {
+        assertNullableVarcharColumn(connection, "stripe_checkout_attempts", "billing_cycle", 10);
+    }
+
     private static void assertNullableVarcharColumn(Connection connection, String tableName, String columnName, int length) throws SQLException {
         assertVarcharColumn(connection, tableName, columnName, length, "YES");
     }
@@ -381,14 +388,6 @@ class FlywayPostgresBaselineIntegrationTest {
                 .web(WebApplicationType.SERVLET)
                 .profiles("test")
                 .properties(
-                        "server.port=0",
-                        "spring.datasource.url=" + postgres.getJdbcUrl(),
-                        "spring.datasource.username=" + postgres.getUsername(),
-                        "spring.datasource.password=" + postgres.getPassword(),
-                        "spring.datasource.driver-class-name=org.postgresql.Driver",
-                        "spring.flyway.enabled=false",
-                        "spring.jpa.hibernate.ddl-auto=validate",
-                        "spring.jpa.properties.hibernate.jdbc.time_zone=UTC",
                         "JWT_SECRET=YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=",
                         "app.stripe.webhook-secret=whsec_test_postgres",
                         "app.stripe.secret-key=sk_test_postgres",
@@ -397,7 +396,16 @@ class FlywayPostgresBaselineIntegrationTest {
                         "app.frontend-url=https://tradepilot.example",
                         "tradepilot.market-data.provider=disabled"
                 )
-                .run()) {
+                .run(
+                        "--server.port=0",
+                        "--spring.datasource.url=" + postgres.getJdbcUrl(),
+                        "--spring.datasource.username=" + postgres.getUsername(),
+                        "--spring.datasource.password=" + postgres.getPassword(),
+                        "--spring.datasource.driver-class-name=org.postgresql.Driver",
+                        "--spring.flyway.enabled=false",
+                        "--spring.jpa.hibernate.ddl-auto=validate",
+                        "--spring.jpa.properties.hibernate.jdbc.time_zone=UTC"
+                )) {
             assertThat(ignored.isActive()).isTrue();
         }
     }

@@ -22,6 +22,7 @@ class FlywayProductionSchemaTests {
     private static final Path AI_USAGE_EVENT_SCHEMA_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V013__ai_usage_events_schema_alignment.sql");
     private static final Path API_REQUEST_METRICS_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V014__api_request_metrics_schema_alignment.sql");
     private static final Path PRODUCTION_SCHEMA_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V015__production_schema_alignment.sql");
+    private static final Path STRIPE_CHECKOUT_ATTEMPT_BILLING_CYCLE_MIGRATION = Path.of("src/main/resources/db/migration/V016__stripe_checkout_attempt_billing_cycle.sql");
     private static final Path VERIFIER = Path.of("db/verify_production_schema.sql");
 
     @Test
@@ -191,6 +192,14 @@ class FlywayProductionSchemaTests {
         assertThat(sql).contains("idx_performance_timeline_period");
         assertThat(sql).contains("alter column insight_type type varchar(50)");
         assertThat(sql).contains("invalid value(s) require manual repair");
+    }
+
+    @Test
+    void stripeCheckoutAttemptBillingCycleMigrationSupportsSafeCheckoutReuse() throws IOException {
+        String sql = Files.readString(STRIPE_CHECKOUT_ATTEMPT_BILLING_CYCLE_MIGRATION);
+
+        assertThat(sql).contains("alter table stripe_checkout_attempts");
+        assertThat(sql).contains("add column if not exists billing_cycle varchar(10)");
     }
 
     private static void executeStatements(Connection connection, String sql) throws SQLException {

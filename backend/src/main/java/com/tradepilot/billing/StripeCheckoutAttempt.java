@@ -17,6 +17,8 @@ public class StripeCheckoutAttempt {
     private Long userId;
     @Column(name = "stripe_checkout_session_id", length = 255)
     private String stripeCheckoutSessionId;
+    @Column(name = "billing_cycle", length = 10)
+    private String billingCycle;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private StripeCheckoutAttemptStatus status;
@@ -50,6 +52,7 @@ public class StripeCheckoutAttempt {
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
     public String getStripeCheckoutSessionId() { return stripeCheckoutSessionId; }
+    public String getBillingCycle() { return billingCycle; }
     public StripeCheckoutAttemptStatus getStatus() { return status; }
     public LocalDateTime getExpiresAt() { return expiresAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }
@@ -58,6 +61,7 @@ public class StripeCheckoutAttempt {
     public void setId(Long id) { this.id = id; }
     public void setUserId(Long userId) { this.userId = userId; }
     public void setStripeCheckoutSessionId(String stripeCheckoutSessionId) { this.stripeCheckoutSessionId = stripeCheckoutSessionId; }
+    public void setBillingCycle(String billingCycle) { this.billingCycle = billingCycle; }
     public void setStatus(StripeCheckoutAttemptStatus status) { this.status = status; }
     public void setExpiresAt(LocalDateTime expiresAt) { this.expiresAt = expiresAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

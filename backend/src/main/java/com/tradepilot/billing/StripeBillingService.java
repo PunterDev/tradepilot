@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 @Service
@@ -49,7 +50,7 @@ public class StripeBillingService {
     private final AiCreditPurchaseRepository aiCreditPurchaseRepository;
     private final UsageLimitService usageLimitService;
     private final SeoAnalyticsService seoAnalyticsService;
-    private static final Duration SUBSCRIPTION_CHECKOUT_LOCK_TTL = Duration.ofMinutes(30);
+    private static final Duration SUBSCRIPTION_CHECKOUT_CREATION_LOCK_TTL = Duration.ofMinutes(2);
     private Runnable afterCreditPackFulfillmentClaimed = () -> {
     };
     private Runnable afterCreditPackCreditsIncremented = () -> {
@@ -72,7 +73,12 @@ public class StripeBillingService {
         try {
             User lockedUser = userRepository.findByIdForUpdate(user.getId()).orElse(user);
             preventDuplicateSubscriptionCheckout(lockedUser);
-            StripeCheckoutAttempt checkoutAttempt = claimSubscriptionCheckoutAttempt(lockedUser.getId());
+            Optional<String> reusableCheckoutUrl = reconcileExistingSubscriptionCheckoutAttempt(lockedUser, normalizedBillingCycle);
+            if (reusableCheckoutUrl.isPresent()) {
+                observabilityService.recordStripeEvent("checkout.session.reuse", true, System.currentTimeMillis() - start, null);
+                return reusableCheckoutUrl.get();
+            }
+            StripeCheckoutAttempt checkoutAttempt = claimSubscriptionCheckoutAttempt(lockedUser.getId(), normalizedBillingCycle);
             String customerId = ensureStripeCustomer(lockedUser);
             Session session;
             try {
@@ -91,7 +97,7 @@ public class StripeBillingService {
             }
             checkoutAttempt.setStripeCheckoutSessionId(session.getId());
             checkoutAttempt.setStatus(StripeCheckoutAttemptStatus.PENDING);
-            checkoutAttempt.setExpiresAt(LocalDateTime.now().plus(SUBSCRIPTION_CHECKOUT_LOCK_TTL));
+            checkoutAttempt.setExpiresAt(LocalDateTime.now().plus(SUBSCRIPTION_CHECKOUT_CREATION_LOCK_TTL));
             stripeCheckoutAttemptRepository.save(checkoutAttempt);
             observabilityService.recordStripeEvent("checkout.session.create", true, System.currentTimeMillis() - start, null);
             log.info("Stripe checkout session creation completed. userId={}, billingCycle={}, durationMs={}", lockedUser.getId(), normalizedBillingCycle, System.currentTimeMillis() - start);
@@ -437,26 +443,127 @@ public class StripeBillingService {
         }
     }
 
-    private StripeCheckoutAttempt claimSubscriptionCheckoutAttempt(Long userId) {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime expiresAt = now.plus(SUBSCRIPTION_CHECKOUT_LOCK_TTL);
-        Optional<StripeCheckoutAttempt> existing = stripeCheckoutAttemptRepository.findByUserId(userId);
+    private Optional<String> reconcileExistingSubscriptionCheckoutAttempt(User user, String billingCycle) throws StripeException {
+        Optional<StripeCheckoutAttempt> existing = stripeCheckoutAttemptRepository.findByUserId(user.getId());
         if (existing.isEmpty()) {
-            return stripeCheckoutAttemptRepository.saveAndFlush(StripeCheckoutAttempt.pending(userId, expiresAt));
+            return Optional.empty();
         }
         StripeCheckoutAttempt attempt = existing.get();
-        if (attempt.getStatus() == StripeCheckoutAttemptStatus.PENDING && attempt.getExpiresAt() != null && attempt.getExpiresAt().isAfter(now)) {
-            log.warn("Stripe checkout blocked because a recent checkout attempt is still pending. userId={}", userId);
-            throw new PlanLimitExceededException("A Pro checkout is already in progress.");
+        String sessionId = attempt.getStripeCheckoutSessionId();
+        if (!StringUtils.hasText(sessionId)) {
+            if (attempt.getStatus() == StripeCheckoutAttemptStatus.PENDING && isCheckoutCreationInProgress(attempt)) {
+                log.warn("Stripe checkout creation still in progress. userId={}", user.getId());
+                throw new PlanLimitExceededException("Your checkout is being prepared. Please try again shortly.");
+            }
+            log.info("Stripe checkout attempt recycled because it has no usable session id. userId={}", user.getId());
+            return Optional.empty();
         }
+
+        Session session;
+        try {
+            session = stripeApiClient.retrieveCheckoutSession(sessionId);
+        } catch (InvalidRequestException ex) {
+            if (!isNoSuchCheckoutSession(ex)) {
+                throw ex;
+            }
+            log.info("Stripe checkout attempt recycled because its session no longer exists. userId={}, sessionId={}", user.getId(), sessionId);
+            return Optional.empty();
+        }
+        if (!isExpectedSubscriptionCheckout(session, user)) {
+            expireCheckoutSession(sessionId, user.getId(), "unexpected_session");
+            return Optional.empty();
+        }
+
+        String sessionStatus = session.getStatus();
+        if ("open".equals(sessionStatus)) {
+            if (!billingCycle.equals(attempt.getBillingCycle()) || !StringUtils.hasText(session.getUrl())) {
+                expireCheckoutSession(sessionId, user.getId(), "cycle_mismatch_or_missing_url");
+                return Optional.empty();
+            }
+            log.info("Stripe checkout session reused. userId={}, sessionId={}, billingCycle={}", user.getId(), sessionId, billingCycle);
+            return Optional.of(session.getUrl());
+        }
+        if ("complete".equals(sessionStatus)) {
+            reconcileCompletedSubscriptionCheckoutAttempt(user, attempt, session);
+        }
+        if ("expired".equals(sessionStatus)) {
+            log.info("Stripe checkout attempt recycled because its session expired. userId={}, sessionId={}", user.getId(), sessionId);
+            return Optional.empty();
+        }
+        log.warn("Stripe checkout session has an unsupported status. userId={}, sessionId={}, status={}", user.getId(), sessionId, sessionStatus);
+        throw new PlanLimitExceededException("Your existing checkout is still being processed. Please refresh and try again shortly.");
+    }
+
+    private StripeCheckoutAttempt claimSubscriptionCheckoutAttempt(Long userId, String billingCycle) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiresAt = now.plus(SUBSCRIPTION_CHECKOUT_CREATION_LOCK_TTL);
+        Optional<StripeCheckoutAttempt> existing = stripeCheckoutAttemptRepository.findByUserId(userId);
+        if (existing.isEmpty()) {
+            StripeCheckoutAttempt attempt = StripeCheckoutAttempt.pending(userId, expiresAt);
+            attempt.setBillingCycle(billingCycle);
+            return stripeCheckoutAttemptRepository.saveAndFlush(attempt);
+        }
+        StripeCheckoutAttempt attempt = existing.get();
         attempt.setStatus(StripeCheckoutAttemptStatus.PENDING);
         attempt.setExpiresAt(expiresAt);
         attempt.setStripeCheckoutSessionId(null);
+        attempt.setBillingCycle(billingCycle);
         return stripeCheckoutAttemptRepository.saveAndFlush(attempt);
+    }
+
+    private boolean isCheckoutCreationInProgress(StripeCheckoutAttempt attempt) {
+        LocalDateTime updatedAt = attempt.getUpdatedAt() == null ? attempt.getCreatedAt() : attempt.getUpdatedAt();
+        LocalDateTime now = LocalDateTime.now();
+        return updatedAt != null
+                && updatedAt.plus(SUBSCRIPTION_CHECKOUT_CREATION_LOCK_TTL).isAfter(now)
+                && attempt.getExpiresAt() != null
+                && attempt.getExpiresAt().isAfter(now);
+    }
+
+    private boolean isExpectedSubscriptionCheckout(Session session, User user) {
+        if (!"subscription".equals(session.getMode())) {
+            log.warn("Stripe checkout attempt has an unexpected mode. userId={}, sessionId={}, mode={}", user.getId(), session.getId(), session.getMode());
+            return false;
+        }
+        if (StringUtils.hasText(user.getStripeCustomerId()) && StringUtils.hasText(session.getCustomer()) && !user.getStripeCustomerId().equals(session.getCustomer())) {
+            log.warn("Stripe checkout attempt customer mismatch. userId={}, sessionId={}", user.getId(), session.getId());
+            throw new PlanLimitExceededException("Your billing state needs support review before checkout.");
+        }
+        return true;
+    }
+
+    private void expireCheckoutSession(String sessionId, Long userId, String reason) throws StripeException {
+        stripeApiClient.expireCheckoutSession(sessionId);
+        log.info("Stripe checkout session expired before replacement. userId={}, sessionId={}, reason={}", userId, sessionId, reason);
+    }
+
+    private void reconcileCompletedSubscriptionCheckoutAttempt(User user, StripeCheckoutAttempt attempt, Session session) throws StripeException {
+        attempt.setStatus(StripeCheckoutAttemptStatus.COMPLETED);
+        stripeCheckoutAttemptRepository.save(attempt);
+        String subscriptionId = session.getSubscription();
+        if (StringUtils.hasText(subscriptionId)) {
+            Subscription subscription = stripeApiClient.retrieveSubscription(subscriptionId);
+            if (subscription != null) {
+                if (StringUtils.hasText(subscription.getCustomer()) && StringUtils.hasText(user.getStripeCustomerId()) && !user.getStripeCustomerId().equals(subscription.getCustomer())) {
+                    log.warn("Completed Stripe checkout subscription customer mismatch. userId={}, sessionId={}, subscriptionId={}", user.getId(), session.getId(), subscriptionId);
+                    throw new PlanLimitExceededException("Your billing state needs support review before checkout.");
+                }
+                applyCurrentSubscriptionState(user, subscription);
+                userRepository.save(user);
+                usageLimitService.invalidateUsageCache(user.getId());
+            }
+        }
+        log.info("Completed Stripe checkout detected; duplicate checkout prevented. userId={}, sessionId={}", user.getId(), session.getId());
+        throw new PlanLimitExceededException("Your Pro checkout is complete. Please refresh your account.");
     }
 
     private boolean isNoSuchSubscription(InvalidRequestException ex) {
         return ex.getMessage() != null && ex.getMessage().contains("No such subscription");
+    }
+
+    private boolean isNoSuchCheckoutSession(InvalidRequestException ex) {
+        String message = ex.getMessage();
+        return message != null && message.toLowerCase(Locale.ROOT).contains("no such checkout.session");
     }
 
     void handleCheckoutCompleted(JsonNode object) {

@@ -11,6 +11,7 @@ import com.tradepilot.billing.StripeApiClient;
 import com.tradepilot.billing.StripeBillingService;
 import com.tradepilot.billing.StripeCheckoutAttempt;
 import com.tradepilot.billing.StripeCheckoutAttemptRepository;
+import com.tradepilot.billing.StripeCheckoutAttemptStatus;
 import com.tradepilot.billing.SubscriptionStatus;
 import com.stripe.exception.InvalidRequestException;
 import com.stripe.model.Customer;
@@ -110,6 +111,7 @@ class StripeBillingTests {
     void checkoutCompletedUpgradesUserToPro() throws Exception {
         User user = createUser("stripe-checkout@example.com");
         prepareValidSubscriptionCheckout(user, "price_test_pro");
+        StripeCheckoutAttempt attempt = saveCheckoutAttempt(user, "cs_test_123", "monthly", LocalDateTime.now().plusMinutes(1));
         String payload = checkoutCompletedPayload(user.getId());
 
         mockMvc.perform(post("/api/stripe/webhook")
@@ -124,6 +126,7 @@ class StripeBillingTests {
         assertThat(updated.getStripeCustomerId()).isEqualTo("cus_test_123");
         assertThat(updated.getStripeSubscriptionId()).isEqualTo("sub_test_123");
         assertThat(processedStripeEventRepository.existsByEventId("evt_checkout_" + user.getId())).isTrue();
+        assertThat(stripeCheckoutAttemptRepository.findById(attempt.getId()).orElseThrow().getStatus()).isEqualTo(StripeCheckoutAttemptStatus.COMPLETED);
     }
 
     @Test
@@ -916,6 +919,12 @@ class StripeBillingTests {
         assertThat(checkoutUrl).isEqualTo("https://checkout.test/missing");
         assertThat(updated.getStripeCustomerId()).isEqualTo("cus_new_missing");
         verify(stripeApiClient, never()).retrieveCustomer(anyString());
+        StripeCheckoutAttempt attempt = stripeCheckoutAttemptRepository.findAll().stream()
+                .filter(candidate -> candidate.getUserId().equals(user.getId()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(attempt.getStatus()).isEqualTo(StripeCheckoutAttemptStatus.PENDING);
+        assertThat(attempt.getBillingCycle()).isEqualTo("monthly");
     }
 
     @Test
@@ -1064,18 +1073,108 @@ class StripeBillingTests {
     }
 
     @Test
-    void doubleClickSubscriptionCheckoutCreatesOnlyOneSession() throws Exception {
+    void openPendingSubscriptionCheckoutIsReusedInsteadOfReturningForbidden() throws Exception {
         User user = createUser("stripe-checkout-double-click@example.com");
         when(stripeApiClient.createCustomer(any(User.class))).thenReturn(customer("cus_checkout_double_click", false));
         when(stripeApiClient.createCheckoutSession(any(User.class), eq("cus_checkout_double_click"), eq("price_test_pro"), eq("http://localhost:5173")))
-                .thenReturn(session("cus_checkout_double_click", "https://checkout.test/double-click"));
+                .thenReturn(stripeCheckoutSession("cs_checkout_double_click", "cus_checkout_double_click", "subscription", "open", "https://checkout.test/double-click", null));
 
         assertThat(stripeBillingService.createCheckoutSession(user)).isEqualTo("https://checkout.test/double-click");
-        assertThatThrownBy(() -> stripeBillingService.createCheckoutSession(user))
-                .isInstanceOf(PlanLimitExceededException.class)
-                .hasMessageContaining("checkout is already in progress");
+        when(stripeApiClient.retrieveCheckoutSession("cs_checkout_double_click"))
+                .thenReturn(stripeCheckoutSession("cs_checkout_double_click", "cus_checkout_double_click", "subscription", "open", "https://checkout.test/double-click", null));
+
+        assertThat(stripeBillingService.createCheckoutSession(user)).isEqualTo("https://checkout.test/double-click");
 
         verify(stripeApiClient, times(1)).createCheckoutSession(any(User.class), anyString(), eq("price_test_pro"), eq("http://localhost:5173"));
+    }
+
+    @Test
+    void expiredPendingSubscriptionCheckoutCreatesAReplacementSession() throws Exception {
+        User user = createUser("stripe-checkout-expired@example.com");
+        StripeCheckoutAttempt attempt = saveCheckoutAttempt(user, "cs_expired", "monthly", LocalDateTime.now().plusMinutes(1));
+        when(stripeApiClient.retrieveCheckoutSession("cs_expired"))
+                .thenReturn(stripeCheckoutSession("cs_expired", "cus_expired", "subscription", "expired", null, null));
+        when(stripeApiClient.createCustomer(any(User.class))).thenReturn(customer("cus_replacement", false));
+        when(stripeApiClient.createCheckoutSession(any(User.class), eq("cus_replacement"), eq("price_test_pro"), eq("http://localhost:5173")))
+                .thenReturn(stripeCheckoutSession("cs_replacement", "cus_replacement", "subscription", "open", "https://checkout.test/replacement", null));
+
+        assertThat(stripeBillingService.createCheckoutSession(user)).isEqualTo("https://checkout.test/replacement");
+
+        assertThat(stripeCheckoutAttemptRepository.findById(attempt.getId()).orElseThrow().getStripeCheckoutSessionId()).isEqualTo("cs_replacement");
+        verify(stripeApiClient).createCheckoutSession(any(User.class), eq("cus_replacement"), eq("price_test_pro"), eq("http://localhost:5173"));
+    }
+
+    @Test
+    void missingPendingSubscriptionCheckoutCreatesAReplacementSession() throws Exception {
+        User user = createUser("stripe-checkout-missing@example.com");
+        saveCheckoutAttempt(user, "cs_missing", "monthly", LocalDateTime.now().plusMinutes(1));
+        when(stripeApiClient.retrieveCheckoutSession("cs_missing")).thenThrow(noSuchCheckoutSession("cs_missing"));
+        when(stripeApiClient.createCustomer(any(User.class))).thenReturn(customer("cus_missing_replacement", false));
+        when(stripeApiClient.createCheckoutSession(any(User.class), eq("cus_missing_replacement"), eq("price_test_pro"), eq("http://localhost:5173")))
+                .thenReturn(stripeCheckoutSession("cs_missing_replacement", "cus_missing_replacement", "subscription", "open", "https://checkout.test/missing-replacement", null));
+
+        assertThat(stripeBillingService.createCheckoutSession(user)).isEqualTo("https://checkout.test/missing-replacement");
+
+        verify(stripeApiClient).createCheckoutSession(any(User.class), eq("cus_missing_replacement"), eq("price_test_pro"), eq("http://localhost:5173"));
+    }
+
+    @Test
+    void completedPendingSubscriptionCheckoutReconcilesAndPreventsDuplicateCheckout() throws Exception {
+        User user = createUser("stripe-checkout-complete@example.com");
+        user.setStripeCustomerId("cus_complete");
+        userRepository.save(user);
+        StripeCheckoutAttempt attempt = saveCheckoutAttempt(user, "cs_complete", "monthly", LocalDateTime.now().plusMinutes(1));
+        when(stripeApiClient.retrieveCheckoutSession("cs_complete"))
+                .thenReturn(stripeCheckoutSession("cs_complete", "cus_complete", "subscription", "complete", null, "sub_complete"));
+        when(stripeApiClient.retrieveSubscription("sub_complete"))
+                .thenReturn(subscription("sub_complete", "cus_complete", "active"));
+
+        assertThatThrownBy(() -> stripeBillingService.createCheckoutSession(user))
+                .isInstanceOf(PlanLimitExceededException.class)
+                .hasMessageContaining("checkout is complete");
+
+        assertThat(userRepository.findById(user.getId()).orElseThrow().getPlan()).isEqualTo(PlanType.PRO);
+        assertThat(stripeCheckoutAttemptRepository.findById(attempt.getId()).orElseThrow().getStatus()).isEqualTo(StripeCheckoutAttemptStatus.COMPLETED);
+        verify(stripeApiClient, never()).createCheckoutSession(any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void stalePendingAttemptWithoutSessionIdCanCreateACheckoutSession() throws Exception {
+        User user = createUser("stripe-checkout-no-session@example.com");
+        StripeCheckoutAttempt attempt = StripeCheckoutAttempt.pending(user.getId(), LocalDateTime.now().minusMinutes(1));
+        attempt.setBillingCycle("monthly");
+        stripeCheckoutAttemptRepository.saveAndFlush(attempt);
+        when(stripeApiClient.createCustomer(any(User.class))).thenReturn(customer("cus_no_session", false));
+        when(stripeApiClient.createCheckoutSession(any(User.class), eq("cus_no_session"), eq("price_test_pro"), eq("http://localhost:5173")))
+                .thenReturn(stripeCheckoutSession("cs_no_session", "cus_no_session", "subscription", "open", "https://checkout.test/no-session", null));
+
+        assertThat(stripeBillingService.createCheckoutSession(user)).isEqualTo("https://checkout.test/no-session");
+
+        verify(stripeApiClient).createCheckoutSession(any(User.class), eq("cus_no_session"), eq("price_test_pro"), eq("http://localhost:5173"));
+    }
+
+    @Test
+    void recentPendingAttemptWithoutSessionIdKeepsOnlyTheShortCreationLock() throws Exception {
+        User user = createUser("stripe-checkout-creation-lock@example.com");
+        StripeCheckoutAttempt attempt = StripeCheckoutAttempt.pending(user.getId(), LocalDateTime.now().plusMinutes(1));
+        attempt.setBillingCycle("monthly");
+        stripeCheckoutAttemptRepository.saveAndFlush(attempt);
+
+        assertThatThrownBy(() -> stripeBillingService.createCheckoutSession(user))
+                .isInstanceOf(PlanLimitExceededException.class)
+                .hasMessageContaining("being prepared");
+
+        verify(stripeApiClient, never()).createCheckoutSession(any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void monthlyPendingCheckoutIsExpiredBeforeCreatingYearlyCheckout() throws Exception {
+        assertCrossCycleCheckoutReplacement("monthly", "yearly", "price_test_pro_yearly");
+    }
+
+    @Test
+    void yearlyPendingCheckoutIsExpiredBeforeCreatingMonthlyCheckout() throws Exception {
+        assertCrossCycleCheckoutReplacement("yearly", "monthly", "price_test_pro");
     }
 
     @Test
@@ -2130,6 +2229,40 @@ class StripeBillingTests {
         return session;
     }
 
+    private Session stripeCheckoutSession(String id, String customerId, String mode, String status, String url, String subscriptionId) {
+        Session session = new Session();
+        session.setId(id);
+        session.setCustomer(customerId);
+        session.setMode(mode);
+        session.setStatus(status);
+        session.setUrl(url);
+        session.setSubscription(subscriptionId);
+        return session;
+    }
+
+    private StripeCheckoutAttempt saveCheckoutAttempt(User user, String sessionId, String billingCycle, LocalDateTime expiresAt) {
+        StripeCheckoutAttempt attempt = StripeCheckoutAttempt.pending(user.getId(), expiresAt);
+        attempt.setStripeCheckoutSessionId(sessionId);
+        attempt.setBillingCycle(billingCycle);
+        return stripeCheckoutAttemptRepository.saveAndFlush(attempt);
+    }
+
+    private void assertCrossCycleCheckoutReplacement(String existingCycle, String requestedCycle, String requestedPriceId) throws Exception {
+        User user = createUser("stripe-cross-cycle-" + existingCycle + "-to-" + requestedCycle + "@example.com");
+        String existingSessionId = "cs_" + existingCycle + "_pending";
+        saveCheckoutAttempt(user, existingSessionId, existingCycle, LocalDateTime.now().plusMinutes(1));
+        when(stripeApiClient.retrieveCheckoutSession(existingSessionId))
+                .thenReturn(stripeCheckoutSession(existingSessionId, "cus_existing", "subscription", "open", "https://checkout.test/old", null));
+        when(stripeApiClient.createCustomer(any(User.class))).thenReturn(customer("cus_cross_cycle", false));
+        when(stripeApiClient.createCheckoutSession(any(User.class), eq("cus_cross_cycle"), eq(requestedPriceId), eq("http://localhost:5173")))
+                .thenReturn(stripeCheckoutSession("cs_" + requestedCycle + "_replacement", "cus_cross_cycle", "subscription", "open", "https://checkout.test/" + requestedCycle, null));
+
+        assertThat(stripeBillingService.createCheckoutSession(user, requestedCycle)).isEqualTo("https://checkout.test/" + requestedCycle);
+
+        verify(stripeApiClient).expireCheckoutSession(existingSessionId);
+        verify(stripeApiClient).createCheckoutSession(any(User.class), eq("cus_cross_cycle"), eq(requestedPriceId), eq("http://localhost:5173"));
+    }
+
     private Invoice invoice(String id, String customerId, String subscriptionId) {
         Invoice invoice = new Invoice();
         invoice.setId(id);
@@ -2179,6 +2312,10 @@ class StripeBillingTests {
 
     private InvalidRequestException noSuchCustomer(String customerId) {
         return new InvalidRequestException("No such customer: " + customerId, null, null, null, 404, null);
+    }
+
+    private InvalidRequestException noSuchCheckoutSession(String sessionId) {
+        return new InvalidRequestException("No such checkout.session: " + sessionId, null, null, null, 404, null);
     }
 
     private LocalDateTime dateTime(long epochSeconds) {
