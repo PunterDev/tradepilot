@@ -19,6 +19,7 @@ class FlywayProductionSchemaTests {
     private static final Path ACTIVATION_MIGRATION = Path.of("src/main/resources/db/migration/V002__first_insight_activation.sql");
     private static final Path CREDIT_PURCHASE_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V005__ai_credit_purchase_schema_alignment.sql");
     private static final Path DISTRIBUTED_RATE_LIMIT_MIGRATION = Path.of("src/main/resources/db/migration/V006__distributed_rate_limit_windows.sql");
+    private static final Path AI_USAGE_EVENT_SCHEMA_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V013__ai_usage_events_schema_alignment.sql");
     private static final Path VERIFIER = Path.of("db/verify_production_schema.sql");
 
     @Test
@@ -145,6 +146,16 @@ class FlywayProductionSchemaTests {
         assertThat(sql).contains("request_count integer not null default 0");
         assertThat(sql).contains("chk_rate_limit_windows_request_count_nonnegative");
         assertThat(sql).contains("idx_rate_limit_windows_expires_at");
+    }
+
+    @Test
+    void aiUsageEventSchemaAlignmentMigrationRestoresJpaCompatibleColumns() throws IOException {
+        String sql = Files.readString(AI_USAGE_EVENT_SCHEMA_ALIGNMENT_MIGRATION);
+
+        assertThat(sql).contains("alter table ai_usage_events");
+        assertThat(sql).contains("add column if not exists related_resource_id bigint");
+        assertThat(sql).contains("alter column usage_type type varchar(40)");
+        assertThat(sql).contains("alter column credits_used drop not null");
     }
 
     private static void executeStatements(Connection connection, String sql) throws SQLException {
