@@ -44,9 +44,14 @@ public class DefaultStripeApiClient implements StripeApiClient {
 
     @Override
     public Session createCheckoutSession(User user, String customerId, String proPriceId, String frontendUrl) throws StripeException {
-        SessionCreateParams params = SessionCreateParams.builder()
+        return Session.create(subscriptionCheckoutParams(user, customerId, proPriceId, frontendUrl));
+    }
+
+    SessionCreateParams subscriptionCheckoutParams(User user, String customerId, String proPriceId, String frontendUrl) {
+        return SessionCreateParams.builder()
                 .setMode(SessionCreateParams.Mode.SUBSCRIPTION)
                 .setCustomer(customerId)
+                .setAllowPromotionCodes(true)
                 .setSuccessUrl(frontendUrl + "/dashboard?billing=success")
                 .setCancelUrl(frontendUrl + "/dashboard?billing=cancelled")
                 .addLineItem(SessionCreateParams.LineItem.builder()
@@ -56,12 +61,15 @@ public class DefaultStripeApiClient implements StripeApiClient {
                 .putMetadata("userId", String.valueOf(user.getId()))
                 .putMetadata("userEmail", user.getEmail())
                 .build();
-        return Session.create(params);
     }
 
     @Override
     public Session createCreditPackCheckoutSession(User user, String customerId, AiCreditPack pack, String frontendUrl) throws StripeException {
-        SessionCreateParams params = SessionCreateParams.builder()
+        return Session.create(creditPackCheckoutParams(user, customerId, pack, frontendUrl));
+    }
+
+    SessionCreateParams creditPackCheckoutParams(User user, String customerId, AiCreditPack pack, String frontendUrl) {
+        return SessionCreateParams.builder()
                 .setMode(SessionCreateParams.Mode.PAYMENT)
                 .setCustomer(customerId)
                 .setSuccessUrl(frontendUrl + "/billing?credits=success")
@@ -82,7 +90,6 @@ public class DefaultStripeApiClient implements StripeApiClient {
                 .putMetadata("packId", pack.name())
                 .putMetadata("credits", String.valueOf(pack.credits()))
                 .build();
-        return Session.create(params);
     }
 
     @Override
