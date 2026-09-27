@@ -14,6 +14,7 @@ type Props = {
   usage?: BillingUsage | null;
   activationStatus?: ActivationStatus | null;
   onUsageChanged?: () => void;
+  v2FeaturesEnabled: boolean;
 };
 
 function todayIso() {
@@ -28,7 +29,7 @@ function startOfWeekIso(date = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
-export function CoachDashboard({ selectedAccountId, usage, activationStatus, onUsageChanged }: Props) {
+export function CoachDashboard({ selectedAccountId, usage, activationStatus, onUsageChanged, v2FeaturesEnabled }: Props) {
   const [activeTab, setActiveTab] = useState<"daily" | "weekly">("daily");
   const [dailyDate, setDailyDate] = useState(todayIso());
   const [weeklyStartDate, setWeeklyStartDate] = useState(startOfWeekIso());
@@ -40,7 +41,7 @@ export function CoachDashboard({ selectedAccountId, usage, activationStatus, onU
 
   const daily = useDailyCoach(normalCoachAccess ? accountId : undefined, dailyDate);
   const weeklyPreviewAvailable = Boolean(activationStatus?.proPreview?.available);
-  const weekly = useWeeklyCoach(accountId, weeklyStartDate, weeklyPreviewAvailable, normalCoachAccess);
+  const weekly = useWeeklyCoach(accountId, weeklyStartDate, weeklyPreviewAvailable, normalCoachAccess, v2FeaturesEnabled);
   const dailyRemaining = usage ? creditsRemaining(usage) : 1;
   const weeklyRemaining = usage ? creditsRemaining(usage) : 1;
 

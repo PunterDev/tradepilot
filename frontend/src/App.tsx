@@ -870,6 +870,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
                 onSaveToDatabase={handleSaveToDatabase}
                 onTradeSelect={setSelectedTradeId}
                 showTradingDnaEntryPoint={isFeatureEnabled("TRADING_DNA", featureAvailability)}
+                v2FeaturesEnabled={featureAvailability.v2FeaturesEnabled}
               />
             )
           }
@@ -926,6 +927,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
                 selectedAccountId={selectedAccountId}
                 trades={trades}
                 onTradeSelect={setSelectedTradeId}
+                v2FeaturesEnabled={featureAvailability.v2FeaturesEnabled}
               />
             ) : (
               renderLockedFeature("SESSION_REVIEW")
@@ -1052,6 +1054,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
                 usage={billing.usage}
                 activationStatus={activation.status}
                 onUsageChanged={billing.reload}
+                v2FeaturesEnabled={featureAvailability.v2FeaturesEnabled}
               />
             ) : (
               renderLockedFeature("DAILY_COACH")

@@ -13,8 +13,9 @@ import {
 } from "../styles/dashboardStyles";
 
 type Props = {
-    trade: Trade;
-    journalText?: string;
+  trade: Trade;
+  journalText?: string;
+  v2FeaturesEnabled?: boolean;
 };
 
 const subtleTextStyle = {
@@ -22,7 +23,7 @@ const subtleTextStyle = {
     fontSize: 13,
 };
 
-export default function AiTradeReviewPanel({ trade, journalText }: Props) {
+export default function AiTradeReviewPanel({ trade, journalText, v2FeaturesEnabled = false }: Props) {
     const [execution, setExecution] = useState<ExecutionScore | null>(null);
     const [executionError, setExecutionError] = useState<string | null>(null);
     const {
@@ -50,6 +51,7 @@ export default function AiTradeReviewPanel({ trade, journalText }: Props) {
         let cancelled = false;
         setExecution(null);
         setExecutionError(null);
+        if (!v2FeaturesEnabled) return;
         getTradeExecution(trade.id)
             .then((data) => {
                 if (!cancelled) setExecution(data);
@@ -60,13 +62,13 @@ export default function AiTradeReviewPanel({ trade, journalText }: Props) {
         return () => {
             cancelled = true;
         };
-    }, [trade.id]);
+    }, [trade.id, v2FeaturesEnabled]);
 
     const hasReviewContent = Boolean(review?.summary || review?.grade || review?.tags?.length);
 
     return (
         <div style={aiReviewCardStyle}>
-            <ExecutionCard execution={execution} error={executionError} />
+            {v2FeaturesEnabled && <ExecutionCard execution={execution} error={executionError} />}
 
             <div style={aiReviewHeaderStyle}>
                 <div>

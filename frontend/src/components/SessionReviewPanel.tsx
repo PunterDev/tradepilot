@@ -18,9 +18,10 @@ type Props = {
   selectedAccountId: SelectedAccountId;
   trades: TradovateTrade[];
   onTradeSelect: (tradeId: number) => void;
+  v2FeaturesEnabled: boolean;
 };
 
-export default function SessionReviewPanel({ accounts, selectedAccountId, trades, onTradeSelect }: Props) {
+export default function SessionReviewPanel({ accounts, selectedAccountId, trades, onTradeSelect, v2FeaturesEnabled }: Props) {
   const defaultAccountId = typeof selectedAccountId === "number" ? selectedAccountId : accounts[0]?.id ?? "";
   const defaultDate = useMemo(() => {
     const firstTrade = trades.find((trade) => trade.tradeDate || trade.soldTimestamp);
@@ -47,15 +48,15 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
   useEffect(() => {
     if (!accountId || !date) return;
     void loadReview(accountId, date);
-  }, [accountId, date]);
+  }, [accountId, date, v2FeaturesEnabled]);
 
   useEffect(() => {
-    if (!execution || !accountId || !date) return;
+    if (!v2FeaturesEnabled || !execution || !accountId || !date) return;
     const key = `${accountId}:${date}`;
     if (trackedExecutionKey === key) return;
     setTrackedExecutionKey(key);
     void trackFeatureUsage("EXECUTION_ENGINE").catch(() => undefined);
-  }, [accountId, date, execution, trackedExecutionKey]);
+  }, [accountId, date, execution, trackedExecutionKey, v2FeaturesEnabled]);
 
   async function loadReview(nextAccountId: number, nextDate: string) {
     setLoading(true);
@@ -63,7 +64,7 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
     try {
       const [nextReview, nextExecution] = await Promise.all([
         getSessionReview(nextAccountId, nextDate),
-        getExecutionSession(nextAccountId, nextDate).catch(() => null),
+        v2FeaturesEnabled ? getExecutionSession(nextAccountId, nextDate).catch(() => null) : Promise.resolve(null),
       ]);
       setReview(nextReview);
       setExecution(nextExecution);
@@ -83,7 +84,7 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
     try {
       const nextReview = await generateSessionReview({ accountId, date, forceRefresh });
       setReview(nextReview);
-      setExecution(await getExecutionSession(accountId, date).catch(() => null));
+      setExecution(v2FeaturesEnabled ? await getExecutionSession(accountId, date).catch(() => null) : null);
     } catch (err: any) {
       setError(err?.response?.data?.message || "Unable to generate the session review.");
     } finally {

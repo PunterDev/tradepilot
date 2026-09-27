@@ -9,9 +9,10 @@ type Props = {
   selectedAccountId: SelectedAccountId;
   trades: TradovateTrade[];
   onTradeSelect: (tradeId: number) => void;
+  v2FeaturesEnabled: boolean;
 };
 
-export default function SessionReviewPage({ accounts, selectedAccountId, trades, onTradeSelect }: Props) {
+export default function SessionReviewPage({ accounts, selectedAccountId, trades, onTradeSelect, v2FeaturesEnabled }: Props) {
   return (
     <>
       <PageHeader
@@ -25,6 +26,7 @@ export default function SessionReviewPage({ accounts, selectedAccountId, trades,
         selectedAccountId={selectedAccountId}
         trades={trades}
         onTradeSelect={onTradeSelect}
+        v2FeaturesEnabled={v2FeaturesEnabled}
       />
     </>
   );

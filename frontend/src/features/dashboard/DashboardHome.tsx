@@ -60,6 +60,7 @@ type Props = {
   onSaveToDatabase: () => void;
   onTradeSelect: (tradeId: number) => void;
   showTradingDnaEntryPoint: boolean;
+  v2FeaturesEnabled: boolean;
 };
 
 export default function DashboardHome({
@@ -98,6 +99,7 @@ export default function DashboardHome({
   onSaveToDatabase,
   onTradeSelect,
   showTradingDnaEntryPoint,
+  v2FeaturesEnabled,
 }: Props) {
   const latestTrade = trades[0];
   const latestDate = latestTrade ? getTradeCalendarDate(latestTrade) : null;
@@ -107,7 +109,7 @@ export default function DashboardHome({
   useEffect(() => {
     let cancelled = false;
     setExecutionSummary(null);
-    if (!executionAccountId) return;
+    if (!v2FeaturesEnabled || !executionAccountId) return;
     getExecutionAccountSummary(executionAccountId)
       .then((summary) => {
         if (!cancelled) setExecutionSummary(summary);
@@ -118,7 +120,7 @@ export default function DashboardHome({
     return () => {
       cancelled = true;
     };
-  }, [executionAccountId]);
+  }, [executionAccountId, v2FeaturesEnabled]);
 
   return (
     <>

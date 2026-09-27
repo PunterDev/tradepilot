@@ -9,9 +9,10 @@ type Props = {
   usage?: BillingUsage | null;
   activationStatus?: ActivationStatus | null;
   onUsageChanged: () => void;
+  v2FeaturesEnabled: boolean;
 };
 
-export default function CoachPage({ selectedAccountId, usage, activationStatus, onUsageChanged }: Props) {
+export default function CoachPage({ selectedAccountId, usage, activationStatus, onUsageChanged, v2FeaturesEnabled }: Props) {
   return (
     <>
       <PageHeader
@@ -24,6 +25,7 @@ export default function CoachPage({ selectedAccountId, usage, activationStatus, 
         usage={usage}
         activationStatus={activationStatus}
         onUsageChanged={onUsageChanged}
+        v2FeaturesEnabled={v2FeaturesEnabled}
       />
     </>
   );

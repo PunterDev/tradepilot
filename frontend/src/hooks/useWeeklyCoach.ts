@@ -13,7 +13,7 @@ function addDays(date: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
-export function useWeeklyCoach(accountId?: number, weekStart?: string, previewAvailable = false, loadEnabled = true) {
+export function useWeeklyCoach(accountId?: number, weekStart?: string, previewAvailable = false, loadEnabled = true, executionEnabled = false) {
   const [data, setData] = useState<CoachSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -38,7 +38,11 @@ export function useWeeklyCoach(accountId?: number, weekStart?: string, previewAv
     try {
       const snapshot = await getWeeklyCoach(accountId, weekStart);
       setData(snapshot);
-      getExecutionWeeklyFocus(accountId).then(setExecutionFocus).catch(() => setExecutionFocus(null));
+      if (executionEnabled) {
+        getExecutionWeeklyFocus(accountId).then(setExecutionFocus).catch(() => setExecutionFocus(null));
+      } else {
+        setExecutionFocus(null);
+      }
     } catch (e) {
       if (isLimitReachedError(e)) {
         setLimitState({
@@ -74,7 +78,11 @@ export function useWeeklyCoach(accountId?: number, weekStart?: string, previewAv
       });
 
       setData(snapshot);
-      getExecutionWeeklyFocus(accountId).then(setExecutionFocus).catch(() => setExecutionFocus(null));
+      if (executionEnabled) {
+        getExecutionWeeklyFocus(accountId).then(setExecutionFocus).catch(() => setExecutionFocus(null));
+      } else {
+        setExecutionFocus(null);
+      }
     } catch (e) {
       if (isLimitReachedError(e)) {
         setLimitState({
@@ -110,7 +118,11 @@ export function useWeeklyCoach(accountId?: number, weekStart?: string, previewAv
       });
 
       setData(snapshot);
-      getExecutionWeeklyFocus(accountId).then(setExecutionFocus).catch(() => setExecutionFocus(null));
+      if (executionEnabled) {
+        getExecutionWeeklyFocus(accountId).then(setExecutionFocus).catch(() => setExecutionFocus(null));
+      } else {
+        setExecutionFocus(null);
+      }
     } catch (e) {
       console.error(e);
       setError("Unable to start the Weekly Coach preview right now. Please try again.");
@@ -120,8 +132,14 @@ export function useWeeklyCoach(accountId?: number, weekStart?: string, previewAv
   }
 
   useEffect(() => {
+    if (!executionEnabled) {
+      setExecutionFocus(null);
+    }
+  }, [executionEnabled]);
+
+  useEffect(() => {
     load();
-  }, [accountId, weekStart, loadEnabled]);
+  }, [accountId, weekStart, loadEnabled, executionEnabled]);
 
   useEffect(() => {
     if (!data) return;
