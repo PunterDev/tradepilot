@@ -52,7 +52,7 @@ class FlywayPostgresBaselineIntegrationTest {
                 .load();
 
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(13);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(14);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
@@ -82,9 +82,12 @@ class FlywayPostgresBaselineIntegrationTest {
                     .isEqualTo("012");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '013' and success = true"))
                     .isEqualTo("013");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '014' and success = true"))
+                    .isEqualTo("014");
 
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
+            assertApiRequestMetricsSchema(connection);
             assertStripeIndexesAndConstraints(connection);
             assertNegativePurchasedCreditsAreAllowed(connection);
             assertVerifierScriptReportsOk(connection);
@@ -216,6 +219,32 @@ class FlywayPostgresBaselineIntegrationTest {
                   and table_name = 'ai_usage_events'
                   and column_name = 'credits_used'
                 """))
+                .isEqualTo("YES");
+    }
+
+    private static void assertApiRequestMetricsSchema(Connection connection) throws SQLException {
+        assertNullableVarcharColumn(connection, "api_request_metrics", "request_id", 80);
+        assertNullableVarcharColumn(connection, "api_request_metrics", "error_code", 80);
+        assertThat(indexDefinition(connection, "idx_api_request_metrics_request_id"))
+                .contains("request_id");
+    }
+
+    private static void assertNullableVarcharColumn(Connection connection, String tableName, String columnName, int length) throws SQLException {
+        assertThat(scalar(connection, """
+                select character_maximum_length::text
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = '%s'
+                  and column_name = '%s'
+                """.formatted(tableName, columnName)))
+                .isEqualTo(Integer.toString(length));
+        assertThat(scalar(connection, """
+                select is_nullable
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = '%s'
+                  and column_name = '%s'
+                """.formatted(tableName, columnName)))
                 .isEqualTo("YES");
     }
 

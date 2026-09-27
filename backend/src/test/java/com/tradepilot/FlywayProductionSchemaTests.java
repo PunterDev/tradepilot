@@ -20,6 +20,7 @@ class FlywayProductionSchemaTests {
     private static final Path CREDIT_PURCHASE_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V005__ai_credit_purchase_schema_alignment.sql");
     private static final Path DISTRIBUTED_RATE_LIMIT_MIGRATION = Path.of("src/main/resources/db/migration/V006__distributed_rate_limit_windows.sql");
     private static final Path AI_USAGE_EVENT_SCHEMA_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V013__ai_usage_events_schema_alignment.sql");
+    private static final Path API_REQUEST_METRICS_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V014__api_request_metrics_schema_alignment.sql");
     private static final Path VERIFIER = Path.of("db/verify_production_schema.sql");
 
     @Test
@@ -156,6 +157,15 @@ class FlywayProductionSchemaTests {
         assertThat(sql).contains("add column if not exists related_resource_id bigint");
         assertThat(sql).contains("alter column usage_type type varchar(40)");
         assertThat(sql).contains("alter column credits_used drop not null");
+    }
+
+    @Test
+    void apiRequestMetricsAlignmentMigrationRestoresObservabilityColumns() throws IOException {
+        String sql = Files.readString(API_REQUEST_METRICS_ALIGNMENT_MIGRATION);
+
+        assertThat(sql).contains("add column if not exists request_id varchar(80)");
+        assertThat(sql).contains("add column if not exists error_code varchar(80)");
+        assertThat(sql).contains("create index if not exists idx_api_request_metrics_request_id");
     }
 
     private static void executeStatements(Connection connection, String sql) throws SQLException {
