@@ -7,6 +7,10 @@ import com.tradepilot.billing.StripeApiClient;
 import com.tradepilot.billing.SubscriptionStatus;
 import com.tradepilot.entity.User;
 import com.tradepilot.repository.UserRepository;
+import com.stripe.model.Price;
+import com.stripe.model.Subscription;
+import com.stripe.model.SubscriptionItem;
+import com.stripe.model.SubscriptionItemCollection;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -21,8 +25,10 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -67,6 +73,10 @@ class StripeWebhookLiveModeTests {
     @Test
     void productionLivemodeTrueIsAllowed() throws Exception {
         User user = createUser("stripe-prod-live-mode-allow@example.com");
+        user.setStripeCustomerId("cus_prod_test_" + user.getId());
+        userRepository.save(user);
+        when(stripeApiClient.retrieveSubscription("sub_prod_test_" + user.getId()))
+                .thenReturn(subscription("sub_prod_test_" + user.getId(), "cus_prod_test_" + user.getId(), "price_live_monthly"));
         String payload = withLivemode(checkoutCompletedPayload(user.getId()), true);
 
         postWebhook(payload).andExpect(status().isOk());
@@ -122,6 +132,7 @@ class StripeWebhookLiveModeTests {
                     "object": {
                       "id": "cs_prod_test_%s",
                       "object": "checkout.session",
+                      "mode": "subscription",
                       "customer": "cus_prod_test_%s",
                       "subscription": "sub_prod_test_%s",
                       "metadata": {
@@ -131,6 +142,21 @@ class StripeWebhookLiveModeTests {
                   }
                 }
                 """.formatted(userId, userId, userId, userId, userId);
+    }
+
+    private Subscription subscription(String id, String customerId, String priceId) {
+        Subscription subscription = new Subscription();
+        subscription.setId(id);
+        subscription.setCustomer(customerId);
+        subscription.setStatus("active");
+        Price price = new Price();
+        price.setId(priceId);
+        SubscriptionItem item = new SubscriptionItem();
+        item.setPrice(price);
+        SubscriptionItemCollection items = new SubscriptionItemCollection();
+        items.setData(List.of(item));
+        subscription.setItems(items);
+        return subscription;
     }
 
     private String creditPackCheckoutCompletedPayload(Long userId, AiCreditPack pack) {

@@ -45,7 +45,7 @@ Required Live Stripe objects:
 - One-time credit-pack Checkout prices are created dynamically by the backend from the server-controlled catalog:
   - Starter: 25 credits, USD 999 cents.
   - Power: 75 credits, USD 2499 cents.
-  - Elite: 200 credits, USD 5999 cents.
+  - Elite: 200 credits, USD 4999 cents.
 
 Application-generated redirect URLs:
 

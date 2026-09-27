@@ -3,7 +3,7 @@ package com.tradepilot.billing;
 public enum AiCreditPack {
     STARTER_25(25, 999, "usd"),
     POWER_75(75, 2499, "usd"),
-    ELITE_200(200, 5999, "usd");
+    ELITE_200(200, 4999, "usd");
 
     private final int credits;
     private final int amountCents;

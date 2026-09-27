@@ -15,7 +15,10 @@ import com.tradepilot.billing.SubscriptionStatus;
 import com.stripe.exception.InvalidRequestException;
 import com.stripe.model.Customer;
 import com.stripe.model.Invoice;
+import com.stripe.model.Price;
 import com.stripe.model.Subscription;
+import com.stripe.model.SubscriptionItem;
+import com.stripe.model.SubscriptionItemCollection;
 import com.stripe.model.checkout.Session;
 import com.tradepilot.dto.admin.AdminPlanChangeRequest;
 import com.tradepilot.dto.account.TradingAccountRequest;
@@ -106,6 +109,7 @@ class StripeBillingTests {
     @Test
     void checkoutCompletedUpgradesUserToPro() throws Exception {
         User user = createUser("stripe-checkout@example.com");
+        prepareValidSubscriptionCheckout(user, "price_test_pro");
         String payload = checkoutCompletedPayload(user.getId());
 
         mockMvc.perform(post("/api/stripe/webhook")
@@ -123,8 +127,54 @@ class StripeBillingTests {
     }
 
     @Test
+    void checkoutCompletedWithYearlyProPriceUpgradesUserToPro() throws Exception {
+        User user = createUser("stripe-checkout-yearly@example.com");
+        prepareValidSubscriptionCheckout(user, "price_test_pro_yearly");
+
+        postWebhook(checkoutCompletedPayload(user.getId()));
+
+        User updated = userRepository.findById(user.getId()).orElseThrow();
+        assertThat(updated.getPlan()).isEqualTo(PlanType.PRO);
+        assertThat(updated.getSubscriptionStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+    }
+
+    @Test
+    void checkoutCompletedWithUnknownProPriceDoesNotGrantPro() throws Exception {
+        User user = createUser("stripe-checkout-unknown-price@example.com");
+        prepareValidSubscriptionCheckout(user, "price_unrelated");
+
+        postWebhook(checkoutCompletedPayload(user.getId()));
+
+        assertThat(userRepository.findById(user.getId()).orElseThrow().getPlan()).isEqualTo(PlanType.FREE);
+    }
+
+    @Test
+    void checkoutCompletedWithWrongStripeCustomerDoesNotGrantPro() throws Exception {
+        User user = createUser("stripe-checkout-wrong-customer@example.com");
+        user.setStripeCustomerId("cus_test_123");
+        userRepository.save(user);
+        when(stripeApiClient.retrieveSubscription("sub_test_123"))
+                .thenReturn(subscriptionWithPrice("sub_test_123", "cus_other_customer", "active", "price_test_pro"));
+
+        postWebhook(checkoutCompletedPayload(user.getId()));
+
+        assertThat(userRepository.findById(user.getId()).orElseThrow().getPlan()).isEqualTo(PlanType.FREE);
+    }
+
+    @Test
+    void checkoutCompletedWithUnacceptableSubscriptionStatusDoesNotGrantPro() throws Exception {
+        User user = createUser("stripe-checkout-incomplete@example.com");
+        prepareValidSubscriptionCheckout(user, "price_test_pro", "incomplete");
+
+        postWebhook(checkoutCompletedPayload(user.getId()));
+
+        assertThat(userRepository.findById(user.getId()).orElseThrow().getPlan()).isEqualTo(PlanType.FREE);
+    }
+
+    @Test
     void testProfileAllowsLivemodeFalseWebhookEvents() throws Exception {
         User user = createUser("stripe-test-mode-allowed@example.com");
+        prepareValidSubscriptionCheckout(user, "price_test_pro");
         String payload = withLivemode(checkoutCompletedPayload(user.getId()), false);
 
         postWebhook(payload);
@@ -191,6 +241,7 @@ class StripeBillingTests {
     @Test
     void duplicateWebhookEventIsIgnored() throws Exception {
         User user = createUser("stripe-duplicate@example.com");
+        prepareValidSubscriptionCheckout(user, "price_test_pro");
         String payload = checkoutCompletedPayload(user.getId());
         String signature = stripeSignature(payload);
 
@@ -835,6 +886,7 @@ class StripeBillingTests {
     @Test
     void webhookUpgradeLetsUserBypassFreeAccountLimit() throws Exception {
         User user = createUser("stripe-limit-bypass@example.com");
+        prepareValidSubscriptionCheckout(user, "price_test_pro");
         String payload = checkoutCompletedPayload(user.getId());
 
         mockMvc.perform(post("/api/stripe/webhook")
@@ -1039,7 +1091,7 @@ class StripeBillingTests {
     @Test
     void creditPackWrongAmountGrantsZeroCredits() throws Exception {
         assertCreditPackRejected(creditPackCheckoutCompletedPayload(
-                0L, "evt_credit_wrong_amount", "cs_credit_wrong_amount", AiCreditPack.STARTER_25, "cus_credit_wrong_amount", "payment", "paid", "usd", 998
+                0L, "evt_credit_wrong_amount", "cs_credit_wrong_amount", AiCreditPack.ELITE_200, "cus_credit_wrong_amount", "payment", "paid", "usd", 5999
         ), "stripe-credit-wrong-amount@example.com", "cus_credit_wrong_amount");
     }
 
@@ -1114,6 +1166,14 @@ class StripeBillingTests {
     }
 
     @Test
+    void creditPackCatalogUsesThePublishedUsdAmounts() {
+        assertThat(AiCreditPack.STARTER_25.amountCents()).isEqualTo(999);
+        assertThat(AiCreditPack.POWER_75.amountCents()).isEqualTo(2499);
+        assertThat(AiCreditPack.ELITE_200.amountCents()).isEqualTo(4999);
+        assertThat(AiCreditPack.values()).allSatisfy(pack -> assertThat(pack.currency()).isEqualTo("usd"));
+    }
+
+    @Test
     void alreadyProcessedWebhookEventIsTreatedAsDuplicateSuccess() throws Exception {
         User user = createUser("stripe-preprocessed-duplicate@example.com");
         String payload = checkoutCompletedPayload(user.getId());
@@ -1165,7 +1225,7 @@ class StripeBillingTests {
         User user = createPurchasedCreditUser("stripe-refund-elite@example.com", "cus_refund_elite", AiCreditPack.ELITE_200);
         createCompletedCreditPackPurchase(user, AiCreditPack.ELITE_200, "cs_refund_elite", "pi_refund_elite", "ch_refund_elite");
 
-        postWebhook(chargeRefundedPayload("evt_refund_elite", "cus_refund_elite", "pi_refund_elite", "ch_refund_elite", 5999));
+        postWebhook(chargeRefundedPayload("evt_refund_elite", "cus_refund_elite", "pi_refund_elite", "ch_refund_elite", 4999));
 
         assertRefunded(user.getId(), "pi_refund_elite", 0, 200);
     }
@@ -1622,7 +1682,7 @@ class StripeBillingTests {
     void failureAfterCreditPackIncrementRollsBackAndRetryGrantsOnce() throws Exception {
         User user = createProStripeUser("stripe-credit-after-increment-failure@example.com", "cus_credit_after_increment_failure");
         String payload = creditPackCheckoutCompletedPayload(
-                user.getId(), "evt_credit_after_increment_failure", "cs_credit_after_increment_failure", AiCreditPack.ELITE_200, "cus_credit_after_increment_failure", "payment", "paid", "usd", 5999
+                user.getId(), "evt_credit_after_increment_failure", "cs_credit_after_increment_failure", AiCreditPack.ELITE_200, "cus_credit_after_increment_failure", "payment", "paid", "usd", 4999
         );
         setCreditPackFulfillmentHooks(() -> {
         }, () -> {
@@ -1669,6 +1729,7 @@ class StripeBillingTests {
                     "object": {
                       "id": "cs_test_123",
                       "object": "checkout.session",
+                      "mode": "subscription",
                       "customer": "cus_test_123",
                       "subscription": "sub_test_123",
                       "metadata": {
@@ -2090,6 +2151,29 @@ class StripeBillingTests {
         Subscription subscription = subscription(id, 1_780_272_000L, 1_782_864_000L);
         subscription.setCustomer(customerId);
         subscription.setStatus(status);
+        return subscription;
+    }
+
+    private void prepareValidSubscriptionCheckout(User user, String priceId) throws Exception {
+        prepareValidSubscriptionCheckout(user, priceId, "active");
+    }
+
+    private void prepareValidSubscriptionCheckout(User user, String priceId, String status) throws Exception {
+        user.setStripeCustomerId("cus_test_123");
+        userRepository.save(user);
+        when(stripeApiClient.retrieveSubscription("sub_test_123"))
+                .thenReturn(subscriptionWithPrice("sub_test_123", "cus_test_123", status, priceId));
+    }
+
+    private Subscription subscriptionWithPrice(String id, String customerId, String status, String priceId) {
+        Subscription subscription = subscription(id, customerId, status);
+        Price price = new Price();
+        price.setId(priceId);
+        SubscriptionItem item = new SubscriptionItem();
+        item.setPrice(price);
+        SubscriptionItemCollection items = new SubscriptionItemCollection();
+        items.setData(List.of(item));
+        subscription.setItems(items);
         return subscription;
     }
 

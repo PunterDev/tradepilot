@@ -29,6 +29,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -463,23 +464,29 @@ public class StripeBillingService {
             handleCreditPackCheckoutCompleted(object);
             return;
         }
+        if (!"subscription".equals(object.path("mode").asText())) {
+            log.warn("Stripe checkout completed ignored because it is not a subscription session. sessionId={}, mode={}", textField(object, "id"), object.path("mode").asText(null));
+            return;
+        }
         Long userId = object.path("metadata").path("userId").asLong(0);
         if (userId == 0) {
             log.warn("Stripe checkout completed without userId metadata.");
             return;
         }
-        userRepository.findById(userId).ifPresent(user -> {
-            JsonNode subscription = object.path("subscription");
-            user.setPlan(PlanType.PRO);
-            user.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
-            applyStripeIds(user, object.path("customer").asText(null), subscriptionIdFromValue(subscription));
-            if (subscription.isObject()) {
-                logSubscriptionFields("checkout.session.completed", subscription);
-                applySubscriptionPeriod(user, subscription);
-                applySubscriptionCancellationMetadata(user, subscription);
-            } else {
-                applySubscriptionPeriod(user, object);
+        String subscriptionId = subscriptionIdFromValue(object.path("subscription"));
+        if (!StringUtils.hasText(subscriptionId)) {
+            log.warn("Stripe subscription checkout completed without a subscription id. sessionId={}, userId={}", textField(object, "id"), userId);
+            return;
+        }
+        Subscription subscription = retrieveSubscriptionForCheckout(subscriptionId, textField(object, "id"));
+        if (subscription == null) {
+            return;
+        }
+        userRepository.findByIdForUpdate(userId).ifPresentOrElse(user -> {
+            if (!isValidProSubscriptionCheckout(object, subscription, user)) {
+                return;
             }
+            applyCurrentSubscriptionState(user, subscription);
             userRepository.save(user);
             stripeCheckoutAttemptRepository.findByUserId(user.getId()).ifPresent(attempt -> {
                 attempt.setStatus(StripeCheckoutAttemptStatus.COMPLETED);
@@ -488,8 +495,59 @@ public class StripeBillingService {
             });
             usageLimitService.invalidateUsageCache(user.getId());
             seoAnalyticsService.markProConverted(user, LocalDateTime.now());
-            log.info("Stripe checkout completed upgraded user. userId={}", user.getId());
-        });
+            log.info("Stripe checkout completed upgraded user. userId={}, subscriptionId={}, status={}", user.getId(), subscription.getId(), subscription.getStatus());
+        }, () -> log.warn("Stripe subscription checkout completed for unknown user. sessionId={}, userId={}", textField(object, "id"), userId));
+    }
+
+    private Subscription retrieveSubscriptionForCheckout(String subscriptionId, String sessionId) {
+        try {
+            Subscription subscription = stripeApiClient.retrieveSubscription(subscriptionId);
+            if (subscription == null || !subscriptionId.equals(subscription.getId())) {
+                log.warn("Stripe subscription checkout reconciliation failed identity validation. sessionId={}, expectedSubscriptionId={}, actualSubscriptionId={}", sessionId, subscriptionId, subscription == null ? null : subscription.getId());
+                return null;
+            }
+            return subscription;
+        } catch (StripeException ex) {
+            log.warn("Stripe subscription checkout reconciliation failed. sessionId={}, subscriptionId={}, reason={}", sessionId, subscriptionId, LogSanitizer.summarizeError(ex.getMessage()));
+            throw new StripeReconciliationException("Stripe subscription checkout reconciliation failed", ex);
+        }
+    }
+
+    private boolean isValidProSubscriptionCheckout(JsonNode session, Subscription subscription, User user) {
+        String sessionCustomerId = textField(session, "customer");
+        if (!StringUtils.hasText(user.getStripeCustomerId())
+                || !user.getStripeCustomerId().equals(sessionCustomerId)
+                || !user.getStripeCustomerId().equals(subscription.getCustomer())) {
+            log.warn("Stripe subscription checkout customer validation failed. sessionId={}, userId={}, subscriptionId={}", textField(session, "id"), user.getId(), subscription.getId());
+            return false;
+        }
+        if (!hasConfiguredProPrice(subscription)) {
+            log.warn("Stripe subscription checkout price validation failed. sessionId={}, userId={}, subscriptionId={}", textField(session, "id"), user.getId(), subscription.getId());
+            return false;
+        }
+        SubscriptionStatus subscriptionStatus = mapSubscriptionStatus(subscription.getStatus(), Boolean.TRUE.equals(subscription.getCancelAtPeriodEnd()));
+        if (subscriptionStatus != SubscriptionStatus.ACTIVE && subscriptionStatus != SubscriptionStatus.TRIALING) {
+            log.warn("Stripe subscription checkout status validation failed. sessionId={}, userId={}, subscriptionId={}, status={}", textField(session, "id"), user.getId(), subscription.getId(), subscription.getStatus());
+            return false;
+        }
+        return true;
+    }
+
+    private boolean hasConfiguredProPrice(Subscription subscription) {
+        List<com.stripe.model.SubscriptionItem> items = subscription.getItems() == null ? List.of() : subscription.getItems().getData();
+        if (items == null) {
+            return false;
+        }
+        return items.stream()
+                .map(com.stripe.model.SubscriptionItem::getPrice)
+                .filter(java.util.Objects::nonNull)
+                .map(com.stripe.model.Price::getId)
+                .anyMatch(this::isConfiguredProPriceId);
+    }
+
+    private boolean isConfiguredProPriceId(String priceId) {
+        return StringUtils.hasText(priceId)
+                && (priceId.equals(stripeProperties.getProPriceId()) || priceId.equals(stripeProperties.getProYearlyPriceId()));
     }
 
     void handleCreditPackCheckoutCompleted(JsonNode object) {
