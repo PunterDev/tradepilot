@@ -21,6 +21,7 @@ class FlywayProductionSchemaTests {
     private static final Path DISTRIBUTED_RATE_LIMIT_MIGRATION = Path.of("src/main/resources/db/migration/V006__distributed_rate_limit_windows.sql");
     private static final Path AI_USAGE_EVENT_SCHEMA_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V013__ai_usage_events_schema_alignment.sql");
     private static final Path API_REQUEST_METRICS_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V014__api_request_metrics_schema_alignment.sql");
+    private static final Path PRODUCTION_SCHEMA_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V015__production_schema_alignment.sql");
     private static final Path VERIFIER = Path.of("db/verify_production_schema.sql");
 
     @Test
@@ -166,6 +167,30 @@ class FlywayProductionSchemaTests {
         assertThat(sql).contains("add column if not exists request_id varchar(80)");
         assertThat(sql).contains("add column if not exists error_code varchar(80)");
         assertThat(sql).contains("create index if not exists idx_api_request_metrics_request_id");
+    }
+
+    @Test
+    void productionSchemaAlignmentMigrationRestoresTheCompleteTradeMemoryContract() throws IOException {
+        String sql = Files.readString(PRODUCTION_SCHEMA_ALIGNMENT_MIGRATION);
+
+        assertThat(sql).contains("alter column id type uuid using id::uuid");
+        assertThat(sql).contains("alter column vector_point_id type uuid using vector_point_id::uuid");
+        assertThat(sql).contains("trade_memories.summary is required by the current JPA mapping");
+        assertThat(sql).contains("alter column summary set not null");
+        assertThat(sql).contains("timestamp with time zone using %1$I at time zone ''UTC''");
+        assertThat(sql).contains("uk_trade_memories_trade_id unique (trade_id)");
+        assertThat(sql).contains("uk_trade_memories_vector_point_id unique (vector_point_id)");
+        assertThat(sql).contains("auth_tokens.token_hash to VARCHAR(64)");
+        assertThat(sql).contains("alter column token_hash type varchar(64)");
+        assertThat(sql).contains("add column if not exists trade_date date");
+        assertThat(sql).contains("alter column rule_code type varchar(80)");
+        assertThat(sql).contains("alter column category type varchar(50)");
+        assertThat(sql).contains("alter column severity type varchar(20)");
+        assertThat(sql).contains("alter column source type varchar(30)");
+        assertThat(sql).contains("idx_performance_milestones_period");
+        assertThat(sql).contains("idx_performance_timeline_period");
+        assertThat(sql).contains("alter column insight_type type varchar(50)");
+        assertThat(sql).contains("invalid value(s) require manual repair");
     }
 
     private static void executeStatements(Connection connection, String sql) throws SQLException {

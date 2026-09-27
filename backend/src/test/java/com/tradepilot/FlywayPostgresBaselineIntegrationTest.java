@@ -51,8 +51,12 @@ class FlywayPostgresBaselineIntegrationTest {
                 .locations("filesystem:src/main/resources/db/migration")
                 .load();
 
+        try (Connection connection = connect(postgres)) {
+            assertApplicationTablesAreAbsent(connection);
+        }
+
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(14);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(15);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
@@ -84,10 +88,14 @@ class FlywayPostgresBaselineIntegrationTest {
                     .isEqualTo("013");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '014' and success = true"))
                     .isEqualTo("014");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '015' and success = true"))
+                    .isEqualTo("015");
 
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
             assertApiRequestMetricsSchema(connection);
+            assertTradeMemoriesSchema(connection);
+            assertOtherV015SchemaAlignments(connection);
             assertStripeIndexesAndConstraints(connection);
             assertNegativePurchasedCreditsAreAllowed(connection);
             assertVerifierScriptReportsOk(connection);
@@ -128,6 +136,15 @@ class FlywayPostgresBaselineIntegrationTest {
                       and table_name = '%s'
                     """.formatted(table))).as("table " + table).isEqualTo(1);
         }
+    }
+
+    private static void assertApplicationTablesAreAbsent(Connection connection) throws SQLException {
+        assertThat(count(connection, """
+                select count(*)
+                from information_schema.tables
+                where table_schema = 'public'
+                  and table_name not in ('pg_stat_statements')
+                """)).isZero();
     }
 
     private static void assertStripeIndexesAndConstraints(Connection connection) throws SQLException {
@@ -229,7 +246,75 @@ class FlywayPostgresBaselineIntegrationTest {
                 .contains("request_id");
     }
 
+    private static void assertTradeMemoriesSchema(Connection connection) throws SQLException {
+        assertThat(scalar(connection, """
+                select data_type
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'trade_memories'
+                  and column_name = 'id'
+                """)).isEqualTo("uuid");
+        assertThat(scalar(connection, """
+                select data_type
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'trade_memories'
+                  and column_name = 'vector_point_id'
+                """)).isEqualTo("uuid");
+        assertThat(scalar(connection, """
+                select data_type
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'trade_memories'
+                  and column_name = 'summary'
+                """)).isEqualTo("text");
+        assertThat(scalar(connection, """
+                select is_nullable
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'trade_memories'
+                  and column_name = 'summary'
+                """)).isEqualTo("NO");
+        for (String column : List.of("last_attempted_at", "next_retry_at", "created_at", "updated_at", "embedded_at")) {
+            assertThat(scalar(connection, """
+                    select data_type
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name = 'trade_memories'
+                      and column_name = '%s'
+                    """.formatted(column))).isEqualTo("timestamp with time zone");
+        }
+        assertThat(count(connection, """
+                select count(*)
+                from pg_constraint
+                where conrelid = 'trade_memories'::regclass
+                  and conname in ('uk_trade_memories_trade_id', 'uk_trade_memories_vector_point_id')
+                """)).isEqualTo(2);
+    }
+
+    private static void assertOtherV015SchemaAlignments(Connection connection) throws SQLException {
+        assertVarcharColumn(connection, "auth_tokens", "token_hash", 64, "NO");
+        assertVarcharColumn(connection, "trade_rule_violations", "rule_code", 80, "NO");
+        assertVarcharColumn(connection, "trade_rule_violations", "category", 50, "NO");
+        assertVarcharColumn(connection, "trade_rule_violations", "severity", 20, "NO");
+        assertVarcharColumn(connection, "trade_rule_violations", "source", 30, "NO");
+        assertThat(scalar(connection, """
+                select data_type
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'trade_rule_violations'
+                  and column_name = 'trade_date'
+                """)).isEqualTo("date");
+        assertThat(indexDefinition(connection, "idx_performance_milestones_period")).contains("account_id").contains("period_start");
+        assertThat(indexDefinition(connection, "idx_performance_timeline_period")).contains("account_id").contains("period_start");
+        assertVarcharColumn(connection, "trade_replay_insights", "insight_type", 50, "NO");
+    }
+
     private static void assertNullableVarcharColumn(Connection connection, String tableName, String columnName, int length) throws SQLException {
+        assertVarcharColumn(connection, tableName, columnName, length, "YES");
+    }
+
+    private static void assertVarcharColumn(Connection connection, String tableName, String columnName, int length, String nullable) throws SQLException {
         assertThat(scalar(connection, """
                 select character_maximum_length::text
                 from information_schema.columns
@@ -245,7 +330,7 @@ class FlywayPostgresBaselineIntegrationTest {
                   and table_name = '%s'
                   and column_name = '%s'
                 """.formatted(tableName, columnName)))
-                .isEqualTo("YES");
+                .isEqualTo(nullable);
     }
 
     private static void assertNegativePurchasedCreditsAreAllowed(Connection connection) {
