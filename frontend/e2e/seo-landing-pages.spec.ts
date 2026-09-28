@@ -88,6 +88,7 @@ const landingPages = [
     links: [
       { label: "Topstep trading journal", to: "/topstep-trading-journal" },
       { label: "Tradovate trading journal", to: "/tradovate-trading-journal" },
+      { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
       { label: "Revenge trading", to: "/revenge-trading" },
       { label: "Overtrading", to: "/overtrading" },
@@ -105,6 +106,7 @@ const landingPages = [
       { label: "Futures trading journal", to: "/futures-trading-journal" },
       { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
+      { label: "Trading after losses", to: "/trading-after-losses" },
     ],
   },
   {
@@ -119,6 +121,7 @@ const landingPages = [
       { label: "Futures trading journal", to: "/futures-trading-journal" },
       { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
+      { label: "Trading psychology", to: "/trading-psychology" },
     ],
   },
   {
@@ -133,6 +136,8 @@ const landingPages = [
       { label: "Topstep trading journal", to: "/topstep-trading-journal" },
       { label: "Futures trading journal", to: "/futures-trading-journal" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
+      { label: "Trading discipline", to: "/trading-discipline" },
+      { label: "Breaking trading rules", to: "/breaking-trading-rules" },
     ],
   },
   {
@@ -147,6 +152,8 @@ const landingPages = [
       { label: "Futures trading journal", to: "/futures-trading-journal" },
       { label: "Topstep trading journal", to: "/topstep-trading-journal" },
       { label: "Tradovate trading journal", to: "/tradovate-trading-journal" },
+      { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
+      { label: "Trading psychology", to: "/trading-psychology" },
     ],
   },
   {
@@ -163,6 +170,7 @@ const landingPages = [
       { label: "Trading discipline", to: "/trading-discipline" },
       { label: "Breaking trading rules", to: "/breaking-trading-rules" },
       { label: "Trading after losses", to: "/trading-after-losses" },
+      { label: "AI trading journal", to: "/ai-trading-journal" },
     ],
   },
   {
@@ -189,6 +197,7 @@ const landingPages = [
     h1: "Are You Losing Money Because You Trade Too Much?",
     cta: "Analyze My Overtrading Pattern",
     links: [
+      { label: "Overtrading calculator", to: "/tools/overtrading-calculator" },
       { label: "Trading discipline", to: "/trading-discipline" },
       { label: "Breaking trading rules", to: "/breaking-trading-rules" },
       { label: "Futures trading journal", to: "/futures-trading-journal" },
@@ -223,6 +232,7 @@ const landingPages = [
       { label: "Revenge trading", to: "/revenge-trading" },
       { label: "Trading after losses", to: "/trading-after-losses" },
       { label: "Overtrading", to: "/overtrading" },
+      { label: "Trading psychology", to: "/trading-psychology" },
     ],
   },
   {

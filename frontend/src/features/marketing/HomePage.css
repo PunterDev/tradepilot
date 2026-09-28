@@ -1343,6 +1343,44 @@
   font-weight: 900;
 }
 
+.marketing-inline-link {
+  color: #5eead4;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.marketing-inline-link:hover {
+  color: #ccfbf1;
+}
+
+.resource-discovery-section {
+  padding-top: 18px;
+}
+
+.resource-cluster {
+  align-content: start;
+}
+
+.resource-cluster h3 {
+  margin: 0;
+}
+
+.resource-cluster-links {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.resource-cluster-links a {
+  color: #99f6e4;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.resource-cluster-links a:hover {
+  color: #f8fafc;
+}
+
 .faq-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -108,6 +108,33 @@ test("homepage navigation anchors and CTAs target valid public destinations", as
   await expect(page.getByRole("heading", { name: "Your next trading insight may already be in your history." })).toBeVisible();
 });
 
+test("homepage exposes the journal, behavior, and tool resource clusters", async ({ page }) => {
+  await mockFeatureAvailability(page, disabledAvailability);
+  await page.goto("/");
+
+  const resources = page.getByLabel("TradePilot Coach resources");
+  await expect(page.getByRole("heading", { name: "Explore TradePilot Coach" })).toBeVisible();
+
+  for (const [label, href] of [
+    ["AI Trading Journal", "/ai-trading-journal"],
+    ["Futures Trading Journal", "/futures-trading-journal"],
+    ["Topstep Trading Journal", "/topstep-trading-journal"],
+    ["Tradovate Trading Journal", "/tradovate-trading-journal"],
+    ["Prop Firm Trading Journal", "/prop-firm-trading-journal"],
+    ["Trading Psychology", "/trading-psychology"],
+    ["Revenge Trading", "/revenge-trading"],
+    ["Overtrading", "/overtrading"],
+    ["Trading Discipline", "/trading-discipline"],
+    ["Breaking Trading Rules", "/breaking-trading-rules"],
+    ["Trading After Losses", "/trading-after-losses"],
+    ["Trading Expectancy Calculator", "/tools/trading-expectancy-calculator"],
+    ["Overtrading Calculator", "/tools/overtrading-calculator"],
+    ["Revenge Trading Calculator", "/tools/revenge-trading-calculator"],
+  ] as const) {
+    await expect(resources.getByRole("link", { name: label, exact: true })).toHaveAttribute("href", href);
+  }
+});
+
 test("homepage keeps the four-step workflow readable", async ({ page }) => {
   await mockFeatureAvailability(page, disabledAvailability);
   await page.goto("/");
@@ -134,6 +161,7 @@ for (const width of [390, 320]) {
     expect(overflow).toBeLessThanOrEqual(1);
     await expect(page.getByRole("link", { name: "Start Journaling Free" }).first()).toBeVisible();
     await expect(page.getByText("Why traders need more than a journal")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Explore TradePilot Coach" })).toBeVisible();
   });
 }
 

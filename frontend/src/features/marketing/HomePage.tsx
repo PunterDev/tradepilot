@@ -101,6 +101,38 @@ const audienceItems = [
   "Execution review",
 ];
 
+const resourceClusters = [
+  {
+    title: "Trading Journals",
+    links: [
+      ["AI Trading Journal", "/ai-trading-journal"],
+      ["Futures Trading Journal", "/futures-trading-journal"],
+      ["Topstep Trading Journal", "/topstep-trading-journal"],
+      ["Tradovate Trading Journal", "/tradovate-trading-journal"],
+      ["Prop Firm Trading Journal", "/prop-firm-trading-journal"],
+    ],
+  },
+  {
+    title: "Trading Behavior",
+    links: [
+      ["Trading Psychology", "/trading-psychology"],
+      ["Revenge Trading", "/revenge-trading"],
+      ["Overtrading", "/overtrading"],
+      ["Trading Discipline", "/trading-discipline"],
+      ["Breaking Trading Rules", "/breaking-trading-rules"],
+      ["Trading After Losses", "/trading-after-losses"],
+    ],
+  },
+  {
+    title: "Free Tools",
+    links: [
+      ["Trading Expectancy Calculator", "/tools/trading-expectancy-calculator"],
+      ["Overtrading Calculator", "/tools/overtrading-calculator"],
+      ["Revenge Trading Calculator", "/tools/revenge-trading-calculator"],
+    ],
+  },
+] as const;
+
 const faqs = [
   {
     question: "What CSV formats are supported?",
@@ -225,7 +257,7 @@ export default function HomePage() {
             </h1>
             <p className="marketing-subtitle hero-support">
               Turn your trading history into actionable execution insights. TradePilot Coach analyzes your trades, behavior,
-              timing, discipline, and recurring mistakes so you can understand what improves your performance - and what keeps costing you.
+              timing, discipline, and recurring mistakes so you can understand what improves your performance - and what keeps costing you. Explore the <Link className="marketing-inline-link" to="/ai-trading-journal">AI trading journal</Link> built for <Link className="marketing-inline-link" to="/futures-trading-journal">futures traders</Link>.
             </p>
             <div className="marketing-hero-actions">
               <Link
@@ -239,8 +271,8 @@ export default function HomePage() {
             </div>
             <p className="marketing-trust-copy">
               {showTradingMemory
-                ? "AI execution intelligence and coaching for futures traders. Import Topstep and Tradovate trade history by CSV."
-                : "Built for futures and prop-firm traders. No signals. No trade calls. No promises of profit."}
+                ? <>AI execution intelligence and coaching for futures traders. Import <Link className="marketing-inline-link" to="/topstep-trading-journal">Topstep</Link> and <Link className="marketing-inline-link" to="/tradovate-trading-journal">Tradovate</Link> trade history by CSV.</>
+                : <>Built for <Link className="marketing-inline-link" to="/futures-trading-journal">futures</Link> and <Link className="marketing-inline-link" to="/prop-firm-trading-journal">prop-firm traders</Link>. No signals. No trade calls. No promises of profit.</>}
             </p>
             <div className="marketing-proof-row compact" aria-label="TradePilot Coach product highlights">
               {(showTradingMemory ? v2HeroBadges : v1HeroBadges).map((badge) => (
@@ -486,6 +518,26 @@ export default function HomePage() {
               <div className="audience-item" key={item}>{item}</div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="marketing-section resource-discovery-section" aria-labelledby="explore-tradepilot-coach">
+        <div className="marketing-container">
+          <header className="marketing-section-header centered">
+            <div className="marketing-eyebrow">Explore</div>
+            <h2 className="marketing-section-title" id="explore-tradepilot-coach">Explore TradePilot Coach</h2>
+            <p className="marketing-section-copy">Find the journal guides, behavior frameworks, and free tools that match the review you want to do next.</p>
+          </header>
+          <nav className="marketing-card-grid three resource-cluster-grid" aria-label="TradePilot Coach resources">
+            {resourceClusters.map((cluster) => (
+              <section className="marketing-card resource-cluster" key={cluster.title}>
+                <h3>{cluster.title}</h3>
+                <div className="resource-cluster-links">
+                  {cluster.links.map(([label, to]) => <Link key={to} to={to}>{label}</Link>)}
+                </div>
+              </section>
+            ))}
+          </nav>
         </div>
       </section>
 

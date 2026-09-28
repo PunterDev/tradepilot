@@ -109,6 +109,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
     links: [
       { label: "Topstep trading journal", to: "/topstep-trading-journal" },
       { label: "Tradovate trading journal", to: "/tradovate-trading-journal" },
+      { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
       { label: "Revenge trading", to: "/revenge-trading" },
       { label: "Overtrading", to: "/overtrading" },
@@ -167,6 +168,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Futures trading journal", to: "/futures-trading-journal" },
       { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
+      { label: "Trading after losses", to: "/trading-after-losses" },
     ],
     faq: [
       {
@@ -223,6 +225,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Futures trading journal", to: "/futures-trading-journal" },
       { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
+      { label: "Trading psychology", to: "/trading-psychology" },
     ],
     faq: [
       {
@@ -279,6 +282,8 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Topstep trading journal", to: "/topstep-trading-journal" },
       { label: "Futures trading journal", to: "/futures-trading-journal" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
+      { label: "Trading discipline", to: "/trading-discipline" },
+      { label: "Breaking trading rules", to: "/breaking-trading-rules" },
     ],
     faq: [
       {
@@ -342,6 +347,8 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Futures trading journal", to: "/futures-trading-journal" },
       { label: "Topstep trading journal", to: "/topstep-trading-journal" },
       { label: "Tradovate trading journal", to: "/tradovate-trading-journal" },
+      { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
+      { label: "Trading psychology", to: "/trading-psychology" },
     ],
     faq: [
       {
@@ -407,6 +414,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Trading discipline", to: "/trading-discipline" },
       { label: "Breaking trading rules", to: "/breaking-trading-rules" },
       { label: "Trading after losses", to: "/trading-after-losses" },
+      { label: "AI trading journal", to: "/ai-trading-journal" },
     ],
     faq: [
       {
@@ -532,6 +540,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       ],
     },
     links: [
+      { label: "Overtrading calculator", to: "/tools/overtrading-calculator" },
       { label: "Trading discipline", to: "/trading-discipline" },
       { label: "Breaking trading rules", to: "/breaking-trading-rules" },
       { label: "Futures trading journal", to: "/futures-trading-journal" },
@@ -656,6 +665,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Revenge trading", to: "/revenge-trading" },
       { label: "Trading after losses", to: "/trading-after-losses" },
       { label: "Overtrading", to: "/overtrading" },
+      { label: "Trading psychology", to: "/trading-psychology" },
     ],
     faq: [
       {
