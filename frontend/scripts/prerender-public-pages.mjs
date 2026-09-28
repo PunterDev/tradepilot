@@ -31,34 +31,64 @@ function injectPrerenderedMarkup(html, route, rendered) {
 }
 
 function ensurePrerenderedHtml(route, html) {
-  if (!/<title>[^<]+<\/title>/i.test(html)) {
-    throw new Error(`${route} prerender is missing a title.`);
+  const titles = [...html.matchAll(/<title\b[^>]*>([\s\S]*?)<\/title>/gi)].map((match) => match[1].trim());
+  const metaTags = html.match(/<meta\b[^>]*>/gi) ?? [];
+  const linkTags = html.match(/<link\b[^>]*>/gi) ?? [];
+  const h1s = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)].map((match) => match[1].replace(/<[^>]+>/g, " ").trim());
+  const descriptionTags = metaTags.filter((tag) => /\bname=["']description["']/i.test(tag));
+  const canonicalTags = linkTags.filter((tag) => /\brel=["']canonical["']/i.test(tag));
+  const robotsTags = metaTags.filter((tag) => /\bname=["']robots["']/i.test(tag));
+  const canonicalHref = canonicalTags[0]?.match(/\bhref=["']([^"']+)["']/i)?.[1];
+  const expectedCanonical = new URL(`https://www.tradepilotcoach.com${route}`);
+  const renderedText = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (titles.length !== 1 || !titles[0]) {
+    throw new Error(`${route} prerender must contain exactly one non-empty title.`);
   }
-  if (!/<meta\s+name="description"\s+content="[^"]+"/i.test(html)) {
-    throw new Error(`${route} prerender is missing a meta description.`);
+  if (descriptionTags.length !== 1 || !/\bcontent=["'][^"']+[^"']["']/i.test(descriptionTags[0])) {
+    throw new Error(`${route} prerender must contain exactly one non-empty meta description.`);
   }
-  if (!/<link\s+rel="canonical"\s+href="https:\/\/www\.tradepilotcoach\.com/i.test(html)) {
-    throw new Error(`${route} prerender is missing a www.tradepilotcoach.com canonical.`);
+  const parsedCanonical = canonicalHref ? new URL(canonicalHref) : null;
+  if (
+    canonicalTags.length !== 1 ||
+    !parsedCanonical ||
+    parsedCanonical.origin !== expectedCanonical.origin ||
+    parsedCanonical.pathname !== expectedCanonical.pathname ||
+    parsedCanonical.search ||
+    parsedCanonical.hash
+  ) {
+    throw new Error(`${route} prerender must contain exactly one canonical matching ${expectedCanonical.href}.`);
   }
-  if (!/<h1[\s>]/i.test(html)) {
-    throw new Error(`${route} prerender is missing an H1.`);
+  if (h1s.length !== 1 || !h1s[0]) {
+    throw new Error(`${route} prerender must contain exactly one non-empty H1.`);
   }
-  if (!/TradePilot/i.test(html)) {
-    throw new Error(`${route} prerender is missing meaningful TradePilot body copy.`);
+  if (robotsTags.some((tag) => /\bcontent=["'][^"']*noindex/i.test(tag))) {
+    throw new Error(`${route} prerender must not emit noindex.`);
+  }
+  if (renderedText.length < 160 || /(?:loading|checking your session)\.\.\./i.test(renderedText)) {
+    throw new Error(`${route} prerender is missing useful rendered body content.`);
   }
   const expectsStructuredData = !["/privacy", "/terms", "/contact"].includes(route);
   if (expectsStructuredData && !/<script\s+type="application\/ld\+json"/i.test(html)) {
     throw new Error(`${route} prerender is missing structured data.`);
   }
-  if (route !== "/" && html.includes('<link rel="canonical" href="https://www.tradepilotcoach.com">')) {
-    throw new Error(`${route} prerender has a homepage canonical.`);
-  }
 }
 
+const titles = new Set();
 for (const route of routes) {
   const rendered = renderPublicRoute(route);
   const html = injectPrerenderedMarkup(template, route, rendered);
   ensurePrerenderedHtml(route, html);
+  const title = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1].trim();
+  if (titles.has(title)) {
+    throw new Error(`${route} prerender duplicates the title: ${title}`);
+  }
+  titles.add(title);
 
   const outputPath = routeOutputPath(route);
   await mkdir(path.dirname(outputPath), { recursive: true });

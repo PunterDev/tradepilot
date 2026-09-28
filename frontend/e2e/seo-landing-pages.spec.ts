@@ -16,6 +16,23 @@ const revengeCalculatorTitle = "Revenge Trading Calculator: Analyze Performance 
 const revengeCalculatorDescription =
   "Compare your normal trading performance with trades taken after losses and consecutive losses to see whether your results deteriorate after losing trades.";
 const calculatorCta = "Find My Trading Leaks";
+const publicSeoRoutes: string[] = JSON.parse(readFileSync(path.resolve("seo-public-routes.json"), "utf8"));
+const privateSitemapPaths = [
+  "/login",
+  "/register",
+  "/dashboard",
+  "/admin",
+  "/billing",
+  "/settings",
+  "/journal",
+  "/analytics",
+  "/calendar",
+  "/coach",
+  "/trades/",
+  "/verify-email",
+  "/forgot-password",
+  "/reset-password",
+];
 
 function sourceForPath(pathname: string) {
   if (pathname === expectancyCalculatorPath) return "expectancy-calculator";
@@ -253,6 +270,33 @@ for (const content of landingPages) {
   });
 }
 
+for (const route of publicSeoRoutes) {
+  test(`${route} remains a publicly indexable route`, async ({ page }) => {
+    const response = await page.goto(route, { waitUntil: "domcontentloaded" });
+    expect(response?.ok()).toBeTruthy();
+
+    await expect(page).not.toHaveTitle("");
+    await expect(page.locator('meta[name="description"]')).toHaveCount(1);
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /\S/);
+    await expect(page.locator('link[rel="canonical"]')).toHaveCount(1);
+
+    const canonical = await page.locator('link[rel="canonical"]').getAttribute("href");
+    expect(canonical).toBeTruthy();
+    const canonicalUrl = new URL(canonical!);
+    expect(canonicalUrl.origin).toBe(siteUrl);
+    expect(canonicalUrl.pathname).toBe(route);
+    expect(canonicalUrl.search).toBe("");
+    expect(canonicalUrl.hash).toBe("");
+
+    await expect(page.locator("h1")).toHaveCount(1);
+    await expect(page.locator("h1")).toHaveText(/\S/);
+    const robots = await page.locator('meta[name="robots"]').evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("content") ?? "")
+    );
+    expect(robots.join(" ").toLowerCase()).not.toContain("noindex");
+  });
+}
+
 test("SEO landing pages preserve first-touch attribution and CTA events", async ({ page }) => {
   await page.goto("/futures-trading-journal?utm_source=google&utm_medium=organic&utm_campaign=futures");
   await page.waitForFunction(() => window.localStorage.getItem("tradepilot_first_touch_attribution") !== null);
@@ -357,20 +401,19 @@ test("direct normal registration without source retains dashboard behavior", asy
   await expect(page).toHaveURL(/\/dashboard$/);
 });
 
-test("sitemap includes public SEO pages and excludes private or auth routes", async ({ request }) => {
+test("sitemap exactly matches the public SEO registry and excludes private or auth routes", async ({ request }) => {
   const response = await request.get("/sitemap.xml");
   expect(response.ok()).toBeTruthy();
   const sitemap = await response.text();
+  const sitemapUrls = [...sitemap.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map((match) => match[1].trim());
+  const sitemapPaths = sitemapUrls.map((url) => new URL(url).pathname);
 
-  for (const content of landingPages) {
-    expect(sitemap).toContain(`<loc>${siteUrl}${content.path}</loc>`);
-  }
-  expect(sitemap).toContain(`<loc>${siteUrl}${expectancyCalculatorPath}</loc>`);
-  expect(sitemap).toContain(`<loc>${siteUrl}${overtradingCalculatorPath}</loc>`);
-  expect(sitemap).toContain(`<loc>${siteUrl}${revengeCalculatorPath}</loc>`);
+  expect(new Set(publicSeoRoutes).size).toBe(publicSeoRoutes.length);
+  expect(new Set(sitemapUrls).size).toBe(sitemapUrls.length);
+  expect([...sitemapPaths].sort()).toEqual([...publicSeoRoutes].sort());
 
-  for (const privatePath of ["/login", "/register", "/dashboard", "/admin", "/billing", "/trades/"]) {
-    expect(sitemap).not.toContain(`<loc>${siteUrl}${privatePath}`);
+  for (const privatePath of privateSitemapPaths) {
+    expect(sitemapPaths.some((path) => path === privatePath || path.startsWith(privatePath))).toBeFalsy();
   }
 });
 
