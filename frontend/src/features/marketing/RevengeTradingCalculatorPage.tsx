@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Seo, { SITE_URL } from "../../components/Seo";
 import { activationAwareCtaDestination } from "../../utils/activationRedirect";
@@ -84,6 +84,8 @@ type RevengeResult =
       gapPerDay: number | null;
       state: ResultState;
     };
+
+type SubmittedRevengeResult = Extract<RevengeResult, { ready: true }>;
 
 function parseDecimal(raw: string, label: string, required: boolean): ParsedField {
   const value = raw.trim();
@@ -221,24 +223,26 @@ export default function RevengeTradingCalculatorPage() {
   }));
   const [touchedFields, setTouchedFields] = useState<Partial<Record<FieldKey, boolean>>>({});
   const [analysisAttempted, setAnalysisAttempted] = useState(false);
+  const [submittedResult, setSubmittedResult] = useState<SubmittedRevengeResult | null>(null);
+  const [isStale, setIsStale] = useState(false);
   const hasTrackedStart = useRef(false);
-  const lastTrackedState = useRef<ResultState | null>(null);
+  const resultRegionRef = useRef<HTMLElement>(null);
   const ctaDestination = activationAwareCtaDestination(CTA_SOURCE);
 
-  const result = useMemo<RevengeResult>(() => {
+  const draftResult = useMemo<RevengeResult>(() => {
     const parsed = {
       baselineTrades: parseWholeNumber(inputs.baselineTrades, "Baseline trades"),
       baselineWins: parseWholeNumber(inputs.baselineWins, "Baseline winning trades"),
-      baselineWinPnl: parseDecimal(inputs.baselineWinPnl, "Baseline total winning P&L", true),
-      baselineLossPnl: parseDecimal(inputs.baselineLossPnl, "Baseline total losing P&L", true),
+      baselineWinPnl: parseDecimal(inputs.baselineWinPnl, "Baseline total winning P&L", false),
+      baselineLossPnl: parseDecimal(inputs.baselineLossPnl, "Baseline total losing P&L", false),
       after1Trades: parseWholeNumber(inputs.after1Trades, "After 1 loss trades"),
       after1Wins: parseWholeNumber(inputs.after1Wins, "After 1 loss winning trades"),
-      after1WinPnl: parseDecimal(inputs.after1WinPnl, "After 1 loss total winning P&L", true),
-      after1LossPnl: parseDecimal(inputs.after1LossPnl, "After 1 loss total losing P&L", true),
+      after1WinPnl: parseDecimal(inputs.after1WinPnl, "After 1 loss total winning P&L", false),
+      after1LossPnl: parseDecimal(inputs.after1LossPnl, "After 1 loss total losing P&L", false),
       after2Trades: parseWholeNumber(inputs.after2Trades, "After 2 losses trades"),
       after2Wins: parseWholeNumber(inputs.after2Wins, "After 2 losses winning trades"),
-      after2WinPnl: parseDecimal(inputs.after2WinPnl, "After 2 losses total winning P&L", true),
-      after2LossPnl: parseDecimal(inputs.after2LossPnl, "After 2 losses total losing P&L", true),
+      after2WinPnl: parseDecimal(inputs.after2WinPnl, "After 2 losses total winning P&L", false),
+      after2LossPnl: parseDecimal(inputs.after2LossPnl, "After 2 losses total losing P&L", false),
       days: parseWholeNumber(inputs.days, "Trading days represented", false),
     };
     const errors: Partial<Record<FieldKey, string>> = Object.fromEntries(
@@ -261,6 +265,31 @@ export default function RevengeTradingCalculatorPage() {
     ] as const) {
       if (parsed[winsKey].value !== null && parsed[tradesKey].value !== null && parsed[winsKey].value > parsed[tradesKey].value) {
         errors[winsKey] = `${label} cannot exceed total trades.`;
+      }
+    }
+
+    for (const [tradesKey, winsKey, winPnlKey, lossPnlKey, winLabel, lossLabel] of [
+      ["baselineTrades", "baselineWins", "baselineWinPnl", "baselineLossPnl", "Baseline total winning P&L", "Baseline total losing P&L"],
+      ["after1Trades", "after1Wins", "after1WinPnl", "after1LossPnl", "After 1 loss total winning P&L", "After 1 loss total losing P&L"],
+      ["after2Trades", "after2Wins", "after2WinPnl", "after2LossPnl", "After 2 losses total winning P&L", "After 2 losses total losing P&L"],
+    ] as const) {
+      const trades = parsed[tradesKey].value;
+      const wins = parsed[winsKey].value;
+      const winningPnl = parsed[winPnlKey];
+      const losingPnl = parsed[lossPnlKey];
+      if (trades === null || wins === null || wins > trades) continue;
+
+      const losses = trades - wins;
+      if (wins === 0 && winningPnl.value === null && !winningPnl.error) {
+        winningPnl.value = 0;
+      } else if (wins > 0 && winningPnl.value === null && !winningPnl.error) {
+        errors[winPnlKey] = `${winLabel} is required when there are winning trades.`;
+      }
+
+      if (losses === 0 && losingPnl.value === null && !losingPnl.error) {
+        losingPnl.value = 0;
+      } else if (losses > 0 && losingPnl.value === null && !losingPnl.error) {
+        errors[lossPnlKey] = `${lossLabel} is required when there are losing trades.`;
       }
     }
 
@@ -326,13 +355,13 @@ export default function RevengeTradingCalculatorPage() {
 
   const visibleErrors = useMemo<Partial<Record<FieldKey, string>>>(() => {
     const next: Partial<Record<FieldKey, string>> = {};
-    (Object.entries(result.errors) as Array<[FieldKey, string | undefined]>).forEach(([key, error]) => {
+    (Object.entries(draftResult.errors) as Array<[FieldKey, string | undefined]>).forEach(([key, error]) => {
       if (error && (analysisAttempted || touchedFields[key] || inputs[key].trim())) {
         next[key] = error;
       }
     });
     return next;
-  }, [analysisAttempted, inputs, result.errors, touchedFields]);
+  }, [analysisAttempted, draftResult.errors, inputs, touchedFields]);
 
   useEffect(() => {
     trackSeoToolEvent("tool_page_view", PAGE_PATH, TOOL_ID);
@@ -344,15 +373,6 @@ export default function RevengeTradingCalculatorPage() {
       trackSeoToolEvent("revenge_calculator_started", PAGE_PATH, TOOL_ID);
     }
   }, [inputs]);
-
-  useEffect(() => {
-    if (!result.ready) return;
-    trackSeoToolEvent("revenge_calculator_completed", PAGE_PATH, TOOL_ID);
-    if (lastTrackedState.current !== result.state) {
-      lastTrackedState.current = result.state;
-      trackSeoToolEvent(`revenge_result_${result.state}` as const, PAGE_PATH, TOOL_ID);
-    }
-  }, [result]);
 
   useEffect(() => {
     const next = new URLSearchParams(window.location.search);
@@ -374,13 +394,22 @@ export default function RevengeTradingCalculatorPage() {
     queryKeys.forEach((key) => next.delete(key));
     queryKeys.forEach((key) => {
       const value = inputs[key].trim();
-      if (value && !result.errors[key]) next.set(key, value);
+      if (value && !draftResult.errors[key]) next.set(key, value);
     });
     const current = new URLSearchParams(window.location.search);
     if (next.toString() !== current.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [inputs, result.errors, setSearchParams]);
+  }, [draftResult.errors, inputs, setSearchParams]);
+
+  useEffect(() => {
+    if (!submittedResult) return;
+    const frame = window.requestAnimationFrame(() => {
+      resultRegionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      resultRegionRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [submittedResult]);
 
   const schema = {
     "@context": "https://schema.org",
@@ -411,6 +440,10 @@ export default function RevengeTradingCalculatorPage() {
 
   const setField = (key: FieldKey, value: string) => {
     setInputs((current) => ({ ...current, [key]: value }));
+    if (submittedResult) {
+      setSubmittedResult(null);
+      setIsStale(true);
+    }
   };
 
   const markTouched = (key: FieldKey) => {
@@ -419,6 +452,26 @@ export default function RevengeTradingCalculatorPage() {
 
   const handleAnalyze = () => {
     setAnalysisAttempted(true);
+    if (!draftResult.ready) {
+      setSubmittedResult(null);
+      setIsStale(Boolean(submittedResult));
+      const firstInvalidField = ([
+        "baselineTrades", "baselineWins", "baselineWinPnl", "baselineLossPnl",
+        "after1Trades", "after1Wins", "after1WinPnl", "after1LossPnl",
+        "after2Trades", "after2Wins", "after2WinPnl", "after2LossPnl", "days",
+      ] as FieldKey[]).find((field) => draftResult.errors[field]);
+      if (firstInvalidField) {
+        const field = document.getElementById(firstInvalidField);
+        field?.scrollIntoView({ behavior: "smooth", block: "center" });
+        field?.focus({ preventScroll: true });
+      }
+      return;
+    }
+
+    setSubmittedResult(draftResult);
+    setIsStale(false);
+    trackSeoToolEvent("revenge_calculator_completed", PAGE_PATH, TOOL_ID);
+    trackSeoToolEvent(`revenge_result_${draftResult.state}` as const, PAGE_PATH, TOOL_ID);
   };
 
   return (
@@ -441,7 +494,9 @@ export default function RevengeTradingCalculatorPage() {
           <RevengeCalculatorPanel
             inputs={inputs}
             errors={visibleErrors}
-            result={result}
+            submittedResult={submittedResult}
+            isStale={isStale}
+            resultRegionRef={resultRegionRef}
             onAnalyze={handleAnalyze}
             onBlur={markTouched}
             onChange={setField}
@@ -555,14 +610,18 @@ export default function RevengeTradingCalculatorPage() {
 function RevengeCalculatorPanel({
   inputs,
   errors,
-  result,
+  submittedResult,
+  isStale,
+  resultRegionRef,
   onAnalyze,
   onBlur,
   onChange,
 }: {
   inputs: Record<FieldKey, string>;
   errors: Partial<Record<FieldKey, string>>;
-  result: RevengeResult;
+  submittedResult: SubmittedRevengeResult | null;
+  isStale: boolean;
+  resultRegionRef: RefObject<HTMLElement | null>;
   onAnalyze: () => void;
   onBlur: (key: FieldKey) => void;
   onChange: (key: FieldKey, value: string) => void;
@@ -579,9 +638,9 @@ function RevengeCalculatorPanel({
         <button type="button" className="revenge-analysis-button" onClick={onAnalyze}>
           Analyze Post-Loss Performance
         </button>
-        <p>Results update automatically as valid inputs are entered.</p>
+        <p>Enter all three comparison groups, then analyze your post-loss performance.</p>
       </div>
-      <RevengeResultPanel result={result} />
+      <RevengeResultPanel result={submittedResult} isStale={isStale} resultRegionRef={resultRegionRef} />
     </section>
   );
 }
@@ -674,18 +733,30 @@ function CalculatorInput({
   );
 }
 
-function RevengeResultPanel({ result }: { result: RevengeResult }) {
-  if (!result.ready) {
+function RevengeResultPanel({
+  result,
+  isStale,
+  resultRegionRef,
+}: {
+  result: SubmittedRevengeResult | null;
+  isStale: boolean;
+  resultRegionRef: RefObject<HTMLElement | null>;
+}) {
+  if (!result) {
     return (
-      <aside className="expectancy-result-card empty revenge-empty-state" aria-live="polite">
+      <aside ref={resultRegionRef} className="expectancy-result-card empty revenge-empty-state" aria-live="polite" tabIndex={-1} data-testid="revenge-analysis-result">
         <div className="report-kicker">Post-loss analysis</div>
-        <strong>Compare Your Post-Loss Performance</strong>
+        <strong>{isStale ? "Inputs changed. Analyze again to refresh the comparison." : "Compare Your Post-Loss Performance"}</strong>
+        {isStale ? (
+          <p>Analyze again to replace the previous comparison with your updated inputs.</p>
+        ) : (
         <ol className="revenge-empty-steps">
           <li>Enter your baseline trades.</li>
           <li>Add trades taken after one loss.</li>
           <li>Add trades taken after two consecutive losses.</li>
+          <li>Click Analyze Post-Loss Performance.</li>
         </ol>
-        <p>TradePilot Coach compares expectancy, win rate and estimated performance gaps once the groups have valid aggregate inputs.</p>
+        )}
       </aside>
     );
   }
@@ -698,7 +769,7 @@ function RevengeResultPanel({ result }: { result: RevengeResult }) {
         : "No clear post-loss deterioration appears in this comparison.";
 
   return (
-    <aside className={`expectancy-result-card overtrading-result revenge-result ${result.state}`} aria-live="polite">
+    <aside ref={resultRegionRef} className={`expectancy-result-card overtrading-result revenge-result ${result.state}`} aria-live="polite" tabIndex={-1} data-testid="revenge-analysis-result">
       <div className="report-kicker">Post-loss analysis</div>
       <strong className="overtrading-result-heading">{heading}</strong>
       <div className="revenge-sequence" aria-label="Post-loss expectancy sequence">

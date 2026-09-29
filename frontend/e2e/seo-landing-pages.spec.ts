@@ -76,6 +76,21 @@ async function fillAuthForm(page: Page, mode: "register" | "login") {
   await page.getByRole("button", { name: mode === "register" ? "Create account" : "Log in" }).click();
 }
 
+async function fillRevengeExample(page: Page) {
+  await page.locator("#baselineTrades").fill("40");
+  await page.locator("#baselineWins").fill("24");
+  await page.locator("#baselineWinPnl").fill("4800");
+  await page.locator("#baselineLossPnl").fill("2400");
+  await page.locator("#after1Trades").fill("24");
+  await page.locator("#after1Wins").fill("12");
+  await page.locator("#after1WinPnl").fill("2040");
+  await page.locator("#after1LossPnl").fill("1800");
+  await page.locator("#after2Trades").fill("18");
+  await page.locator("#after2Wins").fill("6");
+  await page.locator("#after2WinPnl").fill("1080");
+  await page.locator("#after2LossPnl").fill("2160");
+}
+
 const landingPages = [
   {
     path: "/futures-trading-journal",
@@ -485,22 +500,15 @@ test("revenge trading calculator uses three desktop input groups without immedia
 
   await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
   await expect(page.getByText("Baseline trades is required.")).toBeVisible();
+  await expect(page.locator("#baselineTrades")).toBeFocused();
+  await expect(page.getByTestId("revenge-analysis-result")).toContainText("Compare Your Post-Loss Performance");
 });
 
 test("revenge trading calculator computes post-loss example metrics", async ({ page }) => {
   await page.goto(revengeCalculatorPath);
-  await page.locator("#baselineTrades").fill("40");
-  await page.locator("#baselineWins").fill("24");
-  await page.locator("#baselineWinPnl").fill("4800");
-  await page.locator("#baselineLossPnl").fill("2400");
-  await page.locator("#after1Trades").fill("24");
-  await page.locator("#after1Wins").fill("12");
-  await page.locator("#after1WinPnl").fill("2040");
-  await page.locator("#after1LossPnl").fill("1800");
-  await page.locator("#after2Trades").fill("18");
-  await page.locator("#after2Wins").fill("6");
-  await page.locator("#after2WinPnl").fill("1080");
-  await page.locator("#after2LossPnl").fill("2160");
+  await fillRevengeExample(page);
+  await expect(page.locator(".revenge-sequence")).toHaveCount(0);
+  await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
 
   await expect(page.locator(".revenge-sequence div").filter({ hasText: "Baseline" })).toContainText("+$60.00/trade");
   await expect(page.locator(".revenge-sequence div").filter({ hasText: "After 1 Loss" })).toContainText("+$10.00/trade");
@@ -510,12 +518,15 @@ test("revenge trading calculator computes post-loss example metrics", async ({ p
   await expect(page.locator(".expectancy-monthly").filter({ hasText: "Estimated Performance Gap After 1 Loss" })).toContainText("$1,200");
   await expect(page.locator(".expectancy-monthly").filter({ hasText: "Estimated Performance Gap After 2 Losses" })).toContainText("$2,160");
   await expect(page.getByText("Stronger deterioration appears after consecutive losses.")).toBeVisible();
+  await expect(page.getByTestId("revenge-analysis-result")).toBeFocused();
 });
 
 test("revenge trading calculator hydrates query params and estimates per-day gap", async ({ page }) => {
   await page.goto(`${revengeCalculatorPath}?baselineTrades=40&baselineWins=24&baselineWinPnl=4800&baselineLossPnl=2400&after1Trades=24&after1Wins=12&after1WinPnl=2040&after1LossPnl=1800&after2Trades=18&after2Wins=6&after2WinPnl=1080&after2LossPnl=2160&days=20`);
 
   await expect(page.locator("#baselineTrades")).toHaveValue("40");
+  await expect(page.locator(".expectancy-result-grid")).toHaveCount(0);
+  await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
   await expect(page.locator(".expectancy-result-grid div").filter({ hasText: "Expectancy Change After 2 Losses" })).toContainText("-$120.00/trade");
   await expect(page.getByText("Estimated Post-Loss Gap Per Trading Day")).toBeVisible();
   await expect(page.getByText("$168/day")).toBeVisible();
@@ -532,6 +543,7 @@ test("revenge trading calculator validates inputs and never renders NaN or Infin
   await page.locator("#after1Wins").fill("3");
   await page.locator("#after1WinPnl").fill("100");
   await page.locator("#after1LossPnl").fill("0");
+  await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
 
   await expect(page.getByText("Baseline trades must be at least 1.")).toBeVisible();
   await expect(page.getByText("Baseline total winning P&L cannot be negative.")).toBeVisible();
@@ -540,24 +552,64 @@ test("revenge trading calculator validates inputs and never renders NaN or Infin
   await expect(page.getByText("Infinity")).toHaveCount(0);
 });
 
+test("revenge trading calculator normalizes blank P&L for zero-outcome groups", async ({ page }) => {
+  await page.goto(revengeCalculatorPath);
+  for (const group of ["baseline", "after1", "after2"] as const) {
+    await page.locator(`#${group}Trades`).fill("1");
+    await page.locator(`#${group}Wins`).fill("0");
+    await page.locator(`#${group}LossPnl`).fill(group === "baseline" ? "200" : group === "after1" ? "400" : "800");
+  }
+  await page.locator("#days").fill("2");
+  await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
+
+  await expect(page.getByText("winning P&L is required", { exact: false })).toHaveCount(0);
+  await expect(page.locator(".revenge-sequence div").filter({ hasText: "Baseline" })).toContainText("-$200.00/trade");
+  await expect(page.locator(".revenge-sequence div").filter({ hasText: "After 1 Loss" })).toContainText("-$400.00/trade");
+  await expect(page.locator(".revenge-sequence div").filter({ hasText: "After 2 Losses" })).toContainText("-$800.00/trade");
+});
+
+test("revenge trading calculator accepts blank losing P&L for all-winning groups and keeps P&L required otherwise", async ({ page }) => {
+  await page.goto(revengeCalculatorPath);
+  for (const group of ["baseline", "after1", "after2"] as const) {
+    await page.locator(`#${group}Trades`).fill("1");
+    await page.locator(`#${group}Wins`).fill("1");
+    await page.locator(`#${group}WinPnl`).fill("100");
+  }
+  await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
+  await expect(page.getByText("losing P&L is required", { exact: false })).toHaveCount(0);
+  await expect(page.locator(".revenge-sequence")).toBeVisible();
+
+  await page.locator("#baselineWins").fill("0");
+  await page.locator("#baselineWinPnl").fill("");
+  await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
+  await expect(page.getByText("Baseline total losing P&L is required when there are losing trades.")).toBeVisible();
+  await expect(page.locator("#baselineLossPnl")).toBeFocused();
+});
+
+test("revenge trading calculator hides stale metrics until analyzed again", async ({ page }) => {
+  await page.goto(revengeCalculatorPath);
+  await fillRevengeExample(page);
+  await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
+  await expect(page.locator(".revenge-sequence")).toBeVisible();
+
+  await page.locator("#after2LossPnl").fill("1800");
+  await expect(page.locator(".revenge-sequence")).toHaveCount(0);
+  await expect(page.getByText("Inputs changed. Analyze again to refresh the comparison.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
+  await expect(page.locator(".revenge-sequence div").filter({ hasText: "After 2 Losses" })).toContainText("-$40.00/trade");
+});
+
 test("revenge trading calculator records anonymous tool events without input values", async ({ page }) => {
   await page.goto(`${revengeCalculatorPath}?utm_source=google&utm_medium=organic&utm_campaign=revenge`);
-  await page.locator("#baselineTrades").fill("40");
-  await page.locator("#baselineWins").fill("24");
-  await page.locator("#baselineWinPnl").fill("4800");
-  await page.locator("#baselineLossPnl").fill("2400");
-  await page.locator("#after1Trades").fill("24");
-  await page.locator("#after1Wins").fill("12");
-  await page.locator("#after1WinPnl").fill("2040");
-  await page.locator("#after1LossPnl").fill("1800");
-  await page.locator("#after2Trades").fill("18");
-  await page.locator("#after2Wins").fill("6");
-  await page.locator("#after2WinPnl").fill("1080");
-  await page.locator("#after2LossPnl").fill("2160");
+  await fillRevengeExample(page);
+  let events = await page.evaluate(() => JSON.parse(window.localStorage.getItem("tradepilot_seo_events") ?? "[]"));
+  expect(events.map((event: { event: string }) => event.event)).not.toContain("revenge_calculator_completed");
+  await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
   await page.getByRole("link", { name: calculatorCta }).click();
   await expect(page).toHaveURL(/\/register\?source=revenge-trading-calculator$/);
 
-  const events = await page.evaluate(() =>
+  events = await page.evaluate(() =>
     JSON.parse(window.localStorage.getItem("tradepilot_seo_events") ?? "[]")
   );
   const names = events.map((event: { event: string }) => event.event);
@@ -591,18 +643,8 @@ test("revenge trading calculator records anonymous tool events without input val
 test("revenge trading calculator is usable on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto(revengeCalculatorPath);
-  await page.locator("#baselineTrades").fill("40");
-  await page.locator("#baselineWins").fill("24");
-  await page.locator("#baselineWinPnl").fill("4800");
-  await page.locator("#baselineLossPnl").fill("2400");
-  await page.locator("#after1Trades").fill("24");
-  await page.locator("#after1Wins").fill("12");
-  await page.locator("#after1WinPnl").fill("2040");
-  await page.locator("#after1LossPnl").fill("1800");
-  await page.locator("#after2Trades").fill("18");
-  await page.locator("#after2Wins").fill("6");
-  await page.locator("#after2WinPnl").fill("1080");
-  await page.locator("#after2LossPnl").fill("2160");
+  await fillRevengeExample(page);
+  await page.getByRole("button", { name: "Analyze Post-Loss Performance" }).click();
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
