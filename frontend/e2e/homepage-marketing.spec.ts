@@ -59,10 +59,10 @@ test("homepage fails closed to V1 content when V2 features are disabled", async 
 test("homepage publishes the canonical TradePilot Coach entity graph", async ({ page }) => {
   await mockFeatureAvailability(page, disabledAvailability);
   await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: "Your P&L tells you what happened. TradePilot Coach tells you why." })).toBeVisible();
 
-  const documents = await page.locator('script[type="application/ld+json"]').evaluateAll((nodes) =>
-    nodes.map((node) => JSON.parse(node.textContent ?? "{}"))
-  );
+  const scripts = await page.locator('script[type="application/ld+json"]').allTextContents();
+  const documents = scripts.map((script) => JSON.parse(script));
   const graph = documents.flatMap((document) => document["@graph"] ?? [document]);
   const organization = graph.find((node) => node["@type"] === "Organization");
   const website = graph.find((node) => node["@type"] === "WebSite");
