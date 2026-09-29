@@ -21,6 +21,10 @@ Spring Boot now runs Flyway before Hibernate starts. Production must run with:
 
 If Flyway migration fails, application startup fails. If Hibernate validation fails after migration, application startup fails.
 
+## Public Table RLS
+
+All application tables in `public` use row-level security without browser-facing policies because TradePilot Coach routes database access through Spring Boot. Future Flyway migrations that create a public table must explicitly enable RLS for that table. Do not reintroduce an automatic RLS event trigger; the Flyway migration must remain the auditable source of that schema change.
+
 ## Historical SQL Review
 
 The legacy `backend/supabase_*.sql` files are preserved as historical references and existing-database repair scripts. They are superseded for brand-new databases by `V001__fresh_production_schema.sql`.

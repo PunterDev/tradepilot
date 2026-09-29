@@ -9,15 +9,18 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import javax.sql.DataSource;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -49,6 +52,7 @@ class FlywayPostgresBaselineIntegrationTest {
         Flyway flyway = Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("filesystem:src/main/resources/db/migration")
+                .configuration(java.util.Map.of("flyway.postgresql.transactional.lock", "false"))
                 .load();
 
         try (Connection connection = connect(postgres)) {
@@ -56,7 +60,7 @@ class FlywayPostgresBaselineIntegrationTest {
         }
 
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(16);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(17);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
@@ -92,6 +96,8 @@ class FlywayPostgresBaselineIntegrationTest {
                     .isEqualTo("015");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '016' and success = true"))
                     .isEqualTo("016");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '017' and success = true"))
+                    .isEqualTo("017");
 
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
@@ -102,6 +108,8 @@ class FlywayPostgresBaselineIntegrationTest {
             assertStripeIndexesAndConstraints(connection);
             assertNegativePurchasedCreditsAreAllowed(connection);
             assertVerifierScriptReportsOk(connection);
+            assertRowLevelSecurityEnabled(connection);
+            assertNonBypassRoleCannotReadUsers(connection);
         }
 
         assertHibernateValidatesMigratedSchema(postgres);
@@ -317,6 +325,52 @@ class FlywayPostgresBaselineIntegrationTest {
         assertNullableVarcharColumn(connection, "stripe_checkout_attempts", "billing_cycle", 10);
     }
 
+    private static void assertRowLevelSecurityEnabled(Connection connection) throws SQLException {
+        long publicTableCount = count(connection, """
+                select count(*)
+                from pg_class c
+                join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = 'public'
+                  and c.relkind in ('r', 'p')
+                """);
+        long rlsEnabledTableCount = count(connection, """
+                select count(*)
+                from pg_class c
+                join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = 'public'
+                  and c.relkind in ('r', 'p')
+                  and c.relrowsecurity
+                """);
+
+        assertThat(publicTableCount).isGreaterThan(0);
+        assertThat(rlsEnabledTableCount).isEqualTo(publicTableCount);
+        assertThat(scalar(connection, """
+                select relrowsecurity::text
+                from pg_class c
+                join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = 'public'
+                  and c.relname = 'flyway_schema_history'
+                """)).isEqualTo("true");
+        System.out.printf("RLS verification: publicTables=%d, rlsEnabled=%d, rlsDisabled=%d%n",
+                publicTableCount, rlsEnabledTableCount, publicTableCount - rlsEnabledTableCount);
+    }
+
+    private static void assertNonBypassRoleCannotReadUsers(Connection connection) throws SQLException {
+        String roleName = "tradepilot_rls_reader";
+        execute(connection, "create role " + roleName + " nologin nosuperuser nobypassrls");
+        execute(connection, "grant usage on schema public to " + roleName);
+        execute(connection, "grant select on public.users to " + roleName);
+        try {
+            execute(connection, "set role " + roleName);
+            assertThat(count(connection, "select count(*) from public.users")).isZero();
+        } finally {
+            execute(connection, "reset role");
+            execute(connection, "revoke select on public.users from " + roleName);
+            execute(connection, "revoke usage on schema public from " + roleName);
+            execute(connection, "drop role " + roleName);
+        }
+    }
+
     private static void assertNullableVarcharColumn(Connection connection, String tableName, String columnName, int length) throws SQLException {
         assertVarcharColumn(connection, tableName, columnName, length, "YES");
     }
@@ -383,14 +437,16 @@ class FlywayPostgresBaselineIntegrationTest {
         assertThat(nonOkRows).as("verifier statement failed: " + statement).isEmpty();
     }
 
-    private static void assertHibernateValidatesMigratedSchema(PostgreSQLContainer<?> postgres) {
+    private static void assertHibernateValidatesMigratedSchema(PostgreSQLContainer<?> postgres) throws SQLException {
         try (ConfigurableApplicationContext ignored = new SpringApplicationBuilder(TradePilotApplication.class)
                 .web(WebApplicationType.SERVLET)
                 .profiles("test")
                 .properties(
                         "JWT_SECRET=YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=",
                         "app.stripe.webhook-secret=whsec_test_postgres",
-                        "app.stripe.secret-key=sk_test_postgres",
+                        // This test exercises a migrated PostgreSQL schema, not Stripe's API. Keep the
+                        // customer-validation startup runner offline even though its fixture has Stripe IDs.
+                        "app.stripe.secret-key=",
                         "app.stripe.pro-price-id=price_test_monthly",
                         "app.stripe.pro-yearly-price-id=price_test_yearly",
                         "app.frontend-url=https://tradepilot.example",
@@ -407,6 +463,30 @@ class FlywayPostgresBaselineIntegrationTest {
                         "--spring.jpa.properties.hibernate.jdbc.time_zone=UTC"
                 )) {
             assertThat(ignored.isActive()).isTrue();
+            assertBackendDatasourceCrud(ignored.getBean(DataSource.class));
+        }
+    }
+
+    private static void assertBackendDatasourceCrud(DataSource dataSource) throws SQLException {
+        String email = "rls-backend-" + UUID.randomUUID() + "@example.com";
+        try (Connection connection = dataSource.getConnection()) {
+            long userId;
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    insert into users(name, email, password_hash, purchased_ai_credits_balance)
+                    values (?, ?, 'hash', 0)
+                    returning id
+                    """)) {
+                statement.setString(1, "RLS backend CRUD");
+                statement.setString(2, email);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    assertThat(resultSet.next()).isTrue();
+                    userId = resultSet.getLong(1);
+                }
+            }
+            execute(connection, "update users set name = 'RLS backend updated' where id = " + userId);
+            assertThat(scalar(connection, "select name from users where id = " + userId)).isEqualTo("RLS backend updated");
+            execute(connection, "delete from users where id = " + userId);
+            assertThat(count(connection, "select count(*) from users where id = " + userId)).isZero();
         }
     }
 

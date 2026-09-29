@@ -23,6 +23,7 @@ class FlywayProductionSchemaTests {
     private static final Path API_REQUEST_METRICS_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V014__api_request_metrics_schema_alignment.sql");
     private static final Path PRODUCTION_SCHEMA_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V015__production_schema_alignment.sql");
     private static final Path STRIPE_CHECKOUT_ATTEMPT_BILLING_CYCLE_MIGRATION = Path.of("src/main/resources/db/migration/V016__stripe_checkout_attempt_billing_cycle.sql");
+    private static final Path ENABLE_RLS_ON_PUBLIC_TABLES_MIGRATION = Path.of("src/main/resources/db/migration/V017__enable_rls_on_public_tables.sql");
     private static final Path VERIFIER = Path.of("db/verify_production_schema.sql");
 
     @Test
@@ -200,6 +201,18 @@ class FlywayProductionSchemaTests {
 
         assertThat(sql).contains("alter table stripe_checkout_attempts");
         assertThat(sql).contains("add column if not exists billing_cycle varchar(10)");
+    }
+
+    @Test
+    void rowLevelSecurityMigrationExplicitlyEnablesRlsOnEveryPublicTable() throws IOException {
+        String sql = Files.readString(ENABLE_RLS_ON_PUBLIC_TABLES_MIGRATION);
+
+        assertThat(sql).contains("from pg_tables");
+        assertThat(sql).contains("where schemaname = 'public'");
+        assertThat(sql).contains("alter table %I.%I enable row level security");
+        assertThat(sql).doesNotContain("force row level security");
+        assertThat(sql).doesNotContain("create policy");
+        assertThat(sql).doesNotContain("event trigger");
     }
 
     private static void executeStatements(Connection connection, String sql) throws SQLException {
