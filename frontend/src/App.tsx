@@ -56,6 +56,9 @@ import {
 import { creditsRemaining, hasFeature, type Feature } from "./utils/featureAccess";
 import { isFeatureEnabled, type FeatureAvailability, type ReleaseFeatureKey } from "./config/featureFlags";
 import { SeoLandingPage, seoLandingPages } from "./features/marketing/SeoLandingPage";
+import GuidePage from "./features/marketing/GuidePage";
+import { guides } from "./features/marketing/guideContent";
+import ResourcesPage from "./features/marketing/ResourcesPage";
 import {
   ACTIVATION_IMPORT_DESTINATION,
   activationSourceFromSearch,
@@ -1952,9 +1955,11 @@ function AuthRoutes() {
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/contact" element={<ContactPage />} />
+      <Route path="/resources" element={<ResourcesPage />} />
       <Route path="/tools/trading-expectancy-calculator" element={<TradingExpectancyCalculatorPage />} />
       <Route path="/tools/overtrading-calculator" element={<OvertradingCalculatorPage />} />
       <Route path="/tools/revenge-trading-calculator" element={<RevengeTradingCalculatorPage />} />
+      {Object.values(guides).map((guide) => <Route key={guide.path} path={guide.path} element={<GuidePage guide={guide} />} />)}
       {Object.values(seoLandingPages).map((content) => (
         <Route
           key={content.path}

@@ -40,6 +40,11 @@
     }
   ],
   "rewrites": [
+    { "source": "/resources", "destination": "/resources/index.html" },
+    { "source": "/guides/how-to-export-topstep-trades", "destination": "/guides/how-to-export-topstep-trades/index.html" },
+    { "source": "/guides/how-to-export-tradovate-trades", "destination": "/guides/how-to-export-tradovate-trades/index.html" },
+    { "source": "/guides/how-to-review-a-losing-trading-session", "destination": "/guides/how-to-review-a-losing-trading-session/index.html" },
+    { "source": "/guides/how-to-identify-overtrading-from-trade-history", "destination": "/guides/how-to-identify-overtrading-from-trade-history/index.html" },
     {
       "source": "/futures-trading-journal",
       "destination": "/futures-trading-journal/index.html"

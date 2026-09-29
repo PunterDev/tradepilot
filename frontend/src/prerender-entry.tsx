@@ -9,12 +9,16 @@ import TermsPage from "./features/marketing/TermsPage";
 import TradingExpectancyCalculatorPage from "./features/marketing/TradingExpectancyCalculatorPage";
 import OvertradingCalculatorPage from "./features/marketing/OvertradingCalculatorPage";
 import RevengeTradingCalculatorPage from "./features/marketing/RevengeTradingCalculatorPage";
+import GuidePage from "./features/marketing/GuidePage";
+import { guides } from "./features/marketing/guideContent";
+import ResourcesPage from "./features/marketing/ResourcesPage";
 
 const directPages: Record<string, () => React.JSX.Element> = {
   "/": HomePage,
   "/contact": ContactPage,
   "/privacy": PrivacyPage,
   "/terms": TermsPage,
+  "/resources": ResourcesPage,
   "/tools/trading-expectancy-calculator": TradingExpectancyCalculatorPage,
   "/tools/overtrading-calculator": OvertradingCalculatorPage,
   "/tools/revenge-trading-calculator": RevengeTradingCalculatorPage,
@@ -23,13 +27,14 @@ const directPages: Record<string, () => React.JSX.Element> = {
 export function renderPublicRoute(pathname: string) {
   const DirectPage = directPages[pathname];
   const landingPage = seoLandingPages[pathname];
+  const guide = guides[pathname];
 
-  if (!DirectPage && !landingPage) {
+  if (!DirectPage && !landingPage && !guide) {
     throw new Error(`Unsupported public prerender route: ${pathname}`);
   }
 
   const helmetContext: { helmet?: HelmetServerState | null } = {};
-  const page = DirectPage ? <DirectPage /> : <SeoLandingPage content={landingPage} />;
+  const page = DirectPage ? <DirectPage /> : guide ? <GuidePage guide={guide} /> : <SeoLandingPage content={landingPage} />;
   const rawBody = renderToString(
     <HelmetProvider context={helmetContext}>
       <StaticRouter location={pathname}>{page}</StaticRouter>

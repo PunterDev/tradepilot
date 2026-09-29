@@ -390,6 +390,7 @@ export default function OvertradingCalculatorPage() {
       </section>
 
       <section className="marketing-section">
+        <div className="marketing-container"><p className="marketing-section-copy">Want a fuller framework? <Link className="marketing-inline-link" to="/guides/how-to-identify-overtrading-from-trade-history">Learn how to identify overtrading from trade history.</Link></p></div>
         <div className="marketing-container expectancy-content-grid">
           <article className="seo-story-card expectancy-education-card">
             <div className="marketing-eyebrow">Hypothetical example</div>

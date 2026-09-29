@@ -36,7 +36,7 @@ export function MarketingNavbar() {
           <a href="/#how-it-works">How It Works</a>
           <a href="/#pricing">Pricing</a>
           <a href="/tools/trading-expectancy-calculator">Free Tools</a>
-          <a href="/futures-trading-journal">Resources</a>
+          <Link to="/resources">Resources</Link>
           <a href="/#faq">FAQ</a>
         </div>
         <div className="marketing-nav-actions">
@@ -58,7 +58,7 @@ export function MarketingNavbar() {
           <a className="marketing-button ghost" href="/#how-it-works">How It Works</a>
           <a className="marketing-button ghost" href="/#pricing">Pricing</a>
           <Link className="marketing-button ghost" to="/tools/trading-expectancy-calculator">Free Tools</Link>
-          <Link className="marketing-button ghost" to="/futures-trading-journal">Resources</Link>
+          <Link className="marketing-button ghost" to="/resources">Resources</Link>
           <a className="marketing-button ghost" href="/#faq">FAQ</a>
           <Link className="marketing-button ghost" to="/login">Sign In</Link>
           <Link className="marketing-button primary" to="/register">Start Free</Link>

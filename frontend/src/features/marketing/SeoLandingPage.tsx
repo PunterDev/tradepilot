@@ -152,6 +152,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
       { label: "Trading after losses", to: "/trading-after-losses" },
+      { label: "How to export Topstep trades", to: "/guides/how-to-export-topstep-trades" },
     ],
     faq: [
       {
@@ -209,6 +210,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
       { label: "Trading psychology", to: "/trading-psychology" },
+      { label: "How to export Tradovate trades", to: "/guides/how-to-export-tradovate-trades" },
     ],
     faq: [
       {
@@ -332,6 +334,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Tradovate trading journal", to: "/tradovate-trading-journal" },
       { label: "Prop firm trading journal", to: "/prop-firm-trading-journal" },
       { label: "Trading psychology", to: "/trading-psychology" },
+      { label: "How to review a losing trading session", to: "/guides/how-to-review-a-losing-trading-session" },
     ],
     faq: [
       {
@@ -396,6 +399,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Overtrading", to: "/overtrading" },
       { label: "Trading discipline", to: "/trading-discipline" },
       { label: "Breaking trading rules", to: "/breaking-trading-rules" },
+      { label: "How to review a losing trading session", to: "/guides/how-to-review-a-losing-trading-session" },
       { label: "Trading after losses", to: "/trading-after-losses" },
       { label: "AI trading journal", to: "/ai-trading-journal" },
     ],
@@ -527,6 +531,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Trading discipline", to: "/trading-discipline" },
       { label: "Breaking trading rules", to: "/breaking-trading-rules" },
       { label: "Futures trading journal", to: "/futures-trading-journal" },
+      { label: "How to identify overtrading from trade history", to: "/guides/how-to-identify-overtrading-from-trade-history" },
       { label: "Trading after losses", to: "/trading-after-losses" },
     ],
     faq: [
@@ -582,6 +587,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
     links: [
       { label: "Revenge trading", to: "/revenge-trading" },
       { label: "Overtrading", to: "/overtrading" },
+      { label: "How to review a losing trading session", to: "/guides/how-to-review-a-losing-trading-session" },
       { label: "Breaking trading rules", to: "/breaking-trading-rules" },
       { label: "Trading psychology", to: "/trading-psychology" },
     ],
@@ -714,6 +720,7 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
       { label: "Overtrading", to: "/overtrading" },
       { label: "Futures trading journal", to: "/futures-trading-journal" },
       { label: "Breaking trading rules", to: "/breaking-trading-rules" },
+      { label: "How to review a losing trading session", to: "/guides/how-to-review-a-losing-trading-session" },
     ],
     faq: [
       {
