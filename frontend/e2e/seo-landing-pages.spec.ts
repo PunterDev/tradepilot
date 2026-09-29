@@ -43,6 +43,17 @@ function registerUrlForPath(pathname: string) {
   return `/register?source=${sourceForPath(pathname)}`;
 }
 
+async function structuredDataNodes(page: Page) {
+  const documents = await page.locator('script[type="application/ld+json"]').evaluateAll((nodes) =>
+    nodes.map((node) => JSON.parse(node.textContent ?? "{}"))
+  );
+  return documents.flatMap((document) => Array.isArray(document?.["@graph"]) ? document["@graph"] : [document]);
+}
+
+function schemaNode(nodes: Record<string, unknown>[], type: string) {
+  return nodes.find((node) => node["@type"] === type);
+}
+
 async function mockRegistrationAndLogin(page: Page) {
   await page.route(/.*\/api(?:\/v1)?\/auth\/register$/, async (route) => {
     await route.fulfill({
@@ -286,12 +297,21 @@ for (const content of landingPages) {
       await expect(page.getByRole("link", { name: link.label }).first()).toHaveAttribute("href", link.to);
     }
 
-    const schemas = await page.locator('script[type="application/ld+json"]').evaluateAll((nodes) =>
-      nodes.map((node) => JSON.parse(node.textContent ?? "{}"))
-    );
-    expect(schemas.length).toBeGreaterThan(0);
-    expect(JSON.stringify(schemas)).toContain("SoftwareApplication");
-    expect(JSON.stringify(schemas)).toContain("FAQPage");
+    const schemas = await structuredDataNodes(page);
+    const webPage = schemaNode(schemas, "WebPage");
+    const breadcrumb = schemaNode(schemas, "BreadcrumbList");
+    expect(webPage).toMatchObject({
+      url: `${siteUrl}${content.path}`,
+      name: content.title,
+      description: content.description,
+      isPartOf: { "@id": `${siteUrl}/#website` },
+      publisher: { "@id": `${siteUrl}/#organization` },
+    });
+    expect(breadcrumb).toBeTruthy();
+    expect(JSON.stringify(schemas)).not.toContain("FAQPage");
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByText("Home")).toHaveAttribute("href", "/");
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator('[aria-current="page"]')).toBeVisible();
   });
 }
 
@@ -473,11 +493,15 @@ test("revenge trading calculator renders metadata, content and structured data",
     await expect(page.getByRole("link", { name: label }).first()).toHaveAttribute("href", href);
   }
 
-  const schemas = await page.locator('script[type="application/ld+json"]').evaluateAll((nodes) =>
-    nodes.map((node) => JSON.parse(node.textContent ?? "{}"))
-  );
-  expect(JSON.stringify(schemas)).toContain("WebApplication");
-  expect(JSON.stringify(schemas)).toContain("BreadcrumbList");
+  const schemas = await structuredDataNodes(page);
+  expect(schemaNode(schemas, "WebPage")).toMatchObject({ url: `${siteUrl}${revengeCalculatorPath}` });
+  expect(schemaNode(schemas, "BreadcrumbList")).toMatchObject({
+    itemListElement: [
+      { position: 1, name: "Home", item: siteUrl },
+      { position: 2, name: "Revenge Trading Calculator", item: `${siteUrl}${revengeCalculatorPath}` },
+    ],
+  });
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator('[aria-current="page"]')).toHaveText("Revenge Trading Calculator");
 });
 
 test("revenge trading calculator uses three desktop input groups without immediate required errors", async ({ page }) => {
@@ -679,11 +703,10 @@ test("overtrading calculator renders metadata, content and structured data", asy
     await expect(page.getByRole("link", { name: label }).first()).toHaveAttribute("href", href);
   }
 
-  const schemas = await page.locator('script[type="application/ld+json"]').evaluateAll((nodes) =>
-    nodes.map((node) => JSON.parse(node.textContent ?? "{}"))
-  );
-  expect(JSON.stringify(schemas)).toContain("WebApplication");
-  expect(JSON.stringify(schemas)).toContain("BreadcrumbList");
+  const schemas = await structuredDataNodes(page);
+  expect(schemaNode(schemas, "WebPage")).toMatchObject({ url: `${siteUrl}${overtradingCalculatorPath}` });
+  expect(schemaNode(schemas, "BreadcrumbList")).toBeTruthy();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator('[aria-current="page"]')).toHaveText("Overtrading Calculator");
 });
 
 test("overtrading calculator uses two desktop input groups without immediate required errors", async ({ page }) => {
@@ -835,11 +858,10 @@ test("trading expectancy calculator renders metadata, content and structured dat
     await expect(page.getByRole("link", { name: label }).first()).toHaveAttribute("href", href);
   }
 
-  const schemas = await page.locator('script[type="application/ld+json"]').evaluateAll((nodes) =>
-    nodes.map((node) => JSON.parse(node.textContent ?? "{}"))
-  );
-  expect(JSON.stringify(schemas)).toContain("WebApplication");
-  expect(JSON.stringify(schemas)).toContain("BreadcrumbList");
+  const schemas = await structuredDataNodes(page);
+  expect(schemaNode(schemas, "WebPage")).toMatchObject({ url: `${siteUrl}${expectancyCalculatorPath}` });
+  expect(schemaNode(schemas, "BreadcrumbList")).toBeTruthy();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator('[aria-current="page"]')).toHaveText("Trading Expectancy Calculator");
 });
 
 test("trading expectancy calculator uses compact desktop inputs without immediate required errors", async ({ page }) => {

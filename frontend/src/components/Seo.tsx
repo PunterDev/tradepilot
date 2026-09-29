@@ -1,6 +1,7 @@
 import { Helmet } from "react-helmet-async";
+import { SITE_URL } from "../seo/structuredData";
 
-export const SITE_URL = "https://www.tradepilotcoach.com";
+export { SITE_URL };
 const DEFAULT_OG_IMAGE = `${SITE_URL}/assets/tradepilot-coach-og.png`;
 const DEFAULT_SOCIAL_IMAGE_ALT = "TradePilot Coach AI execution intelligence dashboard preview";
 

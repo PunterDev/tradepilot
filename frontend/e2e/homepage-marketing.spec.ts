@@ -56,6 +56,35 @@ test("homepage fails closed to V1 content when V2 features are disabled", async 
   expect(disabledRouteLinks).toEqual([]);
 });
 
+test("homepage publishes the canonical TradePilot Coach entity graph", async ({ page }) => {
+  await mockFeatureAvailability(page, disabledAvailability);
+  await page.goto("/");
+
+  const documents = await page.locator('script[type="application/ld+json"]').evaluateAll((nodes) =>
+    nodes.map((node) => JSON.parse(node.textContent ?? "{}"))
+  );
+  const graph = documents.flatMap((document) => document["@graph"] ?? [document]);
+  const organization = graph.find((node) => node["@type"] === "Organization");
+  const website = graph.find((node) => node["@type"] === "WebSite");
+  const webPage = graph.find((node) => node["@type"] === "WebPage");
+
+  expect(organization).toMatchObject({
+    "@id": "https://www.tradepilotcoach.com/#organization",
+    name: "TradePilot Coach",
+    url: "https://www.tradepilotcoach.com",
+  });
+  expect(website).toMatchObject({
+    "@id": "https://www.tradepilotcoach.com/#website",
+    publisher: { "@id": "https://www.tradepilotcoach.com/#organization" },
+  });
+  expect(webPage).toMatchObject({
+    url: "https://www.tradepilotcoach.com",
+    isPartOf: { "@id": "https://www.tradepilotcoach.com/#website" },
+    publisher: { "@id": "https://www.tradepilotcoach.com/#organization" },
+  });
+  expect(JSON.stringify(graph)).not.toContain("SoftwareApplication");
+});
+
 test("homepage positions Trading Memory as the flagship V2 story when enabled", async ({ page }) => {
   await mockFeatureAvailability(page, enabledAvailability);
 

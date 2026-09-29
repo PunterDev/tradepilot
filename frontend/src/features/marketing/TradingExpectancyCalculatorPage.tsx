@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import Seo, { SITE_URL } from "../../components/Seo";
+import Seo from "../../components/Seo";
+import { pageStructuredData, type BreadcrumbItem } from "../../seo/structuredData";
 import { activationAwareCtaDestination } from "../../utils/activationRedirect";
 import { trackSeoToolCtaClick, trackSeoToolEvent } from "../../utils/seoAttribution";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
+import { Breadcrumbs } from "./Breadcrumbs";
 
 const PAGE_PATH = "/tools/trading-expectancy-calculator";
 const TOOL_ID = "trading_expectancy_calculator";
@@ -13,6 +15,10 @@ const CTA_SOURCE = "expectancy-calculator";
 const TITLE = "Trading Expectancy Calculator for Futures Traders | TradePilot Coach";
 const DESCRIPTION =
   "Calculate your trading expectancy using win rate, average win and average loss. See your expected value per trade and understand what your trading performance means.";
+const BREADCRUMBS: BreadcrumbItem[] = [
+  { label: "Home", path: "/" },
+  { label: "Trading Expectancy Calculator", path: PAGE_PATH },
+];
 const MAX_VALUE = 1_000_000_000;
 const BREAKEVEN_EPSILON = 0.005;
 
@@ -229,32 +235,7 @@ export default function TradingExpectancyCalculatorPage() {
     }
   }, [calculation.errors, inputs, setSearchParams]);
 
-  const schema = {
-    "@context": "https://schema.org",
-    "@graph": [
-      {
-        "@type": "WebApplication",
-        name: "Trading Expectancy Calculator",
-        applicationCategory: "FinanceApplication",
-        operatingSystem: "Web",
-        url: `${SITE_URL}${PAGE_PATH}`,
-        description: DESCRIPTION,
-        offers: {
-          "@type": "Offer",
-          price: "0",
-          priceCurrency: "USD",
-        },
-      },
-      {
-        "@type": "BreadcrumbList",
-        itemListElement: [
-          { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
-          { "@type": "ListItem", position: 2, name: "Tools", item: `${SITE_URL}/tools` },
-          { "@type": "ListItem", position: 3, name: "Trading Expectancy Calculator", item: `${SITE_URL}${PAGE_PATH}` },
-        ],
-      },
-    ],
-  };
+  const schema = pageStructuredData({ path: PAGE_PATH, title: TITLE, description: DESCRIPTION, breadcrumbs: BREADCRUMBS });
 
   const setField = (key: FieldKey, value: string) => {
     setInputs((current) => ({ ...current, [key]: value }));
@@ -272,7 +253,9 @@ export default function TradingExpectancyCalculatorPage() {
       <Seo title={TITLE} description={DESCRIPTION} path={PAGE_PATH} canonical={PAGE_PATH} structuredData={schema} />
 
       <section className="marketing-hero expectancy-hero">
-        <div className="marketing-container expectancy-hero-grid">
+        <div className="marketing-container">
+          <Breadcrumbs items={BREADCRUMBS} />
+          <div className="expectancy-hero-grid">
           <div>
             <div className="marketing-eyebrow">Free trading tool</div>
             <h1 className="marketing-title">Trading Expectancy Calculator</h1>
@@ -292,6 +275,7 @@ export default function TradingExpectancyCalculatorPage() {
             onBlur={markTouched}
             onChange={setField}
           />
+          </div>
         </div>
       </section>
 

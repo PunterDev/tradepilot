@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import Seo, { SITE_URL } from "../../components/Seo";
-import { marketingPricing } from "../../config/marketingPricing";
+import Seo from "../../components/Seo";
+import { pageStructuredData, type BreadcrumbItem } from "../../seo/structuredData";
 import { activationAwareCtaDestination, activationSourceForPublicPath } from "../../utils/activationRedirect";
 import { trackSeoCtaClick, trackSeoLandingPageView } from "../../utils/seoAttribution";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
+import { Breadcrumbs } from "./Breadcrumbs";
 
 type Faq = {
   question: string;
@@ -40,24 +41,6 @@ type LandingPageContent = {
   }[];
   faq: Faq[];
   disclaimer?: string;
-};
-
-const softwareApplicationSchema = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "TradePilot Coach",
-  applicationCategory: "FinanceApplication",
-  operatingSystem: "Web",
-  url: SITE_URL,
-  description: "AI trading journal, execution intelligence, and performance coaching for futures and prop-firm traders.",
-  offers: [
-    {
-      "@type": "Offer",
-      name: marketingPricing.free.name,
-      price: "0",
-      priceCurrency: "USD",
-    },
-  ],
 };
 
 export const seoLandingPages: Record<string, LandingPageContent> = {
@@ -747,6 +730,37 @@ export const seoLandingPages: Record<string, LandingPageContent> = {
   },
 };
 
+const landingBreadcrumbLabels: Record<string, string> = {
+  "/futures-trading-journal": "Futures Trading Journal",
+  "/topstep-trading-journal": "Topstep Trading Journal",
+  "/tradovate-trading-journal": "Tradovate Trading Journal",
+  "/prop-firm-trading-journal": "Prop Firm Trading Journal",
+  "/ai-trading-journal": "AI Trading Journal",
+  "/trading-psychology": "Trading Psychology",
+  "/revenge-trading": "Revenge Trading",
+  "/overtrading": "Overtrading",
+  "/trading-discipline": "Trading Discipline",
+  "/breaking-trading-rules": "Breaking Trading Rules",
+  "/trading-after-losses": "Trading After Losses",
+};
+
+const behavioralChildPaths = new Set([
+  "/revenge-trading",
+  "/overtrading",
+  "/trading-discipline",
+  "/breaking-trading-rules",
+  "/trading-after-losses",
+]);
+
+function landingBreadcrumbs(content: LandingPageContent): BreadcrumbItem[] {
+  const items: BreadcrumbItem[] = [{ label: "Home", path: "/" }];
+  if (behavioralChildPaths.has(content.path)) {
+    items.push({ label: "Trading Psychology", path: "/trading-psychology" });
+  }
+  items.push({ label: landingBreadcrumbLabels[content.path] ?? content.h1, path: content.path });
+  return items;
+}
+
 export function SeoLandingPage({ content }: { content: LandingPageContent }) {
   useEffect(() => {
     trackSeoLandingPageView(content.path);
@@ -760,18 +774,13 @@ export function SeoLandingPage({ content }: { content: LandingPageContent }) {
     "/trading-after-losses",
   ].includes(content.path);
 
-  const faqSchema = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: content.faq.map((faq) => ({
-      "@type": "Question",
-      name: faq.question,
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: faq.answer,
-      },
-    })),
-  };
+  const breadcrumbs = landingBreadcrumbs(content);
+  const structuredData = pageStructuredData({
+    path: content.path,
+    title: content.title,
+    description: content.description,
+    breadcrumbs,
+  });
 
   return (
     <MarketingShell>
@@ -779,14 +788,13 @@ export function SeoLandingPage({ content }: { content: LandingPageContent }) {
         title={content.title}
         description={content.description}
         path={content.path}
-        structuredData={{
-          "@context": "https://schema.org",
-          "@graph": [softwareApplicationSchema, faqSchema],
-        }}
+        structuredData={structuredData}
       />
 
       <section className="marketing-hero seo-landing-hero">
-        <div className="marketing-container marketing-hero-grid">
+        <div className="marketing-container">
+          <Breadcrumbs items={breadcrumbs} />
+          <div className="marketing-hero-grid">
           <div>
             <div className="marketing-eyebrow">{content.eyebrow}</div>
             <h1 className="marketing-title">{content.h1}</h1>
@@ -813,6 +821,7 @@ export function SeoLandingPage({ content }: { content: LandingPageContent }) {
             </div>
           </div>
           <SeoInsightPanel content={content} />
+          </div>
         </div>
       </section>
 

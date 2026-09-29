@@ -6,6 +6,7 @@
     "prerender": "npm run build:ssr && node scripts/prerender-public-pages.mjs",
     "build": "npm run seo:audit && npm run build:app && npm run prerender",
     "seo:audit": "node scripts/audit-seo-routes.mjs",
+    "seo:schema": "node scripts/audit-structured-data.mjs",
     "seo:links": "node scripts/audit-internal-links.mjs",
     "generate:og": "node scripts/generate-tradepilot-coach-og.mjs",
     "verify:og": "node scripts/verify-tradepilot-coach-og.mjs",

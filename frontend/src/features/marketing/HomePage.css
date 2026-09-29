@@ -13,6 +13,48 @@
   margin: 0 auto;
 }
 
+.marketing-breadcrumbs {
+  margin: 0 0 20px;
+  padding-top: 20px;
+}
+
+.marketing-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  color: #9fb0c8;
+  font-size: 13px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.marketing-breadcrumbs li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.marketing-breadcrumbs li + li::before {
+  color: #5f718e;
+  content: "/";
+}
+
+.marketing-breadcrumbs a {
+  color: #b7c5d9;
+  text-decoration: none;
+}
+
+.marketing-breadcrumbs a:hover,
+.marketing-breadcrumbs a:focus-visible {
+  color: #5eead4;
+}
+
+.marketing-breadcrumbs [aria-current="page"] {
+  color: #e5eefc;
+}
+
 #features,
 #how-it-works,
 #ai-coach,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Seo from "../../components/Seo";
+import { homepageStructuredData } from "../../seo/structuredData";
 import { getFeatureAvailability } from "../../api/featureAvailabilityApi";
 import { isFeatureEnabled, type FeatureAvailability } from "../../config/featureFlags";
 import { getEnabledProMarketingBenefits } from "../../config/planBenefits";
@@ -23,6 +24,9 @@ const disabledV2Availability: FeatureAvailability = {
 };
 
 const v1HeroBadges = ["CSV Import", "AI Leak Detector", "Daily Coach", "Performance Analytics"];
+const HOME_TITLE = "TradePilot Coach | AI Trading Journal & Execution Intelligence";
+const HOME_DESCRIPTION =
+  "TradePilot Coach is an AI-powered trading journal and execution intelligence platform for futures traders. Analyze trades, uncover behavioral patterns, review execution, and turn trading history into actionable coaching insights.";
 
 const v2HeroBadges = ["Trading Memory", "Similar Trade Retrieval", "Recurring Patterns", "Evidence-Based Metrics"];
 
@@ -219,33 +223,9 @@ export default function HomePage() {
   return (
     <MarketingShell>
       <Seo
-        title="TradePilot Coach | AI Trading Journal & Execution Intelligence"
-        description="TradePilot Coach is an AI-powered trading journal and execution intelligence platform for futures traders. Analyze trades, uncover behavioral patterns, review execution, and turn trading history into actionable coaching insights."
-        structuredData={{
-          "@context": "https://schema.org",
-          "@graph": [
-            {
-              "@type": "Organization",
-              name: "TradePilot Coach",
-              url: "https://www.tradepilotcoach.com",
-              logo: "https://www.tradepilotcoach.com/assets/tradepilot-coach-logo.png",
-            },
-            {
-              "@type": "SoftwareApplication",
-              name: "TradePilot Coach",
-              applicationCategory: "FinanceApplication",
-              operatingSystem: "Web",
-              url: "https://www.tradepilotcoach.com",
-              description: "AI trading journal, execution intelligence, and performance coaching for futures traders.",
-              offers: {
-                "@type": "Offer",
-                name: "Free",
-                price: "0",
-                priceCurrency: "USD",
-              },
-            },
-          ],
-        }}
+        title={HOME_TITLE}
+        description={HOME_DESCRIPTION}
+        structuredData={homepageStructuredData({ title: HOME_TITLE, description: HOME_DESCRIPTION })}
       />
 
       <section className="marketing-hero">

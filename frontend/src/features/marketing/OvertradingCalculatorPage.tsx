@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import Seo, { SITE_URL } from "../../components/Seo";
+import Seo from "../../components/Seo";
+import { pageStructuredData, type BreadcrumbItem } from "../../seo/structuredData";
 import { activationAwareCtaDestination } from "../../utils/activationRedirect";
 import { trackSeoToolCtaClick, trackSeoToolEvent } from "../../utils/seoAttribution";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
+import { Breadcrumbs } from "./Breadcrumbs";
 
 const PAGE_PATH = "/tools/overtrading-calculator";
 const TOOL_ID = "overtrading_calculator";
@@ -13,6 +15,10 @@ const CTA_SOURCE = "overtrading-calculator";
 const TITLE = "Overtrading Calculator: Compare Early vs Later Trades | TradePilot Coach";
 const DESCRIPTION =
   "Compare your early trades with later trades to see whether your win rate, expectancy and P&L deteriorate as you continue trading.";
+const BREADCRUMBS: BreadcrumbItem[] = [
+  { label: "Home", path: "/" },
+  { label: "Overtrading Calculator", path: PAGE_PATH },
+];
 const MAX_VALUE = 1_000_000_000;
 const MIN_EXPECTANCY_GAP = 10;
 const MATERIALITY_RATIO = 0.05;
@@ -338,32 +344,7 @@ export default function OvertradingCalculatorPage() {
     }
   }, [comparison.errors, inputs, setSearchParams]);
 
-  const schema = {
-    "@context": "https://schema.org",
-    "@graph": [
-      {
-        "@type": "WebApplication",
-        name: "Overtrading Calculator",
-        applicationCategory: "FinanceApplication",
-        operatingSystem: "Web",
-        url: `${SITE_URL}${PAGE_PATH}`,
-        description: DESCRIPTION,
-        offers: {
-          "@type": "Offer",
-          price: "0",
-          priceCurrency: "USD",
-        },
-      },
-      {
-        "@type": "BreadcrumbList",
-        itemListElement: [
-          { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
-          { "@type": "ListItem", position: 2, name: "Tools", item: `${SITE_URL}/tools` },
-          { "@type": "ListItem", position: 3, name: "Overtrading Calculator", item: `${SITE_URL}${PAGE_PATH}` },
-        ],
-      },
-    ],
-  };
+  const schema = pageStructuredData({ path: PAGE_PATH, title: TITLE, description: DESCRIPTION, breadcrumbs: BREADCRUMBS });
 
   const setField = (key: FieldKey, value: string) => {
     setInputs((current) => ({ ...current, [key]: value }));
@@ -382,7 +363,9 @@ export default function OvertradingCalculatorPage() {
       <Seo title={TITLE} description={DESCRIPTION} path={PAGE_PATH} canonical={PAGE_PATH} structuredData={schema} />
 
       <section className="marketing-hero expectancy-hero">
-        <div className="marketing-container expectancy-hero-grid overtrading-hero-grid">
+        <div className="marketing-container">
+          <Breadcrumbs items={BREADCRUMBS} />
+          <div className="expectancy-hero-grid overtrading-hero-grid">
           <div>
             <div className="marketing-eyebrow">Free trading tool</div>
             <h1 className="marketing-title">Overtrading Calculator</h1>
@@ -402,6 +385,7 @@ export default function OvertradingCalculatorPage() {
             onBlur={markTouched}
             onChange={setField}
           />
+          </div>
         </div>
       </section>
 
