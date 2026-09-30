@@ -70,6 +70,7 @@ with required_columns(table_name, column_name) as (
         ('users', 'pro_until'),
         ('users', 'purchased_ai_credits_balance'),
         ('users', 'token_version'),
+        ('users', 'analytics_excluded'),
         ('ai_credit_purchases', 'stripe_checkout_session_id'),
         ('ai_credit_purchases', 'stripe_payment_intent_id'),
         ('ai_credit_purchases', 'stripe_charge_id'),

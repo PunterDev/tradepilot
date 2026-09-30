@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -105,7 +106,7 @@ public class GoogleSearchConsoleAnalyticsService {
                 properties.getProperty(),
                 startDate,
                 endDate,
-                LocalDateTime.now(),
+                Instant.now(),
                 null,
                 summary,
                 pages,
@@ -183,11 +184,14 @@ public class GoogleSearchConsoleAnalyticsService {
                        sum(case when first_import_completed_at >= :start and first_import_completed_at < :end then 1 else 0 end) as first_imports,
                        sum(case when first_insight_generated_at >= :start and first_insight_generated_at < :end then 1 else 0 end) as first_insights,
                        sum(case when pro_converted_at >= :start and pro_converted_at < :end then 1 else 0 end) as pro_conversions
-                from user_acquisition_attribution
-                where (signup_completed_at >= :start and signup_completed_at < :end)
+                from user_acquisition_attribution uaa
+                join users u on u.id = uaa.user_id
+                where u.role <> 'ADMIN'
+                  and coalesce(u.analytics_excluded, false) = false
+                  and ((signup_completed_at >= :start and signup_completed_at < :end)
                    or (first_import_completed_at >= :start and first_import_completed_at < :end)
                    or (first_insight_generated_at >= :start and first_insight_generated_at < :end)
-                   or (pro_converted_at >= :start and pro_converted_at < :end)
+                   or (pro_converted_at >= :start and pro_converted_at < :end))
                 group by landing_page
                 """;
         return jdbcTemplate.query(sql, params, rs -> {

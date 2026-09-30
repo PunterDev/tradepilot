@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { formatInstant, formatReportingDate } from "../src/features/admin/seo/dateFormatting";
 
 const adminUser = { id: 99, name: "Admin", email: "admin@tradepilot.local", role: "ADMIN", plan: "PRO" };
 const corsHeaders = {
@@ -6,6 +7,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, content-type",
   "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
 };
+
+test.use({ timezoneId: "America/Chicago" });
+
+test("SEO analytics formats UTC instants locally without shifting reporting dates", () => {
+  expect(formatInstant("2026-09-30T02:38:39Z", "en-US", "America/Chicago")).toBe("9/29/2026, 9:38 PM CDT");
+  expect(formatReportingDate("2026-09-01", "en-US")).toBe("9/1/2026");
+});
 
 test("admin SEO acquisition dashboard renders KPI, funnel, tool, source, and campaign sections", async ({ page }) => {
   await page.route(apiPath("auth/me"), async (route) => {
@@ -72,7 +80,7 @@ test("admin SEO acquisition dashboard renders KPI, funnel, tool, source, and cam
         property: "sc-domain:tradepilotcoach.com",
         startDate: "2026-08-01",
         endDate: "2026-08-30",
-        lastRefreshedAt: "2026-08-30T17:05:00",
+        lastRefreshedAt: "2026-08-30T17:05:00Z",
         error: null,
         summary: {
           impressions: 3000,
@@ -155,7 +163,7 @@ test("admin SEO acquisition dashboard renders KPI, funnel, tool, source, and cam
       body: JSON.stringify({
         startDate: "2026-08-01",
         endDate: "2026-08-30",
-        generatedAt: "2026-08-30T17:00:00",
+        generatedAt: "2026-08-30T17:00:00Z",
         kpis: [
           { key: "views", label: "Organic landing views", value: 120, rate: 0, helper: "SEO page and tool views" },
           { key: "ctaClicks", label: "SEO CTA clicks", value: 36, rate: 30, helper: "Register intent" },
@@ -213,6 +221,8 @@ test("admin SEO acquisition dashboard renders KPI, funnel, tool, source, and cam
   await expect(page.getByText("Revenge Trading", { exact: true })).toBeVisible();
   await expect(page.getByText("<img src=x onerror=alert(1)>").first()).toBeVisible();
   await expect(page.getByText("Signup to first insight")).toBeVisible();
+  await expect(page.getByText("Generated 8/30/2026, 12:00 PM CDT")).toBeVisible();
+  await expect(page.getByText("Last refreshed: 8/30/2026, 12:05 PM CDT")).toBeVisible();
 });
 
 function apiPath(path: string) {

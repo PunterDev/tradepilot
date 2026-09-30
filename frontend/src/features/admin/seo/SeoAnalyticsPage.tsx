@@ -18,6 +18,7 @@ import {
 } from "../../../api/seoAnalyticsApi";
 import PageHeader from "../../../layout/PageHeader";
 import { button, card, mutedText, sectionTitle, tooltipStyle } from "../../../styles/dashboardStyles";
+import { formatInstant } from "./dateFormatting";
 
 const ranges = [
   { value: "7", label: "Last 7 days" },
@@ -26,20 +27,23 @@ const ranges = [
   { value: "custom", label: "Custom" },
 ];
 
-function isoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
+function localDateOnly(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function defaultStart(days: number) {
   const date = new Date();
   date.setDate(date.getDate() - (days - 1));
-  return isoDate(date);
+  return localDateOnly(date);
 }
 
 export default function SeoAnalyticsPage() {
   const [range, setRange] = useState("30");
   const [startDate, setStartDate] = useState(defaultStart(30));
-  const [endDate, setEndDate] = useState(isoDate(new Date()));
+  const [endDate, setEndDate] = useState(localDateOnly(new Date()));
   const [data, setData] = useState<SeoAnalyticsResponse | null>(null);
   const [searchConsole, setSearchConsole] = useState<SearchConsoleAnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,7 +55,7 @@ export default function SeoAnalyticsPage() {
     if (range === "custom") return;
     const days = Number(range);
     setStartDate(defaultStart(days));
-    setEndDate(isoDate(new Date()));
+    setEndDate(localDateOnly(new Date()));
   }, [range]);
 
   useEffect(() => {
@@ -121,7 +125,7 @@ export default function SeoAnalyticsPage() {
           End
           <input type="date" value={endDate} disabled={range !== "custom"} onChange={(event) => setEndDate(event.target.value)} style={inputStyle} />
         </label>
-        <div style={generatedBox}>{data ? `Generated ${formatDateTime(data.generatedAt)}` : "Loading..."}</div>
+        <div style={generatedBox}>{data ? `Generated ${formatInstant(data.generatedAt)}` : "Loading..."}</div>
       </section>
 
       {error && <div style={errorBox}>{error}</div>}
@@ -145,7 +149,7 @@ export default function SeoAnalyticsPage() {
           <div style={statusPill(searchConsole?.available)}>{gscLoading ? "Loading" : searchConsole?.status ?? "Not configured"}</div>
         </div>
         {searchConsole?.property && <div style={propertyText}>Property: {searchConsole.property}</div>}
-        {searchConsole?.lastRefreshedAt && <div style={propertyText}>Last refreshed: {formatDateTime(searchConsole.lastRefreshedAt)}</div>}
+        {searchConsole?.lastRefreshedAt && <div style={propertyText}>Last refreshed: {formatInstant(searchConsole.lastRefreshedAt)}</div>}
         {(gscError || searchConsole?.error) && <div style={gscNotice}>{gscError || searchConsole?.error}</div>}
         {gscLoading && <div style={emptyState}>Loading Google Search Console data...</div>}
         {searchConsole?.available && (
@@ -367,7 +371,6 @@ function number(value: number) { return new Intl.NumberFormat().format(value); }
 function percent(value: number) { return `${value}%`; }
 function decimal(value: number) { return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value); }
 function minutes(value?: number | null) { return value == null ? "Not enough data" : `${number(Math.round(value))} min`; }
-function formatDateTime(value: string) { return new Date(value).toLocaleString(); }
 function toolLabel(value: string) {
   return ({ trading_expectancy: "Trading Expectancy", overtrading: "Overtrading", revenge_trading: "Revenge Trading" } as Record<string, string>)[value] ?? value;
 }

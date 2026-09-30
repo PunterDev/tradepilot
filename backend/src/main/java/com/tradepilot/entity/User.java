@@ -31,6 +31,8 @@ public class User implements UserDetails {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role;
+    @Column(name = "analytics_excluded", nullable = false)
+    private Boolean analyticsExcluded = false;
     @Enumerated(EnumType.STRING)
     @Column(name = "subscription_status", nullable = false, length = 20)
     private SubscriptionStatus subscriptionStatus;
@@ -71,6 +73,9 @@ public class User implements UserDetails {
         }
         if (this.role == null) {
             this.role = UserRole.USER;
+        }
+        if (this.analyticsExcluded == null) {
+            this.analyticsExcluded = false;
         }
         if (this.stripeCancelAtPeriodEnd == null) {
             this.stripeCancelAtPeriodEnd = false;
@@ -472,6 +477,11 @@ public class User implements UserDetails {
     }
 
     @java.lang.SuppressWarnings("all")
+    public Boolean getAnalyticsExcluded() {
+        return this.analyticsExcluded;
+    }
+
+    @java.lang.SuppressWarnings("all")
     public SubscriptionStatus getSubscriptionStatus() {
         return this.subscriptionStatus;
     }
@@ -569,6 +579,11 @@ public class User implements UserDetails {
     @java.lang.SuppressWarnings("all")
     public void setRole(final UserRole role) {
         this.role = role;
+    }
+
+    @java.lang.SuppressWarnings("all")
+    public void setAnalyticsExcluded(final Boolean analyticsExcluded) {
+        this.analyticsExcluded = analyticsExcluded;
     }
 
     @java.lang.SuppressWarnings("all")

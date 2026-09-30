@@ -60,7 +60,7 @@ class FlywayPostgresBaselineIntegrationTest {
         }
 
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(17);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(18);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
@@ -98,6 +98,8 @@ class FlywayPostgresBaselineIntegrationTest {
                     .isEqualTo("016");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '017' and success = true"))
                     .isEqualTo("017");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '018' and success = true"))
+                    .isEqualTo("018");
 
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
@@ -105,6 +107,7 @@ class FlywayPostgresBaselineIntegrationTest {
             assertTradeMemoriesSchema(connection);
             assertOtherV015SchemaAlignments(connection);
             assertStripeCheckoutAttemptBillingCycle(connection);
+            assertUserAnalyticsExclusion(connection);
             assertStripeIndexesAndConstraints(connection);
             assertNegativePurchasedCreditsAreAllowed(connection);
             assertVerifierScriptReportsOk(connection);
@@ -323,6 +326,30 @@ class FlywayPostgresBaselineIntegrationTest {
 
     private static void assertStripeCheckoutAttemptBillingCycle(Connection connection) throws SQLException {
         assertNullableVarcharColumn(connection, "stripe_checkout_attempts", "billing_cycle", 10);
+    }
+
+    private static void assertUserAnalyticsExclusion(Connection connection) throws SQLException {
+        assertThat(scalar(connection, """
+                select data_type
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'users'
+                  and column_name = 'analytics_excluded'
+                """)).isEqualTo("boolean");
+        assertThat(scalar(connection, """
+                select is_nullable
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'users'
+                  and column_name = 'analytics_excluded'
+                """)).isEqualTo("NO");
+        assertThat(scalar(connection, """
+                select column_default
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'users'
+                  and column_name = 'analytics_excluded'
+                """)).contains("false");
     }
 
     private static void assertRowLevelSecurityEnabled(Connection connection) throws SQLException {

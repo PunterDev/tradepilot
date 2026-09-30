@@ -144,7 +144,7 @@ public class SeoAnalyticsService {
                 "Anonymous analytics use a random local browser id only. No IP address, fingerprint, calculator inputs, trade P&L, strategy, or journal content is stored.",
                 "Pro conversions are counted after TradePilot records a Stripe checkout/admin upgrade timestamp for an attributed SEO user."
         );
-        return new SeoAnalyticsResponse(resolvedStart, resolvedEnd, LocalDateTime.now(), kpis, funnel, landingPages, tools, sources, campaigns, trend, latency, notes);
+        return new SeoAnalyticsResponse(resolvedStart, resolvedEnd, Instant.now(), kpis, funnel, landingPages, tools, sources, campaigns, trend, latency, notes);
     }
 
     private SeoAcquisitionEvent toEvent(SeoAcquisitionEventRequest request) {
@@ -228,10 +228,13 @@ public class SeoAnalyticsService {
                            where e.user_id = uaa.user_id and e.action = 'PRO_CONVERSION'
                        )) as pro_converted_at
                 from user_acquisition_attribution uaa
-                where (uaa.signup_completed_at >= :start and uaa.signup_completed_at < :end)
+                join users u on u.id = uaa.user_id
+                where u.role <> 'ADMIN'
+                  and coalesce(u.analytics_excluded, false) = false
+                  and ((uaa.signup_completed_at >= :start and uaa.signup_completed_at < :end)
                    or (uaa.first_import_completed_at >= :start and uaa.first_import_completed_at < :end)
                    or (uaa.first_insight_generated_at >= :start and uaa.first_insight_generated_at < :end)
-                   or (uaa.pro_converted_at >= :start and uaa.pro_converted_at < :end)
+                   or (uaa.pro_converted_at >= :start and uaa.pro_converted_at < :end))
                 """;
         return jdbcTemplate.query(sql, params, (rs, rowNum) -> new UserMilestone(
                 rs.getLong("user_id"),

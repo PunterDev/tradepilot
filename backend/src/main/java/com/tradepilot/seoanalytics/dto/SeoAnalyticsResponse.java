@@ -1,13 +1,13 @@
 package com.tradepilot.seoanalytics.dto;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 public record SeoAnalyticsResponse(
         LocalDate startDate,
         LocalDate endDate,
-        LocalDateTime generatedAt,
+        Instant generatedAt,
         List<Kpi> kpis,
         List<FunnelStep> funnel,
         List<LandingPageRow> landingPages,

@@ -1,7 +1,7 @@
 package com.tradepilot.seoanalytics.gsc.dto;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 public record SearchConsoleAnalyticsResponse(
@@ -11,7 +11,7 @@ public record SearchConsoleAnalyticsResponse(
         String property,
         LocalDate startDate,
         LocalDate endDate,
-        LocalDateTime lastRefreshedAt,
+        Instant lastRefreshedAt,
         String error,
         Summary summary,
         List<PageRow> pages,

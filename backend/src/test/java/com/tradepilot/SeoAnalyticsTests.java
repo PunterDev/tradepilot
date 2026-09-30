@@ -205,6 +205,50 @@ class SeoAnalyticsTests {
     }
 
     @Test
+    void seoAnalyticsExcludesAdminsAndExplicitlyExcludedAccountsFromConversionMetrics() throws Exception {
+        String unique = UUID.randomUUID().toString();
+        String landingPage = "/seo-analytics-exclusion-" + unique;
+        User reportingAdmin = createUser("seo-reporting-admin-" + unique + "@tradepilot.local", UserRole.ADMIN, PlanType.PRO);
+        User normal = createUser("seo-normal-" + unique + "@tradepilot.local", UserRole.USER, PlanType.FREE);
+        User admin = createUser("seo-internal-admin-" + unique + "@tradepilot.local", UserRole.ADMIN, PlanType.PRO);
+        User smoke = createUser("seo-smoke-" + unique + "@tradepilot.local", UserRole.USER, PlanType.FREE);
+        smoke.setAnalyticsExcluded(true);
+        userRepository.save(smoke);
+        LocalDate today = LocalDate.now();
+        JsonNode before = dashboardJson(reportingAdmin, today, today);
+
+        for (int i = 0; i < 4; i++) {
+            postEvent(UUID.randomUUID().toString(), "seo_landing_page_view", "seo-exclusion-view-" + unique + "-" + i, landingPage, null);
+        }
+
+        LocalDateTime occurredAt = LocalDateTime.now().minusMinutes(1);
+        for (User user : List.of(normal, admin, smoke)) {
+            seoAnalyticsService.recordSignup(user, attribution("seo-exclusion-" + user.getId(), landingPage, "google", "organic", "seo-exclusion"));
+            seoAnalyticsService.markFirstImportCompleted(user, occurredAt.plusMinutes(1));
+            seoAnalyticsService.markFirstInsightGenerated(user, occurredAt.plusMinutes(2));
+            user.setPlan(PlanType.PRO);
+            user.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
+            seoAnalyticsService.markProConverted(user, occurredAt.plusMinutes(3));
+        }
+
+        JsonNode json = dashboardJson(reportingAdmin, today, today);
+        JsonNode landing = findLandingPage(json, landingPage);
+        assertThat(landing.get("views").asLong()).isEqualTo(4);
+        assertThat(landing.get("signups").asLong()).isEqualTo(1);
+        assertThat(landing.get("firstImports").asLong()).isEqualTo(1);
+        assertThat(landing.get("firstInsights").asLong()).isEqualTo(1);
+        assertThat(landing.get("proConversions").asLong()).isEqualTo(1);
+        assertThat(landing.get("signupRate").asDouble()).isEqualTo(25.0);
+        assertThat(landing.get("activationRate").asDouble()).isEqualTo(100.0);
+        assertThat(landing.get("paidConversionRate").asDouble()).isEqualTo(100.0);
+        assertThat(funnelCount(json, "signup_completed") - funnelCount(before, "signup_completed")).isEqualTo(1);
+        assertThat(funnelCount(json, "first_import") - funnelCount(before, "first_import")).isEqualTo(1);
+        assertThat(funnelCount(json, "first_insight") - funnelCount(before, "first_insight")).isEqualTo(1);
+        assertThat(funnelCount(json, "pro_upgrade") - funnelCount(before, "pro_upgrade")).isEqualTo(1);
+        assertThat(json.get("generatedAt").asText()).endsWith("Z");
+    }
+
+    @Test
     void adminDateRangeValidationRejectsInvalidRanges() throws Exception {
         User admin = createUser("seo-date-admin@tradepilot.local", UserRole.ADMIN, PlanType.PRO);
         String token = jwtService.generateToken(admin);
@@ -321,6 +365,36 @@ class SeoAnalyticsTests {
                 .plan(plan)
                 .subscriptionStatus(plan == PlanType.PRO ? SubscriptionStatus.ACTIVE : SubscriptionStatus.NONE)
                 .build());
+    }
+
+    private JsonNode findLandingPage(JsonNode dashboard, String landingPage) {
+        for (JsonNode row : dashboard.get("landingPages")) {
+            if (landingPage.equals(row.get("landingPage").asText())) {
+                return row;
+            }
+        }
+        throw new AssertionError("Expected landing page row was not returned: " + landingPage);
+    }
+
+    private long funnelCount(JsonNode dashboard, String key) {
+        for (JsonNode step : dashboard.get("funnel")) {
+            if (key.equals(step.get("key").asText())) {
+                return step.get("count").asLong();
+            }
+        }
+        throw new AssertionError("Expected funnel step was not returned: " + key);
+    }
+
+    private JsonNode dashboardJson(User admin, LocalDate startDate, LocalDate endDate) throws Exception {
+        String response = mockMvc.perform(get("/api/v1/admin/analytics/seo")
+                        .param("startDate", startDate.toString())
+                        .param("endDate", endDate.toString())
+                        .header("Authorization", "Bearer " + jwtService.generateToken(admin)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response);
     }
 
     private Timestamp toDatabaseTimestamp(LocalDateTime value) {
