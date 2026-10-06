@@ -6,8 +6,16 @@ import com.tradepilot.coach.dto.CoachDeterministicSummary;
 import com.tradepilot.coach.entity.AiCoachSnapshot;
 import com.tradepilot.coach.entity.CoachSnapshotStatus;
 import com.tradepilot.coach.repository.AiCoachSnapshotRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradepilot.leakdetector.dto.LeakResultDto;
+import com.tradepilot.leakdetector.repository.AiLeakDetectorSnapshotRepository;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 public class AiCoachAsyncWorker {
@@ -19,6 +27,8 @@ public class AiCoachAsyncWorker {
     private final CoachHashService hashService;
     private final CoachOutputConsistencyService consistencyService;
     private final UserFeaturePreviewService previewService;
+    private final AiLeakDetectorSnapshotRepository leakSnapshotRepository;
+    private final ObjectMapper objectMapper;
 
     @Async("aiTaskExecutor")
     public void generateAsync(Long snapshotId) {
@@ -29,7 +39,7 @@ public class AiCoachAsyncWorker {
             repository.save(snapshot);
             CoachDeterministicSummary summary = analyticsAggregator.aggregate(snapshot.getUserId(), snapshot.getAccountId(), snapshot.getSnapshotType(), snapshot.getPeriodStart(), snapshot.getPeriodEnd());
             String reviewHash = hashService.hash(summary);
-            CoachAiResponse aiResponse = aiGeneratorService.generate(snapshot.getSnapshotType(), summary, snapshot.getUserId());
+            CoachAiResponse aiResponse = aiGeneratorService.generate(snapshot.getSnapshotType(), summary, snapshot.getUserId(), topQualifiedBehavioralLeak(snapshot.getUserId(), snapshot.getAccountId()).orElse(null));
             aiResponse = consistencyService.enforce(snapshot.getSnapshotType(), summary, aiResponse, snapshot.getUserId(), snapshot.getAccountId(), snapshot.getPeriodStart());
             snapshot.setTotalTrades(summary.getTotalTrades());
             snapshot.setNetPnl(summary.getNetPnl());
@@ -57,13 +67,28 @@ public class AiCoachAsyncWorker {
         }
     }
 
+    private Optional<LeakResultDto> topQualifiedBehavioralLeak(Long userId, Long accountId) {
+        return leakSnapshotRepository.findTopByUserIdAndAccountIdOrderByUpdatedAtDesc(userId, accountId).flatMap(snapshot -> {
+            try {
+                List<LeakResultDto> leaks = objectMapper.readValue(snapshot.getResultJson(), new TypeReference<>() {});
+                return leaks.stream()
+                        .filter(leak -> leak.getBehavioralFinding() != null && leak.getBehavioralFinding().qualified())
+                        .max(Comparator.comparing(leak -> leak.getBehavioralFinding().evidenceStrength().ordinal()));
+            } catch (Exception ignored) {
+                return Optional.empty();
+            }
+        });
+    }
+
     @java.lang.SuppressWarnings("all")
-    public AiCoachAsyncWorker(final AiCoachSnapshotRepository repository, final CoachAnalyticsAggregator analyticsAggregator, final CoachAiGeneratorService aiGeneratorService, final CoachHashService hashService, final CoachOutputConsistencyService consistencyService, final UserFeaturePreviewService previewService) {
+    public AiCoachAsyncWorker(final AiCoachSnapshotRepository repository, final CoachAnalyticsAggregator analyticsAggregator, final CoachAiGeneratorService aiGeneratorService, final CoachHashService hashService, final CoachOutputConsistencyService consistencyService, final UserFeaturePreviewService previewService, final AiLeakDetectorSnapshotRepository leakSnapshotRepository, final ObjectMapper objectMapper) {
         this.repository = repository;
         this.analyticsAggregator = analyticsAggregator;
         this.aiGeneratorService = aiGeneratorService;
         this.hashService = hashService;
         this.consistencyService = consistencyService;
         this.previewService = previewService;
+        this.leakSnapshotRepository = leakSnapshotRepository;
+        this.objectMapper = objectMapper;
     }
 }

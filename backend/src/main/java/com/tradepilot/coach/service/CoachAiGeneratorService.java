@@ -6,6 +6,7 @@ import com.tradepilot.config.OpenAiProperties;
 import com.tradepilot.coach.dto.CoachAiResponse;
 import com.tradepilot.coach.dto.CoachDeterministicSummary;
 import com.tradepilot.coach.entity.CoachSnapshotType;
+import com.tradepilot.leakdetector.dto.LeakResultDto;
 import com.tradepilot.observability.ObservabilityService;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -28,17 +29,21 @@ public class CoachAiGeneratorService {
     private final ObservabilityService observabilityService;
 
     public CoachAiResponse generate(CoachSnapshotType type, CoachDeterministicSummary summary, Long userId) throws Exception {
+		return generate(type, summary, userId, null);
+	}
+
+    public CoachAiResponse generate(CoachSnapshotType type, CoachDeterministicSummary summary, Long userId, LeakResultDto behavioralLeak) throws Exception {
         if (openAiProperties.getApiKey() == null || openAiProperties.getApiKey().isBlank()) {
             return fallback(summary);
         }
-        return callOpenAiWithRetry(type, summary, userId);
+        return callOpenAiWithRetry(type, summary, userId, behavioralLeak);
     }
 
-    private CoachAiResponse callOpenAiWithRetry(CoachSnapshotType type, CoachDeterministicSummary summary, Long userId) throws Exception {
+    private CoachAiResponse callOpenAiWithRetry(CoachSnapshotType type, CoachDeterministicSummary summary, Long userId, LeakResultDto behavioralLeak) throws Exception {
         Exception lastException = null;
         for (int attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
             try {
-                return callOpenAi(type, summary, attempt, userId);
+                return callOpenAi(type, summary, attempt, userId, behavioralLeak);
             } catch (Exception e) {
                 lastException = e;
                 log.warn("Coach AI generation failed. attempt={}, maxAttempts={}", attempt, MAX_RETRIES + 1, e);
@@ -50,9 +55,9 @@ public class CoachAiGeneratorService {
         throw lastException;
     }
 
-    private CoachAiResponse callOpenAi(CoachSnapshotType type, CoachDeterministicSummary summary, int attempt, Long userId) throws Exception {
+    private CoachAiResponse callOpenAi(CoachSnapshotType type, CoachDeterministicSummary summary, int attempt, Long userId, LeakResultDto behavioralLeak) throws Exception {
         Instant start = Instant.now();
-        String prompt = promptBuilder.buildPrompt(type, summary);
+        String prompt = promptBuilder.buildPrompt(type, summary, behavioralLeak);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(openAiProperties.getApiKey());

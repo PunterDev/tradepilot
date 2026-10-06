@@ -130,7 +130,7 @@ export default function LeakDetectorPage({
         {data && data.leaks.length > 0 && (
           <>
             <SummaryHero data={data} />
-            <RecoveryPlan leak={data.leaks[0]} />
+            {!data.leaks[0]?.behavioralFinding && <RecoveryPlan leak={data.leaks[0]} />}
             <div style={grid}>
               {data.leaks.map((leak, index) => (
                 <LeakCard
@@ -150,6 +150,7 @@ export default function LeakDetectorPage({
 
 function SummaryHero({ data }: { data: LeakDetectorResponse }) {
   const topLeak = data.leaks[0];
+  const behavioralFinding = topLeak?.behavioralFinding;
   const monthlyImpact = data.biggestLeakImpact ?? topLeak?.estimatedMonthlyImpact ?? 0;
   const confidence = data.highestConfidence ?? topLeak?.confidenceScore ?? 0;
   const sampleTradeCount = data.sampleTradeCount ?? data.totalTrades;
@@ -165,10 +166,10 @@ function SummaryHero({ data }: { data: LeakDetectorResponse }) {
         </div>
         <h2 style={heroTitle}>{getHeroTitle(topLeak, data.biggestLeakTitle)}</h2>
         <p style={heroText}>{getHeroSupportText(topLeak)}</p>
-        <div style={heroFixLine}>
+        {!behavioralFinding && <div style={heroFixLine}>
           <span style={fixLabel}>Suggested fix</span>
           <p style={heroFixText}>{data.biggestLeakFix ?? topLeak?.recommendedFix}</p>
-        </div>
+        </div>}
         <div style={heroMetaRow}>
           <span style={heroMetaPill}>Generated {formatRelativeGeneratedAt(data.generatedAt)}</span>
           <span style={heroMetaPill}>Data quality: {dataQuality}</span>
@@ -176,11 +177,13 @@ function SummaryHero({ data }: { data: LeakDetectorResponse }) {
         </div>
       </div>
       <div style={heroStats}>
+        {behavioralFinding ? <BehavioralTrust finding={behavioralFinding} /> : <>
         <Metric label="Money Lost / Month" value={formatMoney(monthlyImpact)} tone={impactTone} />
         {yearlyImprovement && (
           <Metric label="Potential Yearly Improvement" value={yearlyImprovement} tone={improvementTone} />
         )}
         <ConfidenceMetric score={confidence} />
+        </>}
       </div>
     </section>
   );
@@ -233,7 +236,8 @@ function LeakCard({ leak, rank, onTradeSelect }: { leak: LeakResult; rank: numbe
         <span style={severityBadge(leak.severity)}>{leak.severity}</span>
       </div>
       <div style={metricGrid}>
-        <ConfidenceMetric score={leak.confidenceScore} />
+        {leak.behavioralFinding ? <BehavioralTrust finding={leak.behavioralFinding} /> : <ConfidenceMetric score={leak.confidenceScore} />}
+        {!leak.behavioralFinding && <>
         <Metric label="Money Impact" value={`${formatMoney(leak.totalPnl)} total / ${formatMoney(leak.estimatedMonthlyImpact)} monthly`} />
         <Metric label="Trades" value={leak.tradeCount} />
         <Metric label="Win Rate" value={`${Number(leak.winRate ?? 0).toFixed(1)}%`} />
@@ -241,6 +245,7 @@ function LeakCard({ leak, rank, onTradeSelect }: { leak: LeakResult; rank: numbe
         {leak.hasValidRMultiple && leak.avgR != null && (
           <Metric label="Avg R" value={formatR(leak.avgR)} />
         )}
+        </>}
       </div>
       <p style={description}>{getCoachExplanation(leak)}</p>
       <div style={fixBox}>
@@ -259,6 +264,20 @@ function LeakCard({ leak, rank, onTradeSelect }: { leak: LeakResult; rank: numbe
       )}
     </article>
   );
+}
+
+function BehavioralTrust({ finding }: { finding: NonNullable<LeakResult["behavioralFinding"]> }) {
+  const delta = finding.baseline.expectancyR != null && finding.triggered.expectancyR != null
+    ? `${formatR(finding.triggered.expectancyR - finding.baseline.expectancyR)} difference`
+    : `${formatMoney(finding.triggered.averagePnl - finding.baseline.averagePnl)} per trade difference`;
+  if (!finding.qualified || finding.evidenceStrength === "INSUFFICIENT") {
+    return <Metric label="Evidence strength" value={`Not enough evidence yet (${finding.occurrenceCount} qualifying occurrences)`} helper="TradePilot needs more history before treating this as a reliable pattern." />;
+  }
+  return <>
+    <Metric label="Evidence strength" value={finding.evidenceStrength} helper={`${finding.occurrenceCount} qualifying occurrences · ${finding.tradeSampleSize} trades analyzed`} />
+    <Metric label="Baseline comparison" value={delta} helper={finding.baseline.expectancyR != null ? `Normal ${formatR(finding.baseline.expectancyR)} · Triggered ${formatR(finding.triggered.expectancyR ?? 0)}` : `Normal ${formatMoney(finding.baseline.averagePnl)} · Triggered ${formatMoney(finding.triggered.averagePnl)}`} />
+    {finding.counterfactual.applicable && <Metric label="Historical simulation" value={`${finding.counterfactual.skippedTradeCount} trades would have been skipped`} helper={finding.counterfactual.supported ? `Losses avoided ${formatMoney(finding.counterfactual.lossesAvoided)} · Winners forgone ${formatMoney(finding.counterfactual.winnersForgone)} · Estimated historical net impact ${formatSignedMoney(finding.counterfactual.netHistoricalImpact)}` : "A 20-minute pause would not have improved historical results in this sample."} />}
+  </>;
 }
 
 function Metric({ label, value, tone, helper }: { label: string; value: string | number; tone?: CSSProperties; helper?: string }) {
@@ -297,6 +316,11 @@ function formatMoney(value: number) {
   const numeric = Number(value ?? 0);
   const absolute = Math.abs(numeric).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `${numeric < 0 ? "-$" : "$"}${absolute}`;
+}
+
+function formatSignedMoney(value: number) {
+  const formatted = formatMoney(value);
+  return Number(value ?? 0) > 0 ? `+${formatted}` : formatted;
 }
 
 function formatPotentialImprovement(monthlyImpact: number) {

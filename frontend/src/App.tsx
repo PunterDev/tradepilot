@@ -105,6 +105,8 @@ const PlaybookFormPage = lazy(() => import("./features/playbook/PlaybookFormPage
 const PlaybookDetailPage = lazy(() => import("./features/playbook/PlaybookDetailPage"));
 const PreAnalysisPage = lazy(() => import("./features/pre-analysis/PreAnalysisPage"));
 const HomePage = lazy(() => import("./features/marketing/HomePage"));
+const SampleDemoPage = lazy(() => import("./features/marketing/SampleDemoPage"));
+const HowTradePilotWorksPage = lazy(() => import("./features/marketing/HowTradePilotWorksPage"));
 const ContactPage = lazy(() => import("./features/marketing/ContactPage"));
 const PrivacyPage = lazy(() => import("./features/marketing/PrivacyPage"));
 const TermsPage = lazy(() => import("./features/marketing/TermsPage"));
@@ -2004,6 +2006,8 @@ function AuthRoutes() {
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/resources" element={<ResourcesPage />} />
+      <Route path="/demo" element={<SampleDemoPage />} />
+      <Route path="/how-tradepilot-works" element={<HowTradePilotWorksPage />} />
       <Route path="/tools/trading-expectancy-calculator" element={<TradingExpectancyCalculatorPage />} />
       <Route path="/tools/overtrading-calculator" element={<OvertradingCalculatorPage />} />
       <Route path="/tools/revenge-trading-calculator" element={<RevengeTradingCalculatorPage />} />

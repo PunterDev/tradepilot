@@ -24,6 +24,7 @@ public class LeakResultDto {
     private Integer relatedTradeCount;
     private List<Long> relatedTradeIds;
     private LocalDateTime generatedAt;
+    private BehavioralFindingDto behavioralFinding;
 
     public static LeakResultDto of(LeakType leakType, String title, String summary, String description, Integer tradeCount, BigDecimal winRate, BigDecimal totalPnl, BigDecimal avgPnl, BigDecimal estimatedMonthlyImpact, BigDecimal totalR, BigDecimal avgR, BigDecimal estimatedMonthlyImpactR, Boolean hasValidRMultiple, Integer confidenceScore, LeakSeverity severity, String recommendedFix, Integer relatedTradeCount, List<Long> relatedTradeIds, LocalDateTime generatedAt) {
         LeakResultDto result = new LeakResultDto();
@@ -144,6 +145,10 @@ public class LeakResultDto {
         return this.generatedAt;
     }
 
+    public BehavioralFindingDto getBehavioralFinding() {
+        return this.behavioralFinding;
+    }
+
     @java.lang.SuppressWarnings("all")
     public void setLeakType(final LeakType leakType) {
         this.leakType = leakType;
@@ -237,6 +242,10 @@ public class LeakResultDto {
     @java.lang.SuppressWarnings("all")
     public void setGeneratedAt(final LocalDateTime generatedAt) {
         this.generatedAt = generatedAt;
+    }
+
+    public void setBehavioralFinding(final BehavioralFindingDto behavioralFinding) {
+        this.behavioralFinding = behavioralFinding;
     }
 
     @java.lang.Override

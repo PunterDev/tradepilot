@@ -12,6 +12,8 @@ import RevengeTradingCalculatorPage from "./features/marketing/RevengeTradingCal
 import GuidePage from "./features/marketing/GuidePage";
 import { guides } from "./features/marketing/guideContent";
 import ResourcesPage from "./features/marketing/ResourcesPage";
+import SampleDemoPage from "./features/marketing/SampleDemoPage";
+import HowTradePilotWorksPage from "./features/marketing/HowTradePilotWorksPage";
 
 const directPages: Record<string, () => React.JSX.Element> = {
   "/": HomePage,
@@ -19,6 +21,8 @@ const directPages: Record<string, () => React.JSX.Element> = {
   "/privacy": PrivacyPage,
   "/terms": TermsPage,
   "/resources": ResourcesPage,
+  "/demo": SampleDemoPage,
+  "/how-tradepilot-works": HowTradePilotWorksPage,
   "/tools/trading-expectancy-calculator": TradingExpectancyCalculatorPage,
   "/tools/overtrading-calculator": OvertradingCalculatorPage,
   "/tools/revenge-trading-calculator": RevengeTradingCalculatorPage,

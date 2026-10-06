@@ -5,11 +5,17 @@ export type LeakType =
   | "CONFIDENCE"
   | "EMOTION"
   | "OVERTRADING"
+  | "POST_LOSS_OVERTRADING"
+  | "SIZE_ESCALATION_AFTER_LOSS"
   | "LONG_SHORT_BIAS"
   | "LARGE_LOSS"
   | "BREAKEVEN_OR_EARLY_EXIT";
 
 export type LeakSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type EvidenceStrength = "INSUFFICIENT" | "WEAK" | "MODERATE" | "STRONG";
+export type BehavioralMetrics = { sampleSize: number; winRate: number; expectancyR?: number | null; averagePnl: number };
+export type BehavioralCounterfactual = { applicable: boolean; supported: boolean; skippedTradeCount: number; skippedWinnerCount: number; skippedLoserCount: number; lossesAvoided: number; winnersForgone: number; actualPnl: number; counterfactualPnl: number; netHistoricalImpact: number };
+export type BehavioralFinding = { qualified: boolean; reasonNotQualified?: string | null; occurrenceCount: number; tradeSampleSize: number; sessionSampleSize: number; evidenceStrength: EvidenceStrength; baseline: BehavioralMetrics; triggered: BehavioralMetrics; counterfactual: BehavioralCounterfactual; engineVersion: string; ruleVersion: string; threshold?: number | null };
 
 export type LeakResult = {
   leakType: LeakType;
@@ -31,6 +37,7 @@ export type LeakResult = {
   relatedTradeCount?: number | null;
   relatedTradeIds: number[];
   generatedAt: string;
+  behavioralFinding?: BehavioralFinding | null;
 };
 
 export type LeakDetectorResponse = {
