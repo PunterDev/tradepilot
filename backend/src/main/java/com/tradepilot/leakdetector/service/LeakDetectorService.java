@@ -108,10 +108,34 @@ public class LeakDetectorService {
         addOvertradingLeak(leaks, context);
         addLargeLossLeak(leaks, context);
         addBreakevenLeak(leaks, context);
+        addPrimaryBehavioralFinding(leaks, context);
         List<LeakResultDto> ranked = deduplicateLeaks(leaks);
         ranked.sort(leakPriorityComparator());
         List<LeakResultDto> topLeaks = ranked.stream().limit(8).toList();
         return LeakDetectorResponse.of(null, accountId, false, true, false, false, 3, trades.size(), trades.size(), dataHash, topLeaks, topLeaks.isEmpty() ? "No statistically meaningful negative leak is visible yet. Keep journaling to strengthen the signal." : "Leak detector found " + topLeaks.size() + " behavior pattern(s) worth reviewing.", topLeaks.isEmpty() ? null : topLeaks.get(0).getTitle(), topLeaks.isEmpty() ? null : topLeaks.get(0).getEstimatedMonthlyImpact(), topLeaks.isEmpty() ? null : topLeaks.get(0).getRecommendedFix(), round(topLeaks.stream().map(LeakResultDto::getEstimatedMonthlyImpact).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add)), topLeaks.stream().map(LeakResultDto::getConfidenceScore).filter(Objects::nonNull).max(Integer::compareTo).orElse(null), generatedAt);
+    }
+
+    private void addPrimaryBehavioralFinding(List<LeakResultDto> leaks, LeakContext context) {
+        BehavioralFindingAnalyzer.analyze(context.trades()).stream()
+                .filter(result -> result.finding().qualified())
+                .sorted(Comparator
+                        .comparing((BehavioralFindingAnalyzer.Result result) -> result.finding().evidenceStrength().ordinal()).reversed()
+                        .thenComparing(result -> deterioration(result.finding()), Comparator.reverseOrder())
+                        .thenComparing(result -> result.type().name()))
+                .findFirst()
+                .ifPresent(result -> {
+                    LeakResultDto leak = metric(result.type(), result.title(), result.title(), result.relatedTrades(), context);
+                    leak.setBehavioralFinding(result.finding());
+                    leak.setRecommendedFix(result.finding().counterfactual().supported() ? result.recommendation() : "Review the pattern before changing your next-session rules.");
+                    leaks.add(leak);
+                });
+    }
+
+    private BigDecimal deterioration(com.tradepilot.leakdetector.dto.BehavioralFindingDto finding) {
+        if (finding.baseline().expectancyR() != null && finding.triggered().expectancyR() != null) {
+            return finding.baseline().expectancyR().subtract(finding.triggered().expectancyR());
+        }
+        return finding.baseline().averagePnl().subtract(finding.triggered().averagePnl());
     }
 
     private void addWorstGroup(List<LeakResultDto> leaks, LeakContext context, LeakType type, String baseTitle, Function<Trade, String> classifier) {

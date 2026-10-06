@@ -68,7 +68,7 @@ public class AiCoachService {
         validateOwnedAccount(user, accountId);
         LocalDate weekEnd = weekStart.plusDays(6);
         AiCoachSnapshot snapshot = findOrCreateCachedSnapshot(user, userId, accountId, CoachSnapshotType.WEEKLY, weekStart, weekEnd, false);
-        return mapper.toDto(snapshot);
+        return enrichWithTopLeak(mapper.toDto(snapshot), userId, accountId);
     }
 
     public CoachSnapshotDto generateDailyCoach(User user, CoachGenerateRequest request) {
@@ -87,7 +87,7 @@ public class AiCoachService {
         LocalDate weekStart = request.getPeriodStart();
         LocalDate weekEnd = request.getPeriodEnd() != null ? request.getPeriodEnd() : weekStart.plusDays(6);
         AiCoachSnapshot snapshot = findOrCreateCachedSnapshot(user, userId, request.getAccountId(), CoachSnapshotType.WEEKLY, weekStart, weekEnd, Boolean.TRUE.equals(request.getForceRefresh()), false, null);
-        return mapper.toDto(snapshot);
+        return enrichWithTopLeak(mapper.toDto(snapshot), userId, request.getAccountId());
     }
 
     public CoachSnapshotDto generateWeeklyCoachPreview(User user, CoachGenerateRequest request) {
@@ -254,6 +254,17 @@ public class AiCoachService {
     }
 
     private String historicalPatternMessage(LeakResultDto leak, boolean appliesToday) {
+        if (leak.getBehavioralFinding() != null) {
+            var finding = leak.getBehavioralFinding();
+            if (!finding.qualified()) {
+                return "Account-level pattern: Not enough evidence yet to treat this as a confirmed behavioral leak.";
+            }
+            String observed = leak.getTitle() + " was observed " + finding.occurrenceCount() + " times across " + finding.tradeSampleSize() + " analyzed trades.";
+            if (!finding.counterfactual().supported() || finding.counterfactual().netHistoricalImpact().signum() < 0) {
+                return "Account-level pattern: " + observed + " The tested counterfactual would not have improved historical results in the analyzed sample.";
+            }
+            return "Account-level pattern: " + observed;
+        }
         String summary = leak.getSummary() == null || leak.getSummary().isBlank() ? leak.getTitle() : leak.getSummary();
         String pattern = accountLevelPatternSummary(leak, summary);
         if (appliesToday) {
@@ -290,7 +301,9 @@ public class AiCoachService {
             try {
                 List<LeakResultDto> leaks = objectMapper.readValue(snapshot.getResultJson(), new TypeReference<>() {
                 });
-                return leaks.stream().max(Comparator.comparing((LeakResultDto leak) -> leak.getSeverity() == null ? 0 : leak.getSeverity().ordinal()).thenComparing(leak -> leak.getConfidenceScore() == null ? 0 : leak.getConfidenceScore()));
+                return leaks.stream()
+                        .filter(leak -> leak.getBehavioralFinding() == null || leak.getBehavioralFinding().qualified())
+                        .max(Comparator.comparing((LeakResultDto leak) -> leak.getSeverity() == null ? 0 : leak.getSeverity().ordinal()).thenComparing(leak -> leak.getConfidenceScore() == null ? 0 : leak.getConfidenceScore()));
             } catch (Exception e) {
                 return Optional.empty();
             }
