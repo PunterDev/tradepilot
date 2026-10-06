@@ -60,7 +60,7 @@ class FlywayPostgresBaselineIntegrationTest {
         }
 
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(18);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(24);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
@@ -100,6 +100,16 @@ class FlywayPostgresBaselineIntegrationTest {
                     .isEqualTo("017");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '018' and success = true"))
                     .isEqualTo("018");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '019' and success = true"))
+                    .isEqualTo("019");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '020' and success = true"))
+                    .isEqualTo("020");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '021' and success = true"))
+                    .isEqualTo("021");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '022' and success = true"))
+                    .isEqualTo("022");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '023' and success = true"))
+                    .isEqualTo("023");
 
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
@@ -108,6 +118,9 @@ class FlywayPostgresBaselineIntegrationTest {
             assertOtherV015SchemaAlignments(connection);
             assertStripeCheckoutAttemptBillingCycle(connection);
             assertUserAnalyticsExclusion(connection);
+            assertHistoricalMarketDataSchema(connection);
+            assertHistoricalMarketDataDuplicateInsertIsIdempotent(connection);
+            assertCanonicalBacktestTradeSchema(connection);
             assertStripeIndexesAndConstraints(connection);
             assertNegativePurchasedCreditsAreAllowed(connection);
             assertVerifierScriptReportsOk(connection);
@@ -140,7 +153,12 @@ class FlywayPostgresBaselineIntegrationTest {
                 "user_feature_previews",
                 "seo_acquisition_events",
                 "user_acquisition_attribution",
-                "rate_limit_windows"
+                "rate_limit_windows",
+                "market_bars",
+                "market_data_import_chunks",
+                "manual_backtest_sessions",
+                "manual_backtest_trades",
+                "manual_backtest_trade_events"
         );
         for (String table : tables) {
             assertThat(count(connection, """
@@ -350,6 +368,58 @@ class FlywayPostgresBaselineIntegrationTest {
                   and table_name = 'users'
                   and column_name = 'analytics_excluded'
                 """)).contains("false");
+    }
+
+    private static void assertHistoricalMarketDataSchema(Connection connection) throws SQLException {
+        assertVarcharColumn(connection, "market_bars", "symbol", 10, "NO");
+        assertVarcharColumn(connection, "market_bars", "continuous_symbol", 20, "NO");
+        assertVarcharColumn(connection, "market_bars", "source", 32, "NO");
+        assertVarcharColumn(connection, "market_bars", "timeframe", 10, "NO");
+        assertThat(scalar(connection, """
+                select data_type from information_schema.columns
+                where table_schema = 'public' and table_name = 'market_bars' and column_name = 'ts_event'
+                """)).isEqualTo("timestamp with time zone");
+        assertThat(indexDefinition(connection, "idx_market_bars_lookup")).contains("continuous_symbol").contains("timeframe").contains("ts_event");
+        assertThat(indexDefinition(connection, "idx_market_bars_instrument")).contains("instrument_id").contains("ts_event");
+        assertThat(indexDefinition(connection, "idx_market_data_import_chunks_lookup")).contains("continuous_symbol").contains("timeframe");
+    }
+
+    private static void assertHistoricalMarketDataDuplicateInsertIsIdempotent(Connection connection) throws SQLException {
+        String insert = """
+                insert into market_bars
+                (symbol, continuous_symbol, instrument_id, timeframe, ts_event, open, high, low, close, volume)
+                values ('NQ', 'NQ.v.0', 123456, '1m', '2026-01-02T14:30:00Z', 21000.25, 21001, 20999.75, 21000.50, 10)
+                on conflict (continuous_symbol, timeframe, ts_event) do nothing
+                """;
+        try (Statement statement = connection.createStatement()) {
+            assertThat(statement.executeUpdate(insert)).isEqualTo(1);
+            assertThat(statement.executeUpdate(insert)).isZero();
+        }
+        assertThat(count(connection, "select count(*) from market_bars where continuous_symbol = 'NQ.v.0' and timeframe = '1m'"))
+                .isEqualTo(1);
+        assertThat(scalar(connection, "select source from market_bars where continuous_symbol = 'NQ.v.0' and timeframe = '1m'"))
+                .isEqualTo("DATABENTO");
+    }
+
+    private static void assertCanonicalBacktestTradeSchema(Connection connection) throws SQLException {
+        for (String column : List.of("raw_r", "weighted_r", "outcome", "exit_model", "exit_time", "exit_price")) {
+            assertThat(scalar(connection, """
+                    select is_nullable
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name = 'backtest_trades'
+                      and column_name = '%s'
+                    """.formatted(column))).isEqualTo("YES");
+        }
+        for (String column : List.of("model_a_r", "model_b_r", "model_a_weighted_r", "model_b_weighted_r")) {
+            assertThat(scalar(connection, """
+                    select data_type
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name = 'backtest_trades'
+                      and column_name = '%s'
+                    """.formatted(column))).isEqualTo("numeric");
+        }
     }
 
     private static void assertRowLevelSecurityEnabled(Connection connection) throws SQLException {

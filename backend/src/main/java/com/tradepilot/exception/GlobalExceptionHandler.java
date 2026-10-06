@@ -5,6 +5,7 @@ import com.tradepilot.billing.AiCreditLimitExceededException;
 import com.tradepilot.billing.FeatureAccessException;
 import com.tradepilot.billing.StripeNotConfiguredException;
 import com.tradepilot.config.FeatureDisabledException;
+import com.tradepilot.marketdata.MarketDataException;
 import com.tradepilot.playbook.exception.PlaybookAiReviewIneligibleException;
 import com.stripe.exception.StripeException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -111,6 +112,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(StripeNotConfiguredException.class)
     public ResponseEntity<Map<String, Object>> handleStripeNotConfigured(StripeNotConfiguredException ex, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "STRIPE_NOT_CONFIGURED", ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(MarketDataException.class)
+    public ResponseEntity<Map<String, Object>> handleMarketData(MarketDataException ex, HttpServletRequest request) {
+        return response(ex.getStatus(), ex.getCode(), ex.getMessage(), request);
     }
 
     @ExceptionHandler(StripeException.class)

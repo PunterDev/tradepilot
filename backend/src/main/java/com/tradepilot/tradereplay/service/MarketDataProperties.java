@@ -45,6 +45,7 @@ public class MarketDataProperties {
 
     public static class Databento {
         private String apiKey = "";
+        private String historicalBaseUrl = "https://hist.databento.com/v0";
         private String dataset = "GLBX.MDP3";
         private String schema = "ohlcv-1m";
         private boolean costCheckEnabled = true;
@@ -52,6 +53,8 @@ public class MarketDataProperties {
 
         public String getApiKey() { return apiKey; }
         public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+        public String getHistoricalBaseUrl() { return historicalBaseUrl; }
+        public void setHistoricalBaseUrl(String historicalBaseUrl) { this.historicalBaseUrl = historicalBaseUrl; }
         public String getDataset() { return dataset; }
         public void setDataset(String dataset) { this.dataset = dataset; }
         public String getSchema() { return schema; }

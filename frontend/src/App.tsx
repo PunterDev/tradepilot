@@ -23,6 +23,8 @@ import {
   type AuthUser,
 } from "./api/authApi";
 import { getFeatureAvailability } from "./api/featureAvailabilityApi";
+import { getBacktestAccess } from "./api/backtestApi";
+import { getManualBacktestAccess } from "./api/manualBacktestApi";
 import { getPreAnalysisAccess } from "./api/preAnalysisApi";
 import { deleteAccount } from "./api/accountApi";
 import { saveJournal } from "./api/journalApi";
@@ -86,6 +88,9 @@ const FeatureUsagePage = lazy(() => import("./features/admin/feature-usage/Featu
 const ObservabilityPage = lazy(() => import("./features/admin/observability/ObservabilityPage"));
 const RetentionAnalyticsPage = lazy(() => import("./features/admin/retention/RetentionAnalyticsPage"));
 const SeoAnalyticsPage = lazy(() => import("./features/admin/seo/SeoAnalyticsPage"));
+const MarketDataPage = lazy(() => import("./features/admin/market-data/MarketDataPage"));
+const BacktestPage = lazy(() => import("./features/admin/backtest/BacktestPage"));
+const ManualBacktestPage = lazy(() => import("./features/manual-backtest/ManualBacktestPage"));
 const AdminUsersPage = lazy(() => import("./features/admin/users/AdminUsersPage"));
 const AnalyticsPage = lazy(() => import("./features/analytics/AnalyticsPage"));
 const BillingPage = lazy(() => import("./features/billing/BillingPage"));
@@ -385,6 +390,8 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [featureAvailability, setFeatureAvailability] = useState<FeatureAvailability>(disabledFeatureAvailability);
   const [preAnalysisAllowed, setPreAnalysisAllowed] = useState(false);
+  const [backtestAllowed, setBacktestAllowed] = useState(false);
+  const [manualBacktestAllowed, setManualBacktestAllowed] = useState<boolean | null>(null);
   const preAnalysisEnabled = featureAvailability.v2FeaturesEnabled && preAnalysisAllowed;
   const billing = useBillingUsage(true);
   const activation = useActivationStatus(!isAdmin);
@@ -410,6 +417,26 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         if (active) {
           setFeatureAvailability(disabledFeatureAvailability);
         }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getManualBacktestAccess().then((access) => active && setManualBacktestAllowed(access.allowed)).catch(() => active && setManualBacktestAllowed(false));
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getBacktestAccess()
+      .then((access) => {
+        if (active) setBacktestAllowed(access.allowed);
+      })
+      .catch(() => {
+        if (active) setBacktestAllowed(false);
       });
     return () => {
       active = false;
@@ -733,6 +760,8 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         accountCount={0}
         usage={billing.usage}
         preAnalysisAllowed={preAnalysisEnabled}
+        backtestAllowed={backtestAllowed}
+        manualBacktestAllowed={manualBacktestAllowed === true}
         onLogout={onLogout}
       >
         <Routes>
@@ -744,6 +773,10 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           <Route path="/admin/feature-funnels" element={<FeatureFunnelsPage />} />
           <Route path="/admin/feature-funnels/:funnelKey" element={<FeatureFunnelsPage />} />
           <Route path="/admin/analytics/seo" element={<SeoAnalyticsPage />} />
+          <Route path="/admin/market-data" element={<MarketDataPage />} />
+          <Route path="/backtest" element={backtestAllowed ? <BacktestPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/manual-backtest" element={manualBacktestAllowed === true ? <ManualBacktestPage /> : manualBacktestAllowed === null ? null : <Navigate to="/dashboard" replace />} />
+          <Route path="/admin/backtest" element={<Navigate to="/backtest" replace />} />
           <Route path="/admin/retention" element={<RetentionAnalyticsPage />} />
           <Route path="/admin/observability" element={<ObservabilityPage />} />
           <Route
@@ -828,6 +861,8 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
       usage={billing.usage}
       featureAvailability={featureAvailability}
       preAnalysisAllowed={preAnalysisEnabled}
+      backtestAllowed={backtestAllowed}
+      manualBacktestAllowed={manualBacktestAllowed === true}
       onLogout={onLogout}
     >
       <Routes>
@@ -1189,6 +1224,19 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
             )
           }
         />
+        <Route
+          path="/admin/market-data"
+          element={
+            user.role === "ADMIN" ? (
+              <MarketDataPage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route path="/backtest" element={backtestAllowed ? <BacktestPage /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/manual-backtest" element={manualBacktestAllowed === true ? <ManualBacktestPage /> : manualBacktestAllowed === null ? null : <Navigate to="/dashboard" replace />} />
+        <Route path="/admin/backtest" element={<Navigate to="/backtest" replace />} />
         <Route
           path="/admin/retention"
           element={

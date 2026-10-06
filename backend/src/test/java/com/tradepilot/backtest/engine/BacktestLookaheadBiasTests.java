@@ -1,0 +1,10 @@
+package com.tradepilot.backtest.engine;
+import com.tradepilot.backtest.model.BacktestBar; import org.junit.jupiter.api.Test; import java.math.*; import java.time.*; import java.util.*; import static org.assertj.core.api.Assertions.*;
+class BacktestLookaheadBiasTests { private BacktestBar bar(int minute,String h,String l){return new BacktestBar(Instant.parse("2026-09-08T14:"+String.format("%02d",minute)+":00Z"),1,new BigDecimal(l),new BigDecimal(h),new BigDecimal(l),new BigDecimal(h),1);}
+ @Test void swingIsUnavailableUntilRightConfirmationBarCloses(){var swings=new SwingDetector().confirmed(List.of(bar(0,"10","5"),bar(1,"15","7"),bar(2,"12","6"),bar(3,"11","5"),bar(4,"10","4")),1,2);assertThat(swings).anySatisfy(s->{assertThat(s.timestamp()).isEqualTo(bar(1,"15","7").time());assertThat(s.confirmedAt()).isEqualTo(bar(3,"11","5").time().plusSeconds(60));assertThat(s.confirmedAt()).isAfter(s.timestamp());});}
+ @Test void oneMinuteBarIsOnlyAvailableAtItsClose(){assertThat(BarTiming.availableAt(bar(3,"11","5"))).isEqualTo(Instant.parse("2026-09-08T14:04:00Z"));}
+ @Test void displacementUsesOnlyPriorBars(){var bars=List.of(bar(0,"11","10"),bar(1,"11","10"),bar(2,"11","10"),bar(3,"20","10"));var measured=new DisplacementDetector().measure(bars,3,3,new BigDecimal("2"),new BigDecimal("2"),new BigDecimal(".6"));assertThat(measured).hasValueSatisfying(m->assertThat(m.qualifies()).isTrue());}
+ @Test void incompleteFiveMinuteCandleIsNotAggregatedAsACompletedContext(){var result=new TimeframeAggregationService().aggregate(List.of(bar(0,"10","5"),bar(1,"11","6")),Duration.ofMinutes(5));assertThat(result).isEmpty();}
+ @Test void fiveMinuteFvgIsUnavailableUntilItsCandleCloses(){assertThat(BarTiming.availableAt(Instant.parse("2026-09-08T14:00:00Z"),Duration.ofMinutes(5))).isEqualTo(Instant.parse("2026-09-08T14:05:00Z"));}
+ @Test void incompleteHourlyAndFourHourObjectiveBarsAreUnavailable(){var bars=List.of(bar(0,"10","5"),bar(1,"11","6"));var aggregation=new TimeframeAggregationService();assertThat(aggregation.aggregate(bars,Duration.ofHours(1))).isEmpty();assertThat(aggregation.aggregate(bars,Duration.ofHours(4))).isEmpty();}
+}

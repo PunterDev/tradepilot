@@ -7,6 +7,8 @@ import com.tradepilot.billing.SubscriptionStatus;
 import com.tradepilot.entity.Trade;
 import com.tradepilot.entity.TradingAccount;
 import com.tradepilot.entity.User;
+import com.tradepilot.entitlement.FeatureEntitlementKey;
+import com.tradepilot.entitlement.FeatureEntitlementService;
 import com.tradepilot.enums.OutcomeType;
 import com.tradepilot.enums.PropFirmType;
 import com.tradepilot.enums.SessionType;
@@ -45,6 +47,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -60,6 +63,7 @@ class RbacSecurityTests {
     @Autowired PlaybookSetupRepository playbookSetupRepository;
     @Autowired TradePlaybookAssignmentRepository playbookAssignmentRepository;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired FeatureEntitlementService entitlementService;
 
     @Test
     void protectedEndpointsRejectMissingAndInvalidAuthentication() throws Exception {
@@ -106,6 +110,55 @@ class RbacSecurityTests {
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/admin/observability/summary").header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/admin/market-data/coverage").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/admin/market-data/coverage").header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void backtestRoutesRequirePrivateEntitlementRatherThanAdminRole() throws Exception {
+        User founder = createUser("rbac-backtest-founder@example.com", UserRole.USER);
+        User admin = createUser("rbac-backtest-admin@example.com", UserRole.ADMIN);
+        User normal = createUser("rbac-backtest-user@example.com", UserRole.USER);
+        entitlementService.setEntitlement(founder.getId(), FeatureEntitlementKey.PLAYBOOK_BACKTEST_BETA, true, "test founder access");
+        String founderToken = tokenFor(founder);
+        String adminToken = tokenFor(admin);
+        String userToken = tokenFor(normal);
+
+        mockMvc.perform(get("/api/v1/backtests/access").header("Authorization", "Bearer " + founderToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.allowed").value(true));
+        mockMvc.perform(get("/api/v1/backtests/access").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.allowed").value(false));
+
+        mockMvc.perform(get("/api/v1/backtests").header("Authorization", "Bearer " + founderToken))
+                .andExpect(status().isOk());
+        for (String token : java.util.List.of(adminToken, userToken)) {
+            mockMvc.perform(post("/api/v1/backtests")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(com.tradepilot.backtest.model.BacktestConfig.conservative(
+                                    com.tradepilot.marketdata.model.MarketInstrument.NQ,
+                                    LocalDate.of(2026, 9, 7), LocalDate.of(2026, 9, 10)))))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/backtests").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/backtests/999").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/backtests/999/trades").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/backtests/999/trades/999/chart").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isForbidden());
+        }
+
+        mockMvc.perform(get("/api/v1/backtests/999").header("Authorization", "Bearer " + founderToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/backtests/999/trades").header("Authorization", "Bearer " + founderToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/backtests/999/trades/999/chart").header("Authorization", "Bearer " + founderToken))
+                .andExpect(status().isNotFound());
     }
 
     @Test
