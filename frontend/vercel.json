@@ -40,6 +40,8 @@
     }
   ],
   "rewrites": [
+    { "source": "/demo", "destination": "/demo/index.html" },
+    { "source": "/how-tradepilot-works", "destination": "/how-tradepilot-works/index.html" },
     { "source": "/resources", "destination": "/resources/index.html" },
     { "source": "/guides/how-to-export-topstep-trades", "destination": "/guides/how-to-export-topstep-trades/index.html" },
     { "source": "/guides/how-to-export-tradovate-trades", "destination": "/guides/how-to-export-tradovate-trades/index.html" },

@@ -46,7 +46,7 @@ test("homepage fails closed to V1 content when V2 features are disabled", async 
   await expect(page.getByText("Playbook")).toHaveCount(0);
   await expect(page.getByText("TradePilot Coach remembers how you trade.")).toHaveCount(0);
   await expect(page.getByText("AI Trading Memory")).toHaveCount(0);
-  await expect(page.getByText("$249")).toHaveCount(0);
+  await expect(page.getByText("$249/year")).toBeVisible();
 
   const disabledRouteLinks = await page.locator("a").evaluateAll((links) =>
     links
@@ -133,7 +133,7 @@ test("homepage navigation anchors and CTAs target valid public destinations", as
   await expect(page.getByRole("link", { name: "Sign In" }).first()).toHaveAttribute("href", "/login");
   await expect(page.getByRole("link", { name: "Start Free" }).first()).toHaveAttribute("href", "/register");
   await expect(page.getByRole("link", { name: "Start Journaling Free" }).first()).toHaveAttribute("href", "/register");
-  await expect(page.getByRole("link", { name: "See How It Works" })).toHaveAttribute("href", "#how-it-works");
+  await expect(page.getByRole("link", { name: "See TradePilot in Action" })).toHaveAttribute("href", "/demo");
   await expect(page.getByRole("heading", { name: "Your next trading insight may already be in your history." })).toBeVisible();
 });
 
@@ -170,10 +170,10 @@ test("homepage keeps the four-step workflow readable", async ({ page }) => {
 
   const howItWorks = page.locator("#how-it-works");
   const processStrip = howItWorks.getByLabel("TradePilot Coach workflow");
-  await expect(processStrip.getByText("Import")).toBeVisible();
-  await expect(processStrip.getByText("Review")).toBeVisible();
-  await expect(processStrip.getByText("Detect")).toBeVisible();
-  await expect(processStrip.getByText("Improve")).toBeVisible();
+  await expect(processStrip.getByRole("heading", { name: "Import", exact: true })).toBeVisible();
+  await expect(processStrip.getByRole("heading", { name: "Review", exact: true })).toBeVisible();
+  await expect(processStrip.getByRole("heading", { name: "Detect", exact: true })).toBeVisible();
+  await expect(processStrip.getByRole("heading", { name: "Improve", exact: true })).toBeVisible();
   await expect(howItWorks.getByRole("heading", { name: "Import", exact: true })).toBeVisible();
   await expect(howItWorks.getByRole("heading", { name: "Review", exact: true })).toBeVisible();
   await expect(howItWorks.getByRole("heading", { name: "Detect", exact: true })).toBeVisible();
@@ -200,6 +200,11 @@ test("homepage pricing presents monthly V1 benefits clearly", async ({ page }) =
 
   const pricing = page.locator("#pricing");
   await expect(pricing.getByText("$29.99/mo")).toBeVisible();
+  await expect(pricing.getByText("$249/year")).toBeVisible();
+  await expect(pricing.getByText("Save $110.88/year")).toBeVisible();
+  await expect(pricing.getByRole("link", { name: "Start Pro" })).toHaveAttribute("href", "/register");
+  await expect(pricing.getByText(/payments are being prepared/i)).toHaveCount(0);
+  await expect(pricing.getByText(/waitlist/i)).toHaveCount(0);
   await expect(pricing.getByText("100 monthly AI credits")).toBeVisible();
   await expect(pricing.getByText("Trading DNA")).toHaveCount(0);
 });

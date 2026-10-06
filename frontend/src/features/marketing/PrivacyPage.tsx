@@ -13,7 +13,7 @@ const sections = [
   },
   {
     title: "Trading Data and Uploaded CSVs",
-    body: "Uploaded CSVs and trade data are used to create your private trading records, analytics, calendars, session reviews, and performance insights. Your trading data is scoped to your authenticated account.",
+    body: "For supported CSV imports, TradePilot Coach does not need your broker password. Uploaded CSVs and trade data are used to create your private trading records, analytics, calendars, session reviews, and performance insights. Your trading data is scoped to your authenticated account and is not sold as a customer data product.",
   },
   {
     title: "AI Processing",
@@ -25,7 +25,11 @@ const sections = [
   },
   {
     title: "Data Security",
-    body: "We use authentication, user-scoped access controls, secure token handling, and database-level safeguards designed to protect account and trading data.",
+    body: "Account access is protected with authentication and account-scoped access controls designed to keep one user's trading records separate from another's. We use safeguards appropriate to an online software service, but no internet service can promise absolute security.",
+  },
+  {
+    title: "No Trade Execution",
+    body: "TradePilot Coach is analytical and educational software. It does not connect to your broker to place trades, copy trades, or send trade instructions.",
   },
   {
     title: "Account Deletion",

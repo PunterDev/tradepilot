@@ -48,7 +48,7 @@ const memoryTransitionCards = [
 const workflowSteps = [
   {
     title: "Import",
-    copy: "Bring in your trade history.",
+    copy: "Import supported completed-trade CSV history.",
   },
   {
     title: "Review",
@@ -56,7 +56,7 @@ const workflowSteps = [
   },
   {
     title: "Detect",
-    copy: "Surface recurring behavioral patterns.",
+    copy: "Apply evidence thresholds before surfacing recurring behavior.",
   },
   {
     title: "Improve",
@@ -171,7 +171,12 @@ const faqs = [
   {
     question: "Is my trading data secure?",
     answer:
-      "TradePilot Coach uses authenticated APIs, account ownership checks, and role-based admin access to keep user data scoped correctly.",
+      "Your imported trade history is scoped to your account. TradePilot Coach does not need your broker password for the supported CSV workflow, does not place trades, and does not sell your trading data.",
+  },
+  {
+    question: "Can I delete my account and trading data?",
+    answer:
+      "Yes. You can request account and data deletion through support. See the Privacy Policy for the data types involved and any billing or security retention limits.",
   },
   {
     question: "Who is TradePilot Coach built for?",
@@ -247,8 +252,15 @@ export default function HomePage() {
               >
                 Start Journaling Free
               </Link>
-              <a className="marketing-button ghost" href="#how-it-works">See How It Works</a>
+              <Link
+                className="marketing-button ghost"
+                to="/demo"
+                onClick={() => trackSeoCtaClick("/", "See TradePilot in Action", "/demo")}
+              >
+                See TradePilot in Action
+              </Link>
             </div>
+            <p className="hero-demo-copy">No signup. No CSV. Explore a sample futures trading account.</p>
             <p className="marketing-trust-copy">
               {showTradingMemory
                 ? <>AI execution intelligence and coaching for futures traders. Import <Link className="marketing-inline-link" to="/topstep-trading-journal">Topstep</Link> and <Link className="marketing-inline-link" to="/tradovate-trading-journal">Tradovate</Link> trade history by CSV.</>
@@ -527,9 +539,7 @@ export default function HomePage() {
             <div>
               <div className="marketing-eyebrow">Pricing</div>
               <h2 className="marketing-section-title">Turn your trading history into your next coaching insight.</h2>
-              <p className="marketing-section-copy">
-                Start with Free. Pro availability is currently limited while public payments are being prepared.
-              </p>
+              <p className="marketing-section-copy">Start with Free, then subscribe to Pro when you are ready for deeper review and coaching.</p>
             </div>
           </header>
           <div className="pricing-grid">
@@ -549,9 +559,10 @@ export default function HomePage() {
             <article className="pricing-card pro">
               <div className="pricing-card-top">
                 <h3>{marketingPricing.pro.name}</h3>
-                <span className="popular-badge">Limited access</span>
+                <span className="popular-badge">Available now</span>
               </div>
               <div className="pricing-price">{marketingPricing.pro.price}</div>
+              <p className="pricing-annual-price">or {marketingPricing.pro.yearlyPrice} <span>Save {marketingPricing.pro.yearlySavings}</span></p>
               <p className="marketing-section-copy">{marketingPricing.pro.description}</p>
               <ul>
                 {proBenefits.map((benefit) => (
@@ -564,12 +575,12 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Link className="marketing-button primary pricing-cta" to="/register">Join Pro waitlist</Link>
+              <Link className="marketing-button primary pricing-cta" to="/register">Start Pro</Link>
             </article>
           </div>
           <p className="pricing-note">
             AI usage is subject to the monthly credit allowance. Cached AI results remain viewable without consuming credits.
-            Pro availability is currently limited while public payments are being prepared.
+            Credit packs are also available for additional AI usage.
           </p>
           <div className="final-cta">
             <h2 className="marketing-section-title">Your next trading insight may already be in your history.</h2>
@@ -682,12 +693,12 @@ function LeakReportMockup({ compact = false }: { compact?: boolean }) {
           <div className="report-kicker">Execution Leak Report</div>
           <h2>{compact ? "Overtrading follows two consecutive losses." : "You lose the most after continuing to trade following two consecutive losses."}</h2>
         </div>
-        <span className="report-badge">Good signal</span>
+        <span className="report-badge">Strong evidence</span>
       </div>
       <div className="report-stats">
         <div>
-          <span>Illustrative monthly impact</span>
-          <strong className="loss">-$1,257</strong>
+          <span>Illustrative historical impact</span>
+          <strong className="loss">Directional</strong>
         </div>
         {!compact && (
           <div>
@@ -696,8 +707,8 @@ function LeakReportMockup({ compact = false }: { compact?: boolean }) {
           </div>
         )}
         <div>
-          <span>Confidence</span>
-          <strong>76%</strong>
+          <span>Evidence strength</span>
+          <strong>Strong</strong>
           <div className="confidence-track"><span style={{ width: "76%" }} /></div>
         </div>
       </div>
@@ -709,6 +720,7 @@ function LeakReportMockup({ compact = false }: { compact?: boolean }) {
           {!compact && <li>Review related trades and write one rule.</li>}
         </ol>
       </div>
+      <p className="leak-demo-disclaimer">Illustrative sample only. Historical patterns and estimated impact do not predict future results.</p>
     </div>
   );
 }
