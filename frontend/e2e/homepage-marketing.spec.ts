@@ -91,7 +91,8 @@ test("homepage keeps the Trading Memory preview gated behind its feature flag", 
 
   await expect(page.getByRole("heading", { level: 1, name: "Your P&L tells you what happened. TradePilot Coach tells you why." })).toBeVisible();
   await expect(page.getByLabel("TradePilot Coach product highlights").getByText("Trading Memory")).toBeVisible();
-  await expect(page.getByText("Have I made this trade before?")).toBeVisible();
+  await expect(page.getByText("Have you made this trade before?")).toBeVisible();
+  await expect(page.getByText("Yes — TradePilot found a recurring pattern.")).toBeVisible();
   await expect(page.getByText("Most journals tell you what you traded. TradePilot Coach helps you understand how you traded.")).toBeVisible();
   await expect(page.getByText("AI Trading Memory")).toBeVisible();
   await expect(page.getByText("Trading DNA")).toBeVisible();
@@ -122,24 +123,21 @@ test("homepage navigation anchors and CTAs target valid public destinations", as
   }
 
   await expect(page.getByRole("link", { name: "Sign In" }).first()).toHaveAttribute("href", "/login");
-  await expect(page.getByRole("link", { name: "Start Free" }).first()).toHaveAttribute("href", "/register");
-  await expect(page.getByRole("link", { name: "See TradePilot in Action" })).toHaveAttribute("href", "/demo");
+  await expect(page.getByRole("link", { name: "Try Free" }).first()).toHaveAttribute("href", "/register");
+  await expect(page.getByRole("link", { name: "See the Demo" }).first()).toHaveAttribute("href", "/demo");
   await expect(page.getByRole("heading", { name: "See what TradePilot Coach finds in your trading." })).toBeVisible();
   await expect(page.getByRole("link", { name: "Try Sample Demo" })).toHaveAttribute("href", "/demo");
 });
 
-test("homepage keeps the three-step workflow readable", async ({ page }) => {
+test("homepage keeps the current five-step workflow readable", async ({ page }) => {
   await mockFeatureAvailability(page, disabledAvailability);
   await page.goto("/");
 
   const howItWorks = page.locator("#how-it-works");
   const processStrip = howItWorks.getByLabel("TradePilot Coach workflow");
-  await expect(processStrip.getByRole("heading", { name: "Import", exact: true })).toBeVisible();
-  await expect(processStrip.getByRole("heading", { name: "Detect", exact: true })).toBeVisible();
-  await expect(processStrip.getByRole("heading", { name: "Coach", exact: true })).toBeVisible();
-  await expect(howItWorks.getByRole("heading", { name: "Import", exact: true })).toBeVisible();
-  await expect(howItWorks.getByRole("heading", { name: "Detect", exact: true })).toBeVisible();
-  await expect(howItWorks.getByRole("heading", { name: "Coach", exact: true })).toBeVisible();
+  for (const step of ["Import", "Verify", "Detect", "Explain", "Improve"]) {
+    await expect(processStrip.getByRole("heading", { name: step, exact: true })).toBeVisible();
+  }
 });
 
 for (const width of [390, 320]) {
@@ -150,7 +148,7 @@ for (const width of [390, 320]) {
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
-    await expect(page.getByRole("link", { name: "See TradePilot in Action" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Try Free" }).first()).toBeVisible();
     await expect(page.getByText("Why traders need more than a journal")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Built from problems futures traders actually face." })).toBeVisible();
   });

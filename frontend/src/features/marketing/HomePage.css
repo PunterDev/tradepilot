@@ -272,6 +272,11 @@
 }
 
 .sample-proof-section .marketing-section-header { margin-bottom: 28px; }
+.sample-trust-note { max-width: 720px; margin: 22px auto 0; text-align: center; }
+.data-trust-section { padding-top: 42px; padding-bottom: 42px; }
+.data-trust-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr); gap: 42px; align-items: center; }
+.data-trust-card { display: grid; gap: 12px; padding: 24px; border: 1px solid rgba(45, 212, 191, .28); border-radius: 8px; background: rgba(15, 23, 42, .66); color: #e5eefc; }
+.data-trust-card strong { font-size: 18px; }.data-trust-card span { color: #b7c5d9; }.data-trust-card div { display: flex; flex-wrap: wrap; gap: 10px; }.data-trust-card button { min-height: 44px; padding: 0 14px; border: 1px solid rgba(148,163,184,.25); border-radius: 8px; background: #0f172a; color: #e5eefc; font: inherit; font-weight: 800; }
 
 .proof-sequence {
   display: grid;
@@ -291,6 +296,7 @@
 .proof-sequence article + article { border-left: 1px solid rgba(148, 163, 184, 0.14); }
 .proof-sequence span { color: #67e8f9; font-size: 12px; font-weight: 950; letter-spacing: 0.06em; text-transform: uppercase; }
 .proof-sequence strong { color: #e5eefc; font-size: 17px; line-height: 1.42; }
+@media (max-width: 720px) { .data-trust-layout { grid-template-columns: 1fr; gap: 24px; } .proof-sequence { grid-template-columns: 1fr; } .proof-sequence article + article { border-left: 0; border-top: 1px solid rgba(148,163,184,.14); } .marketing-title { font-size: 36px; line-height: 1.04; letter-spacing: 0; } .marketing-section-title { font-size: 27px; } }
 
 .journal-difference-layout {
   display: grid;
@@ -771,17 +777,18 @@
 }
 
 .memory-preview-top h2 {
-  margin: 12px 0 0;
-  max-width: 520px;
+  margin: 10px 0 0;
+  max-width: 390px;
   color: #f8fafc;
-  font-size: clamp(28px, 3.35vw, 44px);
-  line-height: 1.02;
-  letter-spacing: -0.045em;
+  font-size: clamp(32px, 2.65vw, 38px);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
 }
+.memory-preview-result { margin: 10px 0 0; color: #99f6e4; font-size: 16px; font-weight: 850; line-height: 1.4; }
 
 .memory-insight-block {
-  margin-top: 16px;
-  padding: 20px;
+  margin-top: 12px;
+  padding: 18px;
   border-radius: 20px;
   border: 1px solid rgba(52, 211, 153, 0.2);
   background: rgba(20, 184, 166, 0.1);
@@ -2853,10 +2860,13 @@
     width: min(100% - 28px, 1180px);
   }
 
-  .marketing-nav-links,
-  .marketing-nav-actions {
+  .marketing-nav-links {
     display: none;
   }
+
+  .marketing-nav-actions { display: flex; margin-left: auto; gap: 8px; }
+  .marketing-nav-actions .ghost { display: none; }
+  .marketing-nav-actions .marketing-button { min-height: 44px; padding: 0 12px; font-size: 15px; white-space: nowrap; }
 
   .marketing-mobile-toggle {
     display: block;
