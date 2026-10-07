@@ -36,11 +36,19 @@ const workflowSteps = [
     copy: "Bring in supported futures trade history by CSV.",
   },
   {
+    title: "Verify",
+    copy: "Confirm your imported trade count and net P&L against your platform.",
+  },
+  {
     title: "Detect",
     copy: "Find recurring execution patterns with evidence from your trades.",
   },
   {
-    title: "Coach",
+    title: "Explain",
+    copy: "Compare baseline and triggered behavior so the finding is understandable.",
+  },
+  {
+    title: "Improve",
     copy: "Leave each review with one clear next-session rule.",
   },
 ];
@@ -144,22 +152,22 @@ export default function HomePage() {
               Your P&amp;L tells you what happened. <span className="brand-accent">TradePilot Coach tells you why.</span>
             </h1>
             <p className="marketing-subtitle hero-support">
-              Review your trading history for the execution patterns, discipline gaps, and next-session rules that a P&amp;L report cannot show.
+              Import your futures trades and uncover the behaviors behind your results. TradePilot uses your actual trading history to identify recurring leaks, show the evidence, and give you one clear focus for your next session.
             </p>
             <div className="marketing-hero-actions">
               <Link
                 className="marketing-button primary"
-                to="/demo"
-                onClick={() => trackSeoCtaClick("/", "See TradePilot in Action", "/demo")}
+                to="/register"
+                onClick={() => trackSeoCtaClick("/", "Try TradePilot Free", "/register")}
               >
-                See TradePilot in Action
+                Try TradePilot Free
               </Link>
               <Link
                 className="marketing-button ghost"
-                to="/register"
-                onClick={() => trackSeoCtaClick("/", "Start Free", "/register")}
+                to="/demo"
+                onClick={() => trackSeoCtaClick("/", "See the Demo", "/demo")}
               >
-                Start Free
+                See the Demo
               </Link>
             </div>
             <p className="hero-demo-copy">No signup. No CSV. Explore a sample futures trading account.</p>
@@ -182,14 +190,22 @@ export default function HomePage() {
         <div className="marketing-container">
           <header className="marketing-section-header centered">
             <div className="marketing-eyebrow">Sample product proof</div>
-            <h2 className="marketing-section-title" id="sample-proof-title">See the pattern, the evidence, and the next rule.</h2>
+            <h2 className="marketing-section-title" id="sample-proof-title">From trading history to one clear behavioral insight</h2>
             <p className="marketing-section-copy">The sample account is illustrative only. It shows the shape of a review, not a trading recommendation.</p>
           </header>
           <div className="proof-sequence" aria-label="Sample analysis sequence">
-            <article><span>Detected pattern</span><strong>Trading continued after two consecutive losses.</strong></article>
-            <article><span>Evidence</span><strong>Strong evidence from the selected trade history.</strong></article>
-            <article><span>Next-session rule</span><strong>Pause for 20 minutes before considering another entry.</strong></article>
+            <article><span>01 — Pattern</span><strong>Post-loss overtrading</strong></article>
+            <article><span>02 — Evidence</span><strong>8 qualifying occurrences. Triggered performance below baseline.</strong></article>
+            <article><span>03 — Next rule</span><strong>After two consecutive losses, pause for 20 minutes.</strong></article>
           </div>
+          <p className="marketing-trust-copy sample-trust-note">TradePilot detects the pattern from your trading data first. AI helps explain it — it does not invent the finding.</p>
+        </div>
+      </section>
+
+      <section className="marketing-section data-trust-section">
+        <div className="marketing-container data-trust-layout">
+          <div><div className="marketing-eyebrow">Data trust</div><h2 className="marketing-section-title">Your numbers should match first.</h2><p className="marketing-section-copy">After an import, verify the trade count and net P&amp;L against your platform before you rely on the analysis.</p></div>
+          <div className="data-trust-card"><strong>32 trades imported</strong><strong>Net P&amp;L: +$664.30</strong><span>Does this match your trading platform?</span><div><button type="button">Yes, looks correct</button><button type="button">Something looks wrong</button></div></div>
         </div>
       </section>
 
@@ -431,7 +447,8 @@ function TradingMemoryHeroPreview() {
       <div className="memory-preview-top">
         <div>
           <div className="report-kicker">Trading Memory</div>
-          <h2>Have I made this trade before?</h2>
+          <h2>Have you made this trade before?</h2>
+          <p className="memory-preview-result">Yes — TradePilot found a recurring pattern.</p>
         </div>
         <span className="report-badge">5 similar trades</span>
       </div>

@@ -42,28 +42,30 @@ export function MarketingNavbar() {
         </div>
         <div className="marketing-nav-actions">
           <Link className="marketing-button ghost" to="/login">Sign In</Link>
-          <Link className="marketing-button primary" to="/register">Start Free</Link>
+          <Link className="marketing-button primary" to="/register">Try Free</Link>
         </div>
         <button
           type="button"
           className="marketing-mobile-toggle"
           aria-label="Toggle navigation"
+          aria-expanded={mobileOpen}
+          aria-controls="marketing-mobile-navigation"
           onClick={() => setMobileOpen((current) => !current)}
         >
           Menu
         </button>
       </div>
       <div className="marketing-container">
-        <div className={`marketing-mobile-panel ${mobileOpen ? "open" : ""}`}>
-          <a className="marketing-button ghost" href="/#features">Features</a>
-          <a className="marketing-button ghost" href="/#how-it-works">How It Works</a>
-          <Link className="marketing-button ghost" to="/demo">Demo</Link>
-          <a className="marketing-button ghost" href="/#pricing">Pricing</a>
-          <Link className="marketing-button ghost" to="/tools/trading-expectancy-calculator">Free Tools</Link>
-          <Link className="marketing-button ghost" to="/resources">Resources</Link>
-          <a className="marketing-button ghost" href="/#faq">FAQ</a>
-          <Link className="marketing-button ghost" to="/login">Sign In</Link>
-          <Link className="marketing-button primary" to="/register">Start Free</Link>
+        <div id="marketing-mobile-navigation" className={`marketing-mobile-panel ${mobileOpen ? "open" : ""}`}>
+          <a className="marketing-button ghost" href="/#features" onClick={() => setMobileOpen(false)}>Features</a>
+          <a className="marketing-button ghost" href="/#how-it-works" onClick={() => setMobileOpen(false)}>How It Works</a>
+          <Link className="marketing-button ghost" to="/demo" onClick={() => setMobileOpen(false)}>See the Demo</Link>
+          <a className="marketing-button ghost" href="/#pricing" onClick={() => setMobileOpen(false)}>Pricing</a>
+          <Link className="marketing-button ghost" to="/tools/trading-expectancy-calculator" onClick={() => setMobileOpen(false)}>Free Tools</Link>
+          <Link className="marketing-button ghost" to="/resources" onClick={() => setMobileOpen(false)}>Resources</Link>
+          <a className="marketing-button ghost" href="/#faq" onClick={() => setMobileOpen(false)}>FAQ</a>
+          <Link className="marketing-button ghost" to="/login" onClick={() => setMobileOpen(false)}>Sign In</Link>
+          <Link className="marketing-button primary" to="/register" onClick={() => setMobileOpen(false)}>Try TradePilot Free</Link>
         </div>
       </div>
     </nav>
