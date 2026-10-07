@@ -114,6 +114,21 @@ class RbacSecurityTests {
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/admin/market-data/coverage").header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/admin/data-trust/quality").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.importTrust").exists())
+                .andExpect(jsonPath("$.importTrust.reviewed").exists())
+                .andExpect(jsonPath("$.importTrust.matched").exists())
+                .andExpect(jsonPath("$.importTrust.mismatched").exists())
+                .andExpect(jsonPath("$.importTrust.notReviewed").exists())
+                .andExpect(jsonPath("$.insightTrust").exists())
+                .andExpect(jsonPath("$.insightTrust.rated").exists())
+                .andExpect(jsonPath("$.insightTrust.positive").exists())
+                .andExpect(jsonPath("$.insightTrust.negative").exists());
+        mockMvc.perform(get("/api/v1/admin/data-trust/quality").header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/admin/data-trust/quality"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

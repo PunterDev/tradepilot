@@ -29,7 +29,7 @@ class JpaFlywayStaticSchemaContractTests {
     void everyEntityTableExplicitColumnLengthAndNamedIndexIsRepresentedInFlywaySources() throws IOException {
         String migrations = migrationSources();
         List<Path> entities = entitySources();
-        assertThat(entities).hasSize(56);
+        assertThat(entities).hasSize(58);
 
         for (Path entity : entities) {
             String source = Files.readString(entity);

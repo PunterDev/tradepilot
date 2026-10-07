@@ -60,7 +60,7 @@ export default function AppShell({ user, accountCount, usage, featureAvailabilit
     return navItem;
   });
   const adminBaseNav: NavItem[] = accountCount > 0
-    ? [...userNav, { label: "Admin", to: "/admin" }, { label: "Users", to: "/admin/users" }, { label: "Contact Messages", to: "/admin/contact-messages" }, { label: "Feature Usage", to: "/admin/feature-usage" }, { label: "Funnels", to: "/admin/feature-funnels" }, { label: "SEO Analytics", to: "/admin/analytics/seo" }, { label: "Market Data", to: "/admin/market-data" }, { label: "Retention Analytics", to: "/admin/retention" }, { label: "Observability", to: "/admin/observability" }]
+    ? [...userNav, { label: "Admin", to: "/admin" }, { label: "Users", to: "/admin/users" }, { label: "Contact Messages", to: "/admin/contact-messages" }, { label: "Feature Usage", to: "/admin/feature-usage" }, { label: "Funnels", to: "/admin/feature-funnels" }, { label: "SEO Analytics", to: "/admin/analytics/seo" }, { label: "Data Trust", to: "/admin/data-trust" }, { label: "Market Data", to: "/admin/market-data" }, { label: "Retention Analytics", to: "/admin/retention" }, { label: "Observability", to: "/admin/observability" }]
     : [
         { label: "Admin", to: "/admin" },
         { label: "Users", to: "/admin/users" },
@@ -69,6 +69,7 @@ export default function AppShell({ user, accountCount, usage, featureAvailabilit
         { label: "Feature Usage", to: "/admin/feature-usage" },
         { label: "Funnels", to: "/admin/feature-funnels" },
         { label: "SEO Analytics", to: "/admin/analytics/seo" },
+        { label: "Data Trust", to: "/admin/data-trust" },
         { label: "Market Data", to: "/admin/market-data" },
         { label: "Retention Analytics", to: "/admin/retention" },
         { label: "Observability", to: "/admin/observability" },

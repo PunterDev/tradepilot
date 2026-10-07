@@ -53,6 +53,7 @@ export function useDashboardData({
   const [importFeedback, setImportFeedback] = useState<ImportFeedback | null>(null);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [reconciliationImportId, setReconciliationImportId] = useState<number | null>(null);
 
   async function loadDashboardStats(accountId: SelectedAccountId) {
     if (!accountId) return;
@@ -232,6 +233,7 @@ export function useDashboardData({
       setImportPreview(null);
 
       const savedCount = Array.isArray(saved) ? saved.length : saved.savedCount;
+      setReconciliationImportId(Array.isArray(saved) ? null : saved.importId);
       setImportFeedback({
         type: savedCount === 0 ? "warning" : "success",
         message: savedCount === 0
@@ -289,6 +291,7 @@ export function useDashboardData({
     saving,
     dashboardStats,
     loadingStats,
+    reconciliationImportId,
     importPreview,
     importFeedback,
     handleCsvUpload,

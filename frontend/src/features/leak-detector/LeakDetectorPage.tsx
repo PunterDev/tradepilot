@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { TradingAccount } from "../../api/accountApi";
 import { getLeakDetector, regenerateLeakDetector } from "../../api/leakDetectorApi";
+import { getInsightFeedback, saveInsightFeedback, type InsightFeedbackReason } from "../../api/dataTrustApi";
 import PageHeader from "../../layout/PageHeader";
 import { button } from "../../styles/dashboardStyles";
 import type { BillingUsage } from "../../types/billing";
@@ -137,6 +138,7 @@ export default function LeakDetectorPage({
                   key={`${leak.leakType}-${leak.title}`}
                   leak={leak}
                   rank={index + 1}
+                  snapshotId={data.id}
                   onTradeSelect={onTradeSelect}
                 />
               ))}
@@ -221,7 +223,7 @@ function RecoveryPlan({ leak }: { leak?: LeakResult }) {
   );
 }
 
-function LeakCard({ leak, rank, onTradeSelect }: { leak: LeakResult; rank: number; onTradeSelect: (tradeId: number) => void }) {
+function LeakCard({ leak, rank, snapshotId, onTradeSelect }: { leak: LeakResult; rank: number; snapshotId?: number; onTradeSelect: (tradeId: number) => void }) {
   const relatedTradeCount = getRelatedTradeCount(leak);
   const ctaText = getLeakCtaText(leak);
   const canOpenRelatedTrade = leak.relatedTradeIds?.length > 0;
@@ -252,6 +254,7 @@ function LeakCard({ leak, rank, onTradeSelect }: { leak: LeakResult; rank: numbe
         <span style={fixLabel}>Recommended fix</span>
         <p style={fixText}>{leak.recommendedFix}</p>
       </div>
+      {snapshotId && leak.behavioralFinding && <InsightFeedbackControl snapshotId={snapshotId} findingType={leak.leakType} />}
       {relatedTradeCount > 0 && (
         <button
           type="button"
@@ -264,6 +267,15 @@ function LeakCard({ leak, rank, onTradeSelect }: { leak: LeakResult; rank: numbe
       )}
     </article>
   );
+}
+
+function InsightFeedbackControl({ snapshotId, findingType }: { snapshotId: number; findingType: string }) {
+  const [feedback, setFeedback] = useState<{ helpful: boolean; reason: InsightFeedbackReason | null } | null>(null);
+  const [showReasons, setShowReasons] = useState(false);
+  useEffect(() => { getInsightFeedback(snapshotId, findingType).then((value) => { setFeedback(value); setShowReasons(value?.helpful === false); }).catch(() => setFeedback(null)); }, [snapshotId, findingType]);
+  async function save(helpful: boolean, reason?: InsightFeedbackReason) { const next = await saveInsightFeedback(snapshotId, findingType, helpful, reason); setFeedback(next); setShowReasons(!helpful); }
+  const reasons: Array<[InsightFeedbackReason, string]> = [["WRONG_TRADES", "Wrong trades"], ["WRONG_CONCLUSION", "Wrong conclusion"], ["MISSING_CONTEXT", "Missing context"], ["PNL_LOOKS_WRONG", "P&L looks wrong"], ["OTHER", "Other"]];
+  return <section style={feedbackBox}><strong>Was this insight accurate?</strong><div style={{ marginTop: 10 }}><button type="button" style={{ ...feedbackButton, ...(feedback?.helpful ? selectedFeedback : {}) }} onClick={() => void save(true)}>👍 Yes</button><button type="button" style={{ ...feedbackButton, ...(!feedback?.helpful && feedback ? selectedFeedback : {}) }} onClick={() => setShowReasons(true)}>👎 No</button></div>{showReasons && <div style={{ marginTop: 10 }}>{reasons.map(([reason, label]) => <button key={reason} type="button" style={{ ...reasonButton, ...(feedback?.reason === reason ? selectedFeedback : {}) }} onClick={() => void save(false, reason)}>{label}</button>)}</div>}{feedback && <p style={{ ...metricHelper, marginTop: 10 }}>Thanks — your feedback helps improve TradePilot.</p>}</section>;
 }
 
 function BehavioralTrust({ finding }: { finding: NonNullable<LeakResult["behavioralFinding"]> }) {
@@ -590,5 +602,9 @@ const description: CSSProperties = { marginTop: 16, color: "#cbd5e1", lineHeight
 const fixBox: CSSProperties = { marginTop: 16, padding: 14, borderRadius: 8, border: "1px solid rgba(52,211,153,0.2)", background: "rgba(20,83,45,0.18)" };
 const fixLabel: CSSProperties = { color: "#86efac", fontSize: 12, fontWeight: 900, textTransform: "uppercase" };
 const fixText: CSSProperties = { margin: "6px 0 0", color: "#dcfce7", lineHeight: 1.5 };
+const feedbackBox: CSSProperties = { marginTop: 16, padding: 14, borderRadius: 8, border: "1px solid rgba(125,211,252,0.2)", background: "rgba(8,47,73,0.18)", color: "#e5eefc" };
+const feedbackButton: CSSProperties = { marginRight: 8, padding: "8px 10px", borderRadius: 6, border: "1px solid rgba(148,163,184,0.3)", background: "#0f172a", color: "#e5eefc", cursor: "pointer", fontWeight: 800 };
+const reasonButton: CSSProperties = { margin: "0 6px 6px 0", padding: "7px 9px", borderRadius: 6, border: "1px solid rgba(148,163,184,0.25)", background: "#0f172a", color: "#cbd5e1", cursor: "pointer" };
+const selectedFeedback: CSSProperties = { borderColor: "#34d399", background: "rgba(20,83,45,0.35)", color: "#bbf7d0" };
 const linkButton: CSSProperties = { marginTop: 14, border: "1px solid rgba(56,189,248,0.26)", borderRadius: 8, padding: "10px 12px", background: "rgba(8,47,73,0.24)", color: "#bae6fd", fontWeight: 850, cursor: "pointer" };
 const disabledLinkButton: CSSProperties = { opacity: 0.62, cursor: "not-allowed" };

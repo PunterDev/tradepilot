@@ -5,6 +5,7 @@ import java.util.List;
 public record TradeImportSaveResponse(
         TradeImportPreviewResponse preview,
         List<TradeResponse> savedTrades,
-        int savedCount
+        int savedCount,
+        Long importId
 ) {
 }
