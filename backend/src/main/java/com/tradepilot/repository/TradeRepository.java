@@ -116,6 +116,8 @@ public interface TradeRepository extends JpaRepository<Trade, Long>, JpaSpecific
     @EntityGraph(attributePaths = {"account"})
     List<Trade> findByUser_IdAndIdIn(Long userId, List<Long> ids);
 
+    List<Trade> findByImportBatch_Id(Long importBatchId);
+
     boolean existsByUserAndAccount_IdAndExternalTradeKey(User user, Long accountId, String externalTradeKey);
 
     @Query("""

@@ -15,6 +15,8 @@ import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.seoanalytics.SeoAnalyticsService;
 import com.tradepilot.service.TradeService;
 import com.tradepilot.service.TradingAccountService;
+import com.tradepilot.repository.ImportBatchRepository;
+import com.tradepilot.datatrust.DataTrustService;
 import com.tradepilot.tradereplay.service.TradeReplayService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -38,6 +40,8 @@ public class TradeCsvImportService {
     private final FeatureUsageService featureUsageService;
     private final FeatureUsageRepository featureUsageRepository;
     private final SeoAnalyticsService seoAnalyticsService;
+    private final ImportBatchRepository importBatchRepository;
+    private final DataTrustService dataTrustService;
 
     public TradeCsvImportService(
             TopstepCsvParser topstepCsvParser,
@@ -48,7 +52,7 @@ public class TradeCsvImportService {
             TradeReplayService tradeReplayService,
             FeatureUsageService featureUsageService,
             FeatureUsageRepository featureUsageRepository,
-            SeoAnalyticsService seoAnalyticsService
+            SeoAnalyticsService seoAnalyticsService, ImportBatchRepository importBatchRepository, DataTrustService dataTrustService
     ) {
         this.topstepCsvParser = topstepCsvParser;
         this.tradovateCsvParser = tradovateCsvParser;
@@ -59,6 +63,8 @@ public class TradeCsvImportService {
         this.featureUsageService = featureUsageService;
         this.featureUsageRepository = featureUsageRepository;
         this.seoAnalyticsService = seoAnalyticsService;
+        this.importBatchRepository = importBatchRepository;
+        this.dataTrustService = dataTrustService;
     }
 
     public TradeImportPreviewResponse preview(User user, Long accountId, MultipartFile file) {
@@ -72,6 +78,7 @@ public class TradeCsvImportService {
         }
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public TradeImportSaveResponse save(User user, Long accountId, MultipartFile file) {
         boolean firstImportAlreadyTracked = featureUsageRepository.existsByUserIdAndAction(user.getId(), FeatureUsageAction.FIRST_IMPORT_COMPLETED);
         try {
@@ -80,13 +87,14 @@ public class TradeCsvImportService {
             List<TradeResponse> saved = parsed.trades().isEmpty()
                     ? List.of()
                     : tradeService.importBrokerTrades(user, parsed.trades());
+            Long importId = saved.isEmpty() ? null : importBatchRepository.findTopByUserAndAccount_IdOrderByImportedAtDesc(user, accountId).map(batch -> dataTrustService.createForImport(user, batch, parsed.format().name()).importId()).orElse(null);
             tradeReplayService.initializeAfterCommit(tradeService.getImportedTradesForReplayInitialization(user, saved.stream().map(TradeResponse::getId).toList()));
             featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"savedRows\":" + saved.size() + "}");
             if (!firstImportAlreadyTracked && !saved.isEmpty()) {
                 featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.FIRST_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"savedRows\":" + saved.size() + "}");
                 seoAnalyticsService.markFirstImportCompleted(user, null);
             }
-            return new TradeImportSaveResponse(preview, saved, saved.size());
+            return new TradeImportSaveResponse(preview, saved, saved.size(), importId);
         } catch (RuntimeException ex) {
             featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_FAILED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"stage\":\"save\"}");
             throw ex;

@@ -88,6 +88,7 @@ const FeatureUsagePage = lazy(() => import("./features/admin/feature-usage/Featu
 const ObservabilityPage = lazy(() => import("./features/admin/observability/ObservabilityPage"));
 const RetentionAnalyticsPage = lazy(() => import("./features/admin/retention/RetentionAnalyticsPage"));
 const SeoAnalyticsPage = lazy(() => import("./features/admin/seo/SeoAnalyticsPage"));
+const DataTrustQualityPage = lazy(() => import("./features/admin/DataTrustQualityPage"));
 const MarketDataPage = lazy(() => import("./features/admin/market-data/MarketDataPage"));
 const BacktestPage = lazy(() => import("./features/admin/backtest/BacktestPage"));
 const ManualBacktestPage = lazy(() => import("./features/manual-backtest/ManualBacktestPage"));
@@ -560,6 +561,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
     importFeedback,
     dashboardStats,
     loadingStats,
+    reconciliationImportId,
     handleCsvUpload,
     handleSaveToDatabase,
     metrics,
@@ -780,6 +782,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           <Route path="/manual-backtest" element={manualBacktestAllowed === true ? <ManualBacktestPage /> : manualBacktestAllowed === null ? null : <Navigate to="/dashboard" replace />} />
           <Route path="/admin/backtest" element={<Navigate to="/backtest" replace />} />
           <Route path="/admin/retention" element={<RetentionAnalyticsPage />} />
+          <Route path="/admin/data-trust" element={<DataTrustQualityPage />} />
           <Route path="/admin/observability" element={<ObservabilityPage />} />
           <Route
             path="/billing"
@@ -911,6 +914,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
                 onTradeSelect={setSelectedTradeId}
                 showTradingDnaEntryPoint={isFeatureEnabled("TRADING_DNA", featureAvailability)}
                 v2FeaturesEnabled={featureAvailability.v2FeaturesEnabled}
+                reconciliationImportId={reconciliationImportId}
               />
             )
           }
@@ -1249,6 +1253,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
             )
           }
         />
+        <Route path="/admin/data-trust" element={user.role === "ADMIN" ? <DataTrustQualityPage /> : <NotAuthorized />} />
         <Route
           path="/trades/:tradeId"
           element={<TradeDetailRoute onOpenTrade={setSelectedTradeId} />}
