@@ -5,23 +5,33 @@ const quality = {
   insightTrust: { rated: 10, positive: 7, negative: 3, positiveRate: 70, byFindingType: [{ key: "OVERTRADING", rated: 3, positive: 2, negative: 1, rate: 66.67 }], byEvidenceStrength: [{ key: "STRONG", rated: 3, positive: 2, negative: 1, rate: 66.67 }], byVersion: [{ key: "v1 / r1", rated: 3, positive: 2, negative: 1, rate: 66.67 }], negativeReasons: { WRONG_CONCLUSION: 1 } },
 };
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+};
+
 test("admin data trust renders aggregate dimensions", async ({ page }) => {
   const admin = { id: 1, name: "Admin", email: "admin@example.com", role: "ADMIN", plan: "PRO" };
-  await page.route(apiPath("auth/me"), route => route.fulfill(json(admin)));
-  await page.route(apiPath("accounts"), route => route.fulfill(json([{ id: 1, name: "Admin Account", propFirm: "TOPSTEP", status: "ACTIVE" }])));
-  await page.route(apiPath("billing/usage"), route => route.fulfill(json({ plan: "PRO", limits: {}, usageThisMonth: {}, remaining: {} })));
-  await page.route(apiPath("features"), route => route.fulfill(json({ v2FeaturesEnabled: false, v3FeaturesEnabled: false, features: { coach: true } })));
-  await page.route(apiPath("activation/status"), route => route.fulfill(json({})));
-  await page.route(apiPath("pre-analysis/access"), route => route.fulfill(json({ allowed: false })));
-  await page.route(apiPath("trades"), route => route.fulfill(json({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 100 })));
-  await page.route(apiPath("analytics/calendar-summary"), route => route.fulfill(json([])));
-  await page.route(apiPath("stats/summary"), route => route.fulfill(json({ totalTrades: 0, winRate: 0, totalPnl: 0 })));
-  await page.route(apiPath("stats/by-setup"), route => route.fulfill(json([])));
-  await page.route(apiPath("stats/by-session"), route => route.fulfill(json([])));
-  await page.route(apiPath("stats/by-symbol"), route => route.fulfill(json([])));
-  await page.route(apiPath("stats/by-weekday"), route => route.fulfill(json([])));
-  await page.route(apiPath("admin/dashboard/summary"), route => route.fulfill(json({})));
-  await page.route(apiPath("admin/data-trust/quality"), route => route.fulfill(json(quality)));
+  await page.route("**/api/**", async (route) => {
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.origin === new URL(page.url()).origin) return route.continue();
+
+    const { pathname } = requestUrl;
+    if (pathname.endsWith("/auth/me")) return route.fulfill(json(admin));
+    if (pathname.endsWith("/accounts")) return route.fulfill(json([{ id: 1, name: "Admin Account", propFirm: "TOPSTEP", status: "ACTIVE" }]));
+    if (pathname.endsWith("/billing/usage")) return route.fulfill(json({ plan: "PRO", limits: {}, usageThisMonth: {}, remaining: {} }));
+    if (pathname.endsWith("/features")) return route.fulfill(json({ v2FeaturesEnabled: false, v3FeaturesEnabled: false, features: { coach: true } }));
+    if (pathname.endsWith("/activation/status")) return route.fulfill(json({}));
+    if (pathname.endsWith("/pre-analysis/access")) return route.fulfill(json({ allowed: false }));
+    if (pathname.endsWith("/trades")) return route.fulfill(json({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 100 }));
+    if (pathname.endsWith("/analytics/calendar-summary")) return route.fulfill(json([]));
+    if (pathname.endsWith("/stats/summary")) return route.fulfill(json({ totalTrades: 0, winRate: 0, totalPnl: 0 }));
+    if (pathname.endsWith("/stats/by-setup") || pathname.endsWith("/stats/by-session") || pathname.endsWith("/stats/by-symbol") || pathname.endsWith("/stats/by-weekday")) return route.fulfill(json([]));
+    if (pathname.endsWith("/admin/dashboard/summary")) return route.fulfill(json({}));
+    if (pathname.endsWith("/admin/data-trust/quality")) return route.fulfill(json(quality));
+    return route.fulfill({ status: 404, headers: corsHeaders });
+  });
   await page.goto("/login", { waitUntil: "domcontentloaded" });
   await page.evaluate((user) => { window.localStorage.setItem("tradepilot_token", "admin-token"); window.localStorage.setItem("tradepilot_user", JSON.stringify(user)); window.sessionStorage.setItem("tradepilot_token", "admin-token"); window.sessionStorage.setItem("tradepilot_user", JSON.stringify(user)); }, admin);
   await page.goto("about:blank");
@@ -33,5 +43,4 @@ test("admin data trust renders aggregate dimensions", async ({ page }) => {
   await expect(page.getByText("WRONG CONCLUSION")).toBeVisible();
 });
 
-function json(body: unknown) { return { status: 200, contentType: "application/json", body: JSON.stringify(body) }; }
-function apiPath(path: string) { return new RegExp(`.*\\/api(?:\\/v1)?\\/${path.replace(/\//g, "\\/")}\\/?(?:\\?.*)?$`); }
+function json(body: unknown) { return { status: 200, headers: corsHeaders, contentType: "application/json", body: JSON.stringify(body) }; }

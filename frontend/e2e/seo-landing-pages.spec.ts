@@ -572,8 +572,7 @@ test("revenge trading calculator validates inputs and never renders NaN or Infin
   await expect(page.getByText("Baseline trades must be at least 1.")).toBeVisible();
   await expect(page.getByText("Baseline total winning P&L cannot be negative.")).toBeVisible();
   await expect(page.getByText("After 1 loss winning trades cannot exceed total trades.")).toBeVisible();
-  await expect(page.getByText("NaN")).toHaveCount(0);
-  await expect(page.getByText("Infinity")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Revenge trading calculator" })).not.toContainText(/\b(?:NaN|Infinity)\b/);
 });
 
 test("revenge trading calculator normalizes blank P&L for zero-outcome groups", async ({ page }) => {
@@ -694,13 +693,14 @@ test("overtrading calculator renders metadata, content and structured data", asy
   await expect(page.getByText("What Does Overtrading Actually Mean?")).toBeVisible();
   await expect(page.getByRole("link", { name: calculatorCta })).toHaveAttribute("href", registerUrlForPath(overtradingCalculatorPath));
 
+  const relatedResources = page.getByRole("navigation", { name: "Related overtrading resources" });
   for (const [label, href] of [
     ["Overtrading", "/overtrading"],
     ["Revenge trading", "/revenge-trading"],
     ["Futures trading journal", "/futures-trading-journal"],
     ["AI trading journal", "/ai-trading-journal"],
   ] as const) {
-    await expect(page.getByRole("link", { name: label }).first()).toHaveAttribute("href", href);
+    await expect(relatedResources.getByRole("link", { name: label, exact: true })).toHaveAttribute("href", href);
   }
 
   const schemas = await structuredDataNodes(page);
@@ -774,8 +774,7 @@ test("overtrading calculator validates group inputs and never renders NaN or Inf
   await expect(page.getByText("Early trades must be at least 1.")).toBeVisible();
   await expect(page.getByText("Early total winning P&L cannot be negative.")).toBeVisible();
   await expect(page.getByText("Later winning trades cannot exceed later trades.")).toBeVisible();
-  await expect(page.getByText("NaN")).toHaveCount(0);
-  await expect(page.getByText("Infinity")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Overtrading calculator" })).not.toContainText(/\b(?:NaN|Infinity)\b/);
 });
 
 test("overtrading calculator records anonymous tool events without input values", async ({ page }) => {
@@ -949,7 +948,7 @@ test("trading expectancy calculator validates inputs and never renders NaN", asy
   await expect(page.getByText("Win rate must be between 0 and 100.")).toBeVisible();
   await expect(page.getByText("Average winning trade cannot be negative.")).toBeVisible();
   await expect(page.getByText("Average losing trade must be greater than zero.")).toBeVisible();
-  await expect(page.getByText("NaN")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Trading expectancy calculator" })).not.toContainText(/\bNaN\b/);
 });
 
 test("trading expectancy calculator records anonymous tool events without input values", async ({ page }) => {
