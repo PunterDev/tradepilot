@@ -36,7 +36,7 @@ export type AdminUserDetail = {
 };
 
 export type UserFeatureEntitlement = {
-  entitlementKey: "AI_PRE_ANALYSIS_BETA";
+  entitlementKey: "AI_PRE_ANALYSIS_BETA" | "PLAYBOOK_BACKTEST_BETA" | "MANUAL_BACKTEST_BETA";
   enabled: boolean;
   reason?: string | null;
   updatedAt?: string | null;
@@ -115,7 +115,7 @@ export async function getUserFeatureEntitlements(userId: number): Promise<UserFe
 
 export async function setUserFeatureEntitlement(
   userId: number,
-  payload: { entitlementKey: "AI_PRE_ANALYSIS_BETA"; enabled: boolean; reason?: string }
+  payload: { entitlementKey: UserFeatureEntitlement["entitlementKey"]; enabled: boolean; reason?: string }
 ): Promise<UserFeatureEntitlement> {
   const res = await api.put<UserFeatureEntitlement>(`/admin/users/${userId}/feature-entitlements`, payload);
   return res.data;

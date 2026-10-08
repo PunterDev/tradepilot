@@ -25,6 +25,8 @@ class FlywayProductionSchemaTests {
     private static final Path STRIPE_CHECKOUT_ATTEMPT_BILLING_CYCLE_MIGRATION = Path.of("src/main/resources/db/migration/V016__stripe_checkout_attempt_billing_cycle.sql");
     private static final Path ENABLE_RLS_ON_PUBLIC_TABLES_MIGRATION = Path.of("src/main/resources/db/migration/V017__enable_rls_on_public_tables.sql");
     private static final Path USER_ANALYTICS_EXCLUSION_MIGRATION = Path.of("src/main/resources/db/migration/V018__user_analytics_exclusion.sql");
+    private static final Path HISTORICAL_MARKET_DATA_MIGRATION = Path.of("src/main/resources/db/migration/V019__historical_market_data.sql");
+    private static final Path BACKTEST_CANONICAL_RESULTS_ALIGNMENT_MIGRATION = Path.of("src/main/resources/db/migration/V022__align_backtest_trade_canonical_results.sql");
     private static final Path VERIFIER = Path.of("db/verify_production_schema.sql");
 
     @Test
@@ -222,6 +224,84 @@ class FlywayProductionSchemaTests {
 
         assertThat(sql).contains("alter table users");
         assertThat(sql).contains("add column if not exists analytics_excluded boolean not null default false");
+    }
+
+    @Test
+    void historicalMarketDataMigrationCreatesCanonicalOneMinuteStorage() throws IOException {
+        String sql = Files.readString(HISTORICAL_MARKET_DATA_MIGRATION);
+
+        assertThat(sql).contains("create table if not exists market_bars");
+        assertThat(sql).contains("source varchar(32) not null default 'DATABENTO'");
+        assertThat(sql).contains("instrument_id bigint not null");
+        assertThat(sql).contains("ts_event timestamptz not null");
+        assertThat(sql).contains("open numeric(16, 6) not null");
+        assertThat(sql).contains("uk_market_bar unique (continuous_symbol, timeframe, ts_event)");
+        assertThat(sql).contains("idx_market_bars_lookup");
+        assertThat(sql).contains("create table if not exists market_data_import_chunks");
+        assertThat(sql).contains("alter table market_bars enable row level security");
+        assertThat(sql).contains("alter table market_data_import_chunks enable row level security");
+    }
+
+    @Test
+    void canonicalBacktestTradesCanPersistWithoutAmbiguousSingleExitFields() throws Exception {
+        String databaseName = "backtest-canonical-results-" + UUID.randomUUID();
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:" + databaseName + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", "sa", "")) {
+            execute(connection, """
+                    create table backtest_trades (
+                        id bigint primary key,
+                        backtest_run_id bigint not null,
+                        trade_date date not null,
+                        direction varchar(8) not null,
+                        entry_time timestamp not null,
+                        entry_price numeric(16,6) not null,
+                        stop_price numeric(16,6) not null,
+                        raw_r numeric(16,6) not null,
+                        weighted_r numeric(16,6) not null,
+                        outcome varchar(20) not null,
+                        exit_model varchar(20) not null,
+                        instrument_id bigint not null,
+                        setup_metadata_json varchar not null,
+                        tp1_price numeric(16,6),
+                        runner_target_price numeric(16,6),
+                        final_exit_time timestamp,
+                        final_exit_price numeric(16,6),
+                        model_a_r numeric(16,6),
+                        model_b_r numeric(16,6),
+                        model_a_weighted_r numeric(16,6),
+                        model_b_weighted_r numeric(16,6),
+                        ambiguous_intrabar boolean not null default false
+                    )
+                    """);
+            execute(connection, """
+                    insert into backtest_trades
+                    (id, backtest_run_id, trade_date, direction, entry_time, entry_price, stop_price, raw_r, weighted_r, outcome, exit_model, instrument_id, setup_metadata_json)
+                    values (1, 10, date '2026-09-08', 'LONG', timestamp '2026-09-08 14:00:00', 29500.25, 29490.25, 1.0, 0.5, 'WIN', 'MODEL_A', 42004177, '{}')
+                    """);
+
+            String migration = Files.readString(BACKTEST_CANONICAL_RESULTS_ALIGNMENT_MIGRATION);
+            assertThat(migration).contains("alter column raw_r drop not null");
+            assertThat(migration).contains("alter column weighted_r drop not null");
+            assertThat(migration).contains("alter column outcome drop not null");
+            assertThat(migration).contains("alter column exit_model drop not null");
+            assertThat(migration).contains("alter table backtest_runs enable row level security");
+            assertThat(migration).contains("alter table backtest_trades enable row level security");
+            executeStatements(connection, migration.replaceAll("(?im)^\\s*alter table .* enable row level security;\\s*", ""));
+
+            execute(connection, """
+                    insert into backtest_trades
+                    (id, backtest_run_id, trade_date, direction, entry_time, entry_price, stop_price, tp1_price, runner_target_price,
+                     final_exit_time, final_exit_price, model_a_r, model_b_r, model_a_weighted_r, model_b_weighted_r, instrument_id, setup_metadata_json)
+                    values
+                    (2, 10, date '2026-09-09', 'LONG', timestamp '2026-09-09 14:12:00', 29547.25, 29530.75, 29555.75, 29560.50,
+                     timestamp '2026-09-09 14:30:00', 29558.00, 0.515152, 0.651515, 0.515152, 0.651515, 42004177,
+                     '{\"modelAOutcome\":\"WIN\",\"modelBOutcome\":\"WIN\"}')
+                    """);
+
+            assertThat(number(connection, "select count(*) from backtest_trades where id = 2 and raw_r is null and weighted_r is null and outcome is null and exit_model is null"))
+                    .isEqualTo(1);
+            assertThat(number(connection, "select count(*) from backtest_trades where id = 1 and raw_r = 1.0 and weighted_r = 0.5 and outcome = 'WIN' and exit_model = 'MODEL_A'"))
+                    .isEqualTo(1);
+        }
     }
 
     private static void executeStatements(Connection connection, String sql) throws SQLException {

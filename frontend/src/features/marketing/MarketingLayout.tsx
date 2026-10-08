@@ -34,6 +34,7 @@ export function MarketingNavbar() {
         <div className="marketing-nav-links">
           <a href="/#features">Features</a>
           <a href="/#how-it-works">How It Works</a>
+          <Link to="/demo">Demo</Link>
           <a href="/#pricing">Pricing</a>
           <a href="/tools/trading-expectancy-calculator">Free Tools</a>
           <Link to="/resources">Resources</Link>
@@ -41,27 +42,30 @@ export function MarketingNavbar() {
         </div>
         <div className="marketing-nav-actions">
           <Link className="marketing-button ghost" to="/login">Sign In</Link>
-          <Link className="marketing-button primary" to="/register">Start Free</Link>
+          <Link className="marketing-button primary" to="/register">Try Free</Link>
         </div>
         <button
           type="button"
           className="marketing-mobile-toggle"
           aria-label="Toggle navigation"
+          aria-expanded={mobileOpen}
+          aria-controls="marketing-mobile-navigation"
           onClick={() => setMobileOpen((current) => !current)}
         >
           Menu
         </button>
       </div>
       <div className="marketing-container">
-        <div className={`marketing-mobile-panel ${mobileOpen ? "open" : ""}`}>
-          <a className="marketing-button ghost" href="/#features">Features</a>
-          <a className="marketing-button ghost" href="/#how-it-works">How It Works</a>
-          <a className="marketing-button ghost" href="/#pricing">Pricing</a>
-          <Link className="marketing-button ghost" to="/tools/trading-expectancy-calculator">Free Tools</Link>
-          <Link className="marketing-button ghost" to="/resources">Resources</Link>
-          <a className="marketing-button ghost" href="/#faq">FAQ</a>
-          <Link className="marketing-button ghost" to="/login">Sign In</Link>
-          <Link className="marketing-button primary" to="/register">Start Free</Link>
+        <div id="marketing-mobile-navigation" className={`marketing-mobile-panel ${mobileOpen ? "open" : ""}`}>
+          <a className="marketing-button ghost" href="/#features" onClick={() => setMobileOpen(false)}>Features</a>
+          <a className="marketing-button ghost" href="/#how-it-works" onClick={() => setMobileOpen(false)}>How It Works</a>
+          <Link className="marketing-button ghost" to="/demo" onClick={() => setMobileOpen(false)}>See the Demo</Link>
+          <a className="marketing-button ghost" href="/#pricing" onClick={() => setMobileOpen(false)}>Pricing</a>
+          <Link className="marketing-button ghost" to="/tools/trading-expectancy-calculator" onClick={() => setMobileOpen(false)}>Free Tools</Link>
+          <Link className="marketing-button ghost" to="/resources" onClick={() => setMobileOpen(false)}>Resources</Link>
+          <a className="marketing-button ghost" href="/#faq" onClick={() => setMobileOpen(false)}>FAQ</a>
+          <Link className="marketing-button ghost" to="/login" onClick={() => setMobileOpen(false)}>Sign In</Link>
+          <Link className="marketing-button primary" to="/register" onClick={() => setMobileOpen(false)}>Try TradePilot Free</Link>
         </div>
       </div>
     </nav>
@@ -74,12 +78,14 @@ export function MarketingFooter() {
   return (
     <footer className="marketing-footer">
       <div className="marketing-container marketing-footer-inner">
-        <div className="marketing-footer-brand"><strong>TradePilot <span>Coach</span></strong><small>AI-powered trading performance and execution intelligence for futures traders.</small><em>{year}</em></div>
+        <div className="marketing-footer-brand"><strong>TradePilot <span>Coach</span></strong><small>Evidence-based trading performance and execution review for futures traders.</small><small className="marketing-risk-disclosure">Educational and analytical software only. Not trade signals or financial advice. Futures trading involves substantial risk, and sample or hypothetical results are not actual trading results.</small><em>{year}</em></div>
         <div className="marketing-footer-links">
           <div className="marketing-footer-group">
             <span>Product</span>
             <a href="/#features">Features</a>
             <a href="/#pricing">Pricing</a>
+            <Link to="/demo">Sample Demo</Link>
+            <Link to="/how-tradepilot-works">How It Works</Link>
             <a href="/#faq">FAQ</a>
             <Link to="/login">Login</Link>
             <Link to="/register">Register</Link>

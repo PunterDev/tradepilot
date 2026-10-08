@@ -38,6 +38,7 @@ export type TradeImportSaveResponse = {
   preview: TradeImportPreviewResponse;
   savedTrades: any[];
   savedCount: number;
+  importId: number | null;
 };
 
 export async function getTrades(params: PageParams = {}) {

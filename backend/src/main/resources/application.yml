@@ -59,6 +59,7 @@ tradepilot:
 
     databento:
       api-key: ${DATABENTO_API_KEY:}
+      historical-base-url: ${DATABENTO_HISTORICAL_BASE_URL:https://hist.databento.com/v0}
       dataset: ${DATABENTO_DATASET:GLBX.MDP3}
       schema: ${DATABENTO_SCHEMA:ohlcv-1m}
 
@@ -148,6 +149,8 @@ app:
       queue-capacity: ${APP_AI_ASYNC_QUEUE_CAPACITY:50}
   pre-analysis:
     beta-emails: ${AI_PRE_ANALYSIS_BETA_EMAILS:${APP_ADMIN_EMAIL:}}
+  backtest:
+    beta-emails: ${BACKTEST_BETA_EMAILS:${AI_PRE_ANALYSIS_BETA_EMAILS:${APP_ADMIN_EMAIL:}}}
   email:
     resend:
       api-key: ${RESEND_API_KEY:}

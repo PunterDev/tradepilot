@@ -10,4 +10,5 @@ public interface ImportBatchRepository extends JpaRepository<ImportBatch, Long> 
     void deleteByAccountIdAndUser(Long accountId, User user);
 
     Optional<ImportBatch> findTopByUserAndImportedRowsGreaterThanOrderByImportedAtAsc(User user, Integer importedRows);
+    Optional<ImportBatch> findTopByUserAndAccount_IdOrderByImportedAtDesc(User user, Long accountId);
 }

@@ -442,7 +442,9 @@ function PrivateBetaEntitlements({ userId }: { userId: number }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const enabled = items.some((item) => item.entitlementKey === "AI_PRE_ANALYSIS_BETA" && item.enabled);
+  const preAnalysisEnabled = items.some((item) => item.entitlementKey === "AI_PRE_ANALYSIS_BETA" && item.enabled);
+  const backtestEnabled = items.some((item) => item.entitlementKey === "PLAYBOOK_BACKTEST_BETA" && item.enabled);
+  const manualBacktestEnabled = items.some((item) => item.entitlementKey === "MANUAL_BACKTEST_BETA" && item.enabled);
 
   useEffect(() => {
     let active = true;
@@ -456,12 +458,12 @@ function PrivateBetaEntitlements({ userId }: { userId: number }) {
     };
   }, [userId]);
 
-  async function toggle(nextEnabled: boolean) {
+  async function toggle(entitlementKey: UserFeatureEntitlement["entitlementKey"], nextEnabled: boolean) {
     setSaving(true);
     setError("");
     try {
       const saved = await setUserFeatureEntitlement(userId, {
-        entitlementKey: "AI_PRE_ANALYSIS_BETA",
+        entitlementKey,
         enabled: nextEnabled,
         reason,
       });
@@ -476,12 +478,18 @@ function PrivateBetaEntitlements({ userId }: { userId: number }) {
   return (
     <section style={subCard}>
       <h3 style={smallTitle}>Private Beta</h3>
-      <Detail label="AI Pre-Analysis" value={loading ? "Loading" : enabled ? "Enabled" : "Disabled"} />
+      <Detail label="AI Pre-Analysis" value={loading ? "Loading" : preAnalysisEnabled ? "Enabled" : "Disabled"} />
+      <Detail label="Playbook Backtest" value={loading ? "Loading" : backtestEnabled ? "Enabled" : "Disabled"} />
+      <Detail label="Manual Backtest" value={loading ? "Loading" : manualBacktestEnabled ? "Enabled" : "Disabled"} />
       <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason" style={input} />
       {error && <p style={{ ...mutedText, color: "#fecaca" }}>{error}</p>}
       <div style={actionRow}>
-        <button type="button" onClick={() => toggle(true)} disabled={saving || enabled} style={actionButton(saving || enabled)}>Grant AI Pre-Analysis</button>
-        <button type="button" onClick={() => toggle(false)} disabled={saving || !enabled} style={dangerActionButton(saving || !enabled)}>Revoke</button>
+        <button type="button" onClick={() => toggle("AI_PRE_ANALYSIS_BETA", true)} disabled={saving || preAnalysisEnabled} style={actionButton(saving || preAnalysisEnabled)}>Grant AI Pre-Analysis</button>
+        <button type="button" onClick={() => toggle("AI_PRE_ANALYSIS_BETA", false)} disabled={saving || !preAnalysisEnabled} style={dangerActionButton(saving || !preAnalysisEnabled)}>Revoke AI Pre-Analysis</button>
+        <button type="button" onClick={() => toggle("PLAYBOOK_BACKTEST_BETA", true)} disabled={saving || backtestEnabled} style={actionButton(saving || backtestEnabled)}>Grant Playbook Backtest</button>
+        <button type="button" onClick={() => toggle("PLAYBOOK_BACKTEST_BETA", false)} disabled={saving || !backtestEnabled} style={dangerActionButton(saving || !backtestEnabled)}>Revoke Playbook Backtest</button>
+        <button type="button" onClick={() => toggle("MANUAL_BACKTEST_BETA", true)} disabled={saving || manualBacktestEnabled} style={actionButton(saving || manualBacktestEnabled)}>Grant Manual Backtest</button>
+        <button type="button" onClick={() => toggle("MANUAL_BACKTEST_BETA", false)} disabled={saving || !manualBacktestEnabled} style={dangerActionButton(saving || !manualBacktestEnabled)}>Revoke Manual Backtest</button>
       </div>
     </section>
   );

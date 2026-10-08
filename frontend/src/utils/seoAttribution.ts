@@ -18,6 +18,10 @@ export type SeoEvent = {
     | "seo_landing_page_view"
     | "seo_cta_click"
     | "signup_started_from_seo"
+    | "sample_demo_opened"
+    | "sample_demo_leak_detector_viewed"
+    | "sample_demo_completed"
+    | "sample_demo_registration_started"
     | "tool_page_view"
     | "expectancy_calculator_started"
     | "expectancy_calculator_completed"
@@ -164,6 +168,17 @@ export function trackSeoCtaClick(landingPage: string, ctaLabel: string, ctaDesti
   if (ctaDestination.startsWith("/register")) {
     pushEvent(toEventPayload("signup_started_from_seo", landingPage, ctaLabel, ctaDestination));
   }
+}
+
+export function trackSeoEvent(
+  event: SeoEvent["event"],
+  landingPage: string,
+  ctaLabel?: string,
+  ctaDestination?: string,
+  tool?: string
+) {
+  captureFirstTouchAttribution(landingPage);
+  pushEvent(toEventPayload(event, landingPage, ctaLabel, ctaDestination, tool));
 }
 
 export function trackSeoToolEvent(event: SeoEvent["event"], landingPage: string, tool: string) {

@@ -1,0 +1,3 @@
+export type Point = { tradeIndex:number; tradeDate:string; tradeR:number; weightedTradeR:number; cumulativeRawR:number; cumulativeWeightedR:number };
+export type Metrics = { totalTrades:number; wins:number; losses:number; breakEvens:number; winRate:number; winRateExcludingBe:number; averageWinner:number; averageLoser:number; expectancy:number; profitFactor?:number; totalRawR:number; weightedTotalR:number; maxDrawdownR:number; maxConsecutiveLosses:number; equityCurve:Point[] };
+export type BacktestResult = { modelA?: Metrics; modelB?: Metrics; breakdowns?: Record<string, Record<string, Metrics>>; rejectionCounts?: Record<string, number>; candidateSetups?: number; acceptedCanonicalTrades?: number };

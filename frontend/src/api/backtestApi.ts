@@ -1,0 +1,21 @@
+import { api } from "./axios";
+export type BacktestAccess = { allowed: boolean; entitlementKey: string; label: string; badge: string };
+export const getBacktestAccess = async () => (await api.get<BacktestAccess>("/backtests/access")).data;
+export type BacktestConfig = { instrument: "NQ" | "ES"; startDate: string; endDate: string; direction: "LONG" | "SHORT" | "BOTH"; contextStart: string; entryStart: string; entryEnd: string; maxTradesPerSession: number; mondayRisk: number; fridayRisk: number; minFvgTicks: number; displacementLookback: number; bodyMultiplier: number; rangeMultiplier: number; closeLocationThreshold: number; swingLeftBars: number; swingRightBars: number; stopBufferTicks: number; maxChaseTicks: number; slippageTicks: number; commissionRoundTrip: number; ambiguityPolicy: "CONSERVATIVE_STOP_FIRST"; runnerStopAfterTp1: "BREAK_EVEN"; debugMode: boolean; requireIfvgConfirmation: boolean; minimumTargetR: number; targetSwingLookbackTradingDays: number; minimumRunnerAdditionalR: number; runnerObjectiveLookbackTradingDays: number };
+export type BacktestRun = { id: number; instrument: string; startDate: string; endDate: string; status: string; errorMessage?: string; resultJson?: string; createdAt: string };
+export const startBacktest = async (config: BacktestConfig) => (await api.post<BacktestRun>("/backtests", config)).data;
+export const getBacktest = async (id: number) => (await api.get<BacktestRun>(`/backtests/${id}`)).data;
+export const listBacktests = async () => (await api.get<BacktestRun[]>("/backtests")).data;
+export type BacktestTrade = { id: number; tradeDate: string; instrument?: string; instrumentId?: number; direction: string; entryTime: string; entryPrice: number; stopPrice: number; tp1Price?: number; runnerTargetPrice?: number; modelAR: number; modelBR: number; modelAWeightedR: number; modelBWeightedR: number; setupMetadataJson: string };
+export const getBacktestTrades = async (id: number) => (await api.get<BacktestTrade[]>(`/backtests/${id}/trades`)).data;
+export type BacktestChartCandle = { timestamp: string; open: number | string; high: number | string; low: number | string; close: number | string; volume: number | string };
+export type BacktestChartTimeframe = "1m" | "5m" | "1h" | "4h";
+export type BacktestChartZone = { label: string; low: number | string; high: number | string; availableAt: string | null; inversionConfirmedAt: string | null };
+export type BacktestChartLevel = { label: string; price: number | string | null; timestamp: string | null; detail: string | null };
+export type BacktestChartSwing = { label: string; price: number | string | null; timestamp: string | null; confirmedAt: string | null };
+export type BacktestTradeChart = {
+  instrument: string; continuousSymbol: string; instrumentId: number; timezone: string; timeframe: BacktestChartTimeframe; bars: BacktestChartCandle[];
+  overlays: { setupZone: BacktestChartZone | null; confirmationZone: BacktestChartZone | null; entry: BacktestChartLevel; stop: BacktestChartLevel; tp1: BacktestChartLevel | null; runner: BacktestChartLevel | null; stopSwing: BacktestChartSwing | null; targetSwing: BacktestChartSwing | null };
+  facts: { direction: string; entryTime: string; entryPrice: number | string; stopPrice: number | string; riskPoints: number | string; tp1Price: number | string | null; tp1R: number | string | null; runnerPrice: number | string | null; runnerR: number | string | null; runnerObjectiveType: string | null; modelAR: number | string; modelBR: number | string; instrumentId: number; ambiguousIntrabar: boolean; exitTime?: string | null; exitPrice?: number | string | null; exitLabel?: string | null };
+};
+export const getBacktestTradeChart = async (runId: number, tradeId: number, timeframe: BacktestChartTimeframe) => (await api.get<BacktestTradeChart>(`/backtests/${runId}/trades/${tradeId}/chart`, { params: { timeframe } })).data;

@@ -14,6 +14,8 @@ export const marketingPricing = {
   pro: {
     name: "Pro",
     price: "$29.99/mo",
+    yearlyPrice: "$249/year",
+    yearlySavings: "$110.88/year",
     description: "AI coaching, leak detection, and deeper review tools for serious improvement.",
     benefits: [
       "Everything in Free",

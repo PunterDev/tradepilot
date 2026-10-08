@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { TradingAccount } from "../../api/accountApi";
 import { getLeakDetector, regenerateLeakDetector } from "../../api/leakDetectorApi";
+import { getInsightFeedback, saveInsightFeedback, type InsightFeedbackReason } from "../../api/dataTrustApi";
 import PageHeader from "../../layout/PageHeader";
 import { button } from "../../styles/dashboardStyles";
 import type { BillingUsage } from "../../types/billing";
@@ -130,13 +131,14 @@ export default function LeakDetectorPage({
         {data && data.leaks.length > 0 && (
           <>
             <SummaryHero data={data} />
-            <RecoveryPlan leak={data.leaks[0]} />
+            {!data.leaks[0]?.behavioralFinding && <RecoveryPlan leak={data.leaks[0]} />}
             <div style={grid}>
               {data.leaks.map((leak, index) => (
                 <LeakCard
                   key={`${leak.leakType}-${leak.title}`}
                   leak={leak}
                   rank={index + 1}
+                  snapshotId={data.id}
                   onTradeSelect={onTradeSelect}
                 />
               ))}
@@ -150,6 +152,7 @@ export default function LeakDetectorPage({
 
 function SummaryHero({ data }: { data: LeakDetectorResponse }) {
   const topLeak = data.leaks[0];
+  const behavioralFinding = topLeak?.behavioralFinding;
   const monthlyImpact = data.biggestLeakImpact ?? topLeak?.estimatedMonthlyImpact ?? 0;
   const confidence = data.highestConfidence ?? topLeak?.confidenceScore ?? 0;
   const sampleTradeCount = data.sampleTradeCount ?? data.totalTrades;
@@ -165,10 +168,10 @@ function SummaryHero({ data }: { data: LeakDetectorResponse }) {
         </div>
         <h2 style={heroTitle}>{getHeroTitle(topLeak, data.biggestLeakTitle)}</h2>
         <p style={heroText}>{getHeroSupportText(topLeak)}</p>
-        <div style={heroFixLine}>
+        {!behavioralFinding && <div style={heroFixLine}>
           <span style={fixLabel}>Suggested fix</span>
           <p style={heroFixText}>{data.biggestLeakFix ?? topLeak?.recommendedFix}</p>
-        </div>
+        </div>}
         <div style={heroMetaRow}>
           <span style={heroMetaPill}>Generated {formatRelativeGeneratedAt(data.generatedAt)}</span>
           <span style={heroMetaPill}>Data quality: {dataQuality}</span>
@@ -176,11 +179,13 @@ function SummaryHero({ data }: { data: LeakDetectorResponse }) {
         </div>
       </div>
       <div style={heroStats}>
+        {behavioralFinding ? <BehavioralTrust finding={behavioralFinding} /> : <>
         <Metric label="Money Lost / Month" value={formatMoney(monthlyImpact)} tone={impactTone} />
         {yearlyImprovement && (
           <Metric label="Potential Yearly Improvement" value={yearlyImprovement} tone={improvementTone} />
         )}
         <ConfidenceMetric score={confidence} />
+        </>}
       </div>
     </section>
   );
@@ -218,7 +223,7 @@ function RecoveryPlan({ leak }: { leak?: LeakResult }) {
   );
 }
 
-function LeakCard({ leak, rank, onTradeSelect }: { leak: LeakResult; rank: number; onTradeSelect: (tradeId: number) => void }) {
+function LeakCard({ leak, rank, snapshotId, onTradeSelect }: { leak: LeakResult; rank: number; snapshotId?: number; onTradeSelect: (tradeId: number) => void }) {
   const relatedTradeCount = getRelatedTradeCount(leak);
   const ctaText = getLeakCtaText(leak);
   const canOpenRelatedTrade = leak.relatedTradeIds?.length > 0;
@@ -233,7 +238,8 @@ function LeakCard({ leak, rank, onTradeSelect }: { leak: LeakResult; rank: numbe
         <span style={severityBadge(leak.severity)}>{leak.severity}</span>
       </div>
       <div style={metricGrid}>
-        <ConfidenceMetric score={leak.confidenceScore} />
+        {leak.behavioralFinding ? <BehavioralTrust finding={leak.behavioralFinding} /> : <ConfidenceMetric score={leak.confidenceScore} />}
+        {!leak.behavioralFinding && <>
         <Metric label="Money Impact" value={`${formatMoney(leak.totalPnl)} total / ${formatMoney(leak.estimatedMonthlyImpact)} monthly`} />
         <Metric label="Trades" value={leak.tradeCount} />
         <Metric label="Win Rate" value={`${Number(leak.winRate ?? 0).toFixed(1)}%`} />
@@ -241,12 +247,14 @@ function LeakCard({ leak, rank, onTradeSelect }: { leak: LeakResult; rank: numbe
         {leak.hasValidRMultiple && leak.avgR != null && (
           <Metric label="Avg R" value={formatR(leak.avgR)} />
         )}
+        </>}
       </div>
       <p style={description}>{getCoachExplanation(leak)}</p>
       <div style={fixBox}>
         <span style={fixLabel}>Recommended fix</span>
         <p style={fixText}>{leak.recommendedFix}</p>
       </div>
+      {snapshotId && leak.behavioralFinding && <InsightFeedbackControl snapshotId={snapshotId} findingType={leak.leakType} />}
       {relatedTradeCount > 0 && (
         <button
           type="button"
@@ -259,6 +267,29 @@ function LeakCard({ leak, rank, onTradeSelect }: { leak: LeakResult; rank: numbe
       )}
     </article>
   );
+}
+
+function InsightFeedbackControl({ snapshotId, findingType }: { snapshotId: number; findingType: string }) {
+  const [feedback, setFeedback] = useState<{ helpful: boolean; reason: InsightFeedbackReason | null } | null>(null);
+  const [showReasons, setShowReasons] = useState(false);
+  useEffect(() => { getInsightFeedback(snapshotId, findingType).then((value) => { setFeedback(value); setShowReasons(value?.helpful === false); }).catch(() => setFeedback(null)); }, [snapshotId, findingType]);
+  async function save(helpful: boolean, reason?: InsightFeedbackReason) { const next = await saveInsightFeedback(snapshotId, findingType, helpful, reason); setFeedback(next); setShowReasons(!helpful); }
+  const reasons: Array<[InsightFeedbackReason, string]> = [["WRONG_TRADES", "Wrong trades"], ["WRONG_CONCLUSION", "Wrong conclusion"], ["MISSING_CONTEXT", "Missing context"], ["PNL_LOOKS_WRONG", "P&L looks wrong"], ["OTHER", "Other"]];
+  return <section style={feedbackBox}><strong>Was this insight accurate?</strong><div style={{ marginTop: 10 }}><button type="button" style={{ ...feedbackButton, ...(feedback?.helpful ? selectedFeedback : {}) }} onClick={() => void save(true)}>👍 Yes</button><button type="button" style={{ ...feedbackButton, ...(!feedback?.helpful && feedback ? selectedFeedback : {}) }} onClick={() => setShowReasons(true)}>👎 No</button></div>{showReasons && <div style={{ marginTop: 10 }}>{reasons.map(([reason, label]) => <button key={reason} type="button" style={{ ...reasonButton, ...(feedback?.reason === reason ? selectedFeedback : {}) }} onClick={() => void save(false, reason)}>{label}</button>)}</div>}{feedback && <p style={{ ...metricHelper, marginTop: 10 }}>Thanks — your feedback helps improve TradePilot.</p>}</section>;
+}
+
+function BehavioralTrust({ finding }: { finding: NonNullable<LeakResult["behavioralFinding"]> }) {
+  const delta = finding.baseline.expectancyR != null && finding.triggered.expectancyR != null
+    ? `${formatR(finding.triggered.expectancyR - finding.baseline.expectancyR)} difference`
+    : `${formatMoney(finding.triggered.averagePnl - finding.baseline.averagePnl)} per trade difference`;
+  if (!finding.qualified || finding.evidenceStrength === "INSUFFICIENT") {
+    return <Metric label="Evidence strength" value={`Not enough evidence yet (${finding.occurrenceCount} qualifying occurrences)`} helper="TradePilot needs more history before treating this as a reliable pattern." />;
+  }
+  return <>
+    <Metric label="Evidence strength" value={finding.evidenceStrength} helper={`${finding.occurrenceCount} qualifying occurrences · ${finding.tradeSampleSize} trades analyzed`} />
+    <Metric label="Baseline comparison" value={delta} helper={finding.baseline.expectancyR != null ? `Normal ${formatR(finding.baseline.expectancyR)} · Triggered ${formatR(finding.triggered.expectancyR ?? 0)}` : `Normal ${formatMoney(finding.baseline.averagePnl)} · Triggered ${formatMoney(finding.triggered.averagePnl)}`} />
+    {finding.counterfactual.applicable && <Metric label="Historical simulation" value={`${finding.counterfactual.skippedTradeCount} trades would have been skipped`} helper={finding.counterfactual.supported ? `Losses avoided ${formatMoney(finding.counterfactual.lossesAvoided)} · Winners forgone ${formatMoney(finding.counterfactual.winnersForgone)} · Estimated historical net impact ${formatSignedMoney(finding.counterfactual.netHistoricalImpact)}` : "A 20-minute pause would not have improved historical results in this sample."} />}
+  </>;
 }
 
 function Metric({ label, value, tone, helper }: { label: string; value: string | number; tone?: CSSProperties; helper?: string }) {
@@ -297,6 +328,11 @@ function formatMoney(value: number) {
   const numeric = Number(value ?? 0);
   const absolute = Math.abs(numeric).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `${numeric < 0 ? "-$" : "$"}${absolute}`;
+}
+
+function formatSignedMoney(value: number) {
+  const formatted = formatMoney(value);
+  return Number(value ?? 0) > 0 ? `+${formatted}` : formatted;
 }
 
 function formatPotentialImprovement(monthlyImpact: number) {
@@ -566,5 +602,9 @@ const description: CSSProperties = { marginTop: 16, color: "#cbd5e1", lineHeight
 const fixBox: CSSProperties = { marginTop: 16, padding: 14, borderRadius: 8, border: "1px solid rgba(52,211,153,0.2)", background: "rgba(20,83,45,0.18)" };
 const fixLabel: CSSProperties = { color: "#86efac", fontSize: 12, fontWeight: 900, textTransform: "uppercase" };
 const fixText: CSSProperties = { margin: "6px 0 0", color: "#dcfce7", lineHeight: 1.5 };
+const feedbackBox: CSSProperties = { marginTop: 16, padding: 14, borderRadius: 8, border: "1px solid rgba(125,211,252,0.2)", background: "rgba(8,47,73,0.18)", color: "#e5eefc" };
+const feedbackButton: CSSProperties = { marginRight: 8, padding: "8px 10px", borderRadius: 6, border: "1px solid rgba(148,163,184,0.3)", background: "#0f172a", color: "#e5eefc", cursor: "pointer", fontWeight: 800 };
+const reasonButton: CSSProperties = { margin: "0 6px 6px 0", padding: "7px 9px", borderRadius: 6, border: "1px solid rgba(148,163,184,0.25)", background: "#0f172a", color: "#cbd5e1", cursor: "pointer" };
+const selectedFeedback: CSSProperties = { borderColor: "#34d399", background: "rgba(20,83,45,0.35)", color: "#bbf7d0" };
 const linkButton: CSSProperties = { marginTop: 14, border: "1px solid rgba(56,189,248,0.26)", borderRadius: 8, padding: "10px 12px", background: "rgba(8,47,73,0.24)", color: "#bae6fd", fontWeight: 850, cursor: "pointer" };
 const disabledLinkButton: CSSProperties = { opacity: 0.62, cursor: "not-allowed" };

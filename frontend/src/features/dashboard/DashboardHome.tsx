@@ -15,6 +15,7 @@ import DashboardPreviewCards from "./DashboardPreviewCards";
 import DashboardQuickActions from "./DashboardQuickActions";
 import EquityCurveCard from "./EquityCurveCard";
 import { getTradeCalendarDate } from "../../utils/dashboardUtils";
+import ImportReconciliationCard from "./ImportReconciliationCard";
 
 type Metrics = {
   totalPnl: number;
@@ -61,6 +62,7 @@ type Props = {
   onTradeSelect: (tradeId: number) => void;
   showTradingDnaEntryPoint: boolean;
   v2FeaturesEnabled: boolean;
+  reconciliationImportId: number | null;
 };
 
 export default function DashboardHome({
@@ -100,6 +102,7 @@ export default function DashboardHome({
   onTradeSelect,
   showTradingDnaEntryPoint,
   v2FeaturesEnabled,
+  reconciliationImportId,
 }: Props) {
   const latestTrade = trades[0];
   const latestDate = latestTrade ? getTradeCalendarDate(latestTrade) : null;
@@ -169,6 +172,7 @@ export default function DashboardHome({
         onSaveToDatabase={onSaveToDatabase}
         showTradingDnaEntryPoint={showTradingDnaEntryPoint}
       />
+      {reconciliationImportId && <ImportReconciliationCard importId={reconciliationImportId} />}
 
       <CompactUsageWidget usage={billingUsage} loading={billingLoading} error={billingError} />
 

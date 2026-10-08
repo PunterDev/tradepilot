@@ -51,7 +51,9 @@ with required_tables(table_name) as (
         ('market_candles'),
         ('trade_replay_insights'),
         ('trade_memories'),
-        ('rate_limit_windows')
+        ('rate_limit_windows'),
+        ('market_bars'),
+        ('market_data_import_chunks')
 )
 select 'required_table' as check_name,
        r.table_name,
@@ -105,7 +107,13 @@ with required_columns(table_name, column_name) as (
         ('rate_limit_windows', 'rate_key'),
         ('rate_limit_windows', 'window_start'),
         ('rate_limit_windows', 'request_count'),
-        ('rate_limit_windows', 'expires_at')
+        ('rate_limit_windows', 'expires_at'),
+        ('market_bars', 'instrument_id'),
+        ('market_bars', 'ts_event'),
+    ('market_bars', 'continuous_symbol'),
+    ('market_bars', 'source'),
+        ('market_data_import_chunks', 'chunk_start'),
+        ('market_data_import_chunks', 'chunk_end')
 )
 select 'required_column' as check_name,
        r.table_name || '.' || r.column_name as object_name,
@@ -132,7 +140,10 @@ with required_indexes(index_name) as (
         ('idx_stripe_subscription_states_last_event_created'),
         ('idx_user_feature_previews_user_status'),
         ('rate_limit_windows_pkey'),
-        ('idx_rate_limit_windows_expires_at')
+        ('idx_rate_limit_windows_expires_at'),
+        ('idx_market_bars_lookup'),
+        ('idx_market_bars_instrument'),
+        ('idx_market_data_import_chunks_lookup')
 )
 select 'required_index_or_unique' as check_name,
        r.index_name,

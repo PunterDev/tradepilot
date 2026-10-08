@@ -1,0 +1,2 @@
+package com.tradepilot.backtest.repository; import com.tradepilot.backtest.entity.BacktestTrade; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*;
+public interface BacktestTradeRepository extends JpaRepository<BacktestTrade,Long>{ List<BacktestTrade> findByBacktestRunIdOrderByEntryTimeAsc(Long runId); Optional<BacktestTrade> findByIdAndBacktestRunId(Long id, Long backtestRunId); void deleteByBacktestRunId(Long runId); }

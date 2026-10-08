@@ -23,6 +23,8 @@ import {
   type AuthUser,
 } from "./api/authApi";
 import { getFeatureAvailability } from "./api/featureAvailabilityApi";
+import { getBacktestAccess } from "./api/backtestApi";
+import { getManualBacktestAccess } from "./api/manualBacktestApi";
 import { getPreAnalysisAccess } from "./api/preAnalysisApi";
 import { deleteAccount } from "./api/accountApi";
 import { saveJournal } from "./api/journalApi";
@@ -86,6 +88,10 @@ const FeatureUsagePage = lazy(() => import("./features/admin/feature-usage/Featu
 const ObservabilityPage = lazy(() => import("./features/admin/observability/ObservabilityPage"));
 const RetentionAnalyticsPage = lazy(() => import("./features/admin/retention/RetentionAnalyticsPage"));
 const SeoAnalyticsPage = lazy(() => import("./features/admin/seo/SeoAnalyticsPage"));
+const DataTrustQualityPage = lazy(() => import("./features/admin/DataTrustQualityPage"));
+const MarketDataPage = lazy(() => import("./features/admin/market-data/MarketDataPage"));
+const BacktestPage = lazy(() => import("./features/admin/backtest/BacktestPage"));
+const ManualBacktestPage = lazy(() => import("./features/manual-backtest/ManualBacktestPage"));
 const AdminUsersPage = lazy(() => import("./features/admin/users/AdminUsersPage"));
 const AnalyticsPage = lazy(() => import("./features/analytics/AnalyticsPage"));
 const BillingPage = lazy(() => import("./features/billing/BillingPage"));
@@ -100,6 +106,8 @@ const PlaybookFormPage = lazy(() => import("./features/playbook/PlaybookFormPage
 const PlaybookDetailPage = lazy(() => import("./features/playbook/PlaybookDetailPage"));
 const PreAnalysisPage = lazy(() => import("./features/pre-analysis/PreAnalysisPage"));
 const HomePage = lazy(() => import("./features/marketing/HomePage"));
+const SampleDemoPage = lazy(() => import("./features/marketing/SampleDemoPage"));
+const HowTradePilotWorksPage = lazy(() => import("./features/marketing/HowTradePilotWorksPage"));
 const ContactPage = lazy(() => import("./features/marketing/ContactPage"));
 const PrivacyPage = lazy(() => import("./features/marketing/PrivacyPage"));
 const TermsPage = lazy(() => import("./features/marketing/TermsPage"));
@@ -385,6 +393,8 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [featureAvailability, setFeatureAvailability] = useState<FeatureAvailability>(disabledFeatureAvailability);
   const [preAnalysisAllowed, setPreAnalysisAllowed] = useState(false);
+  const [backtestAllowed, setBacktestAllowed] = useState(false);
+  const [manualBacktestAllowed, setManualBacktestAllowed] = useState<boolean | null>(null);
   const preAnalysisEnabled = featureAvailability.v2FeaturesEnabled && preAnalysisAllowed;
   const billing = useBillingUsage(true);
   const activation = useActivationStatus(!isAdmin);
@@ -410,6 +420,26 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         if (active) {
           setFeatureAvailability(disabledFeatureAvailability);
         }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getManualBacktestAccess().then((access) => active && setManualBacktestAllowed(access.allowed)).catch(() => active && setManualBacktestAllowed(false));
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getBacktestAccess()
+      .then((access) => {
+        if (active) setBacktestAllowed(access.allowed);
+      })
+      .catch(() => {
+        if (active) setBacktestAllowed(false);
       });
     return () => {
       active = false;
@@ -531,6 +561,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
     importFeedback,
     dashboardStats,
     loadingStats,
+    reconciliationImportId,
     handleCsvUpload,
     handleSaveToDatabase,
     metrics,
@@ -733,6 +764,8 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
         accountCount={0}
         usage={billing.usage}
         preAnalysisAllowed={preAnalysisEnabled}
+        backtestAllowed={backtestAllowed}
+        manualBacktestAllowed={manualBacktestAllowed === true}
         onLogout={onLogout}
       >
         <Routes>
@@ -744,7 +777,12 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           <Route path="/admin/feature-funnels" element={<FeatureFunnelsPage />} />
           <Route path="/admin/feature-funnels/:funnelKey" element={<FeatureFunnelsPage />} />
           <Route path="/admin/analytics/seo" element={<SeoAnalyticsPage />} />
+          <Route path="/admin/market-data" element={<MarketDataPage />} />
+          <Route path="/backtest" element={backtestAllowed ? <BacktestPage /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/manual-backtest" element={manualBacktestAllowed === true ? <ManualBacktestPage /> : manualBacktestAllowed === null ? null : <Navigate to="/dashboard" replace />} />
+          <Route path="/admin/backtest" element={<Navigate to="/backtest" replace />} />
           <Route path="/admin/retention" element={<RetentionAnalyticsPage />} />
+          <Route path="/admin/data-trust" element={<DataTrustQualityPage />} />
           <Route path="/admin/observability" element={<ObservabilityPage />} />
           <Route
             path="/billing"
@@ -828,6 +866,8 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
       usage={billing.usage}
       featureAvailability={featureAvailability}
       preAnalysisAllowed={preAnalysisEnabled}
+      backtestAllowed={backtestAllowed}
+      manualBacktestAllowed={manualBacktestAllowed === true}
       onLogout={onLogout}
     >
       <Routes>
@@ -874,6 +914,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
                 onTradeSelect={setSelectedTradeId}
                 showTradingDnaEntryPoint={isFeatureEnabled("TRADING_DNA", featureAvailability)}
                 v2FeaturesEnabled={featureAvailability.v2FeaturesEnabled}
+                reconciliationImportId={reconciliationImportId}
               />
             )
           }
@@ -1190,6 +1231,19 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           }
         />
         <Route
+          path="/admin/market-data"
+          element={
+            user.role === "ADMIN" ? (
+              <MarketDataPage />
+            ) : (
+              <NotAuthorized />
+            )
+          }
+        />
+        <Route path="/backtest" element={backtestAllowed ? <BacktestPage /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/manual-backtest" element={manualBacktestAllowed === true ? <ManualBacktestPage /> : manualBacktestAllowed === null ? null : <Navigate to="/dashboard" replace />} />
+        <Route path="/admin/backtest" element={<Navigate to="/backtest" replace />} />
+        <Route
           path="/admin/retention"
           element={
             user.role === "ADMIN" ? (
@@ -1199,6 +1253,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
             )
           }
         />
+        <Route path="/admin/data-trust" element={user.role === "ADMIN" ? <DataTrustQualityPage /> : <NotAuthorized />} />
         <Route
           path="/trades/:tradeId"
           element={<TradeDetailRoute onOpenTrade={setSelectedTradeId} />}
@@ -1956,6 +2011,8 @@ function AuthRoutes() {
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/resources" element={<ResourcesPage />} />
+      <Route path="/demo" element={<SampleDemoPage />} />
+      <Route path="/how-tradepilot-works" element={<HowTradePilotWorksPage />} />
       <Route path="/tools/trading-expectancy-calculator" element={<TradingExpectancyCalculatorPage />} />
       <Route path="/tools/overtrading-calculator" element={<OvertradingCalculatorPage />} />
       <Route path="/tools/revenge-trading-calculator" element={<RevengeTradingCalculatorPage />} />

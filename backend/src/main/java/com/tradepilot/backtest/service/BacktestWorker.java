@@ -1,0 +1,2 @@
+package com.tradepilot.backtest.service; import com.tradepilot.backtest.model.BacktestConfig; import org.springframework.scheduling.annotation.Async; import org.springframework.stereotype.Component;
+@Component public class BacktestWorker { private final BacktestService service; public BacktestWorker(BacktestService s){service=s;} @Async("taskExecutor") public void run(Long id,BacktestConfig config){service.execute(id,config);} }

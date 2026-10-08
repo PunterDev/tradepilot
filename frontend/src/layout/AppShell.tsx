@@ -16,11 +16,13 @@ type Props = {
   usage?: BillingUsage | null;
   featureAvailability?: FeatureAvailability | null;
   preAnalysisAllowed?: boolean;
+  backtestAllowed?: boolean;
+  manualBacktestAllowed?: boolean;
   onLogout: () => void;
   children: ReactNode;
 };
 
-type AppNavItem = NavItem & { feature?: ReleaseFeatureKey; requiresPreAnalysis?: boolean };
+type AppNavItem = NavItem & { feature?: ReleaseFeatureKey; requiresPreAnalysis?: boolean; requiresBacktest?: boolean; requiresManualBacktest?: boolean };
 
 const baseNav: AppNavItem[] = [
   { label: "Dashboard", to: "/dashboard" },
@@ -33,17 +35,21 @@ const baseNav: AppNavItem[] = [
   { label: "Playbook", to: "/playbook", feature: "PLAYBOOK" },
   { label: "Coach", to: "/coach" },
   { label: "AI Pre-Analysis", to: "/coach/pre-analysis", requiresPreAnalysis: true },
+  { label: "Playbook Backtest", to: "/backtest", requiresBacktest: true },
+  { label: "Manual Backtest", to: "/manual-backtest", requiresManualBacktest: true },
   { label: "Billing", to: "/billing" },
 ];
 
-export default function AppShell({ user, accountCount, usage, featureAvailability, preAnalysisAllowed, onLogout, children }: Props) {
+export default function AppShell({ user, accountCount, usage, featureAvailability, preAnalysisAllowed, backtestAllowed, manualBacktestAllowed, onLogout, children }: Props) {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
   const userNav: NavItem[] = baseNav.filter((item) => {
     if (item.requiresPreAnalysis && (!featureAvailability?.v2FeaturesEnabled || !preAnalysisAllowed)) return false;
+    if (item.requiresBacktest && !backtestAllowed) return false;
+    if (item.requiresManualBacktest && !manualBacktestAllowed) return false;
     return !item.feature || isFeatureEnabled(item.feature, featureAvailability);
   }).map((item) => {
-    const { feature: _feature, requiresPreAnalysis: _requiresPreAnalysis, ...navItem } = item;
+    const { feature: _feature, requiresPreAnalysis: _requiresPreAnalysis, requiresBacktest: _requiresBacktest, requiresManualBacktest: _requiresManualBacktest, ...navItem } = item;
     if (navItem.to === "/analytics") return { ...navItem, locked: !hasFeature("ADVANCED_ANALYTICS", user, usage) };
     if (navItem.to === "/session-review") return { ...navItem, locked: !hasFeature("SESSION_REVIEW", user, usage) };
     if (navItem.to === "/trading-dna") return { ...navItem, locked: !hasFeature("TRADING_DNA", user, usage) };
@@ -54,7 +60,7 @@ export default function AppShell({ user, accountCount, usage, featureAvailabilit
     return navItem;
   });
   const adminBaseNav: NavItem[] = accountCount > 0
-    ? [...userNav, { label: "Admin", to: "/admin" }, { label: "Users", to: "/admin/users" }, { label: "Contact Messages", to: "/admin/contact-messages" }, { label: "Feature Usage", to: "/admin/feature-usage" }, { label: "Funnels", to: "/admin/feature-funnels" }, { label: "SEO Analytics", to: "/admin/analytics/seo" }, { label: "Retention Analytics", to: "/admin/retention" }, { label: "Observability", to: "/admin/observability" }]
+    ? [...userNav, { label: "Admin", to: "/admin" }, { label: "Users", to: "/admin/users" }, { label: "Contact Messages", to: "/admin/contact-messages" }, { label: "Feature Usage", to: "/admin/feature-usage" }, { label: "Funnels", to: "/admin/feature-funnels" }, { label: "SEO Analytics", to: "/admin/analytics/seo" }, { label: "Data Trust", to: "/admin/data-trust" }, { label: "Market Data", to: "/admin/market-data" }, { label: "Retention Analytics", to: "/admin/retention" }, { label: "Observability", to: "/admin/observability" }]
     : [
         { label: "Admin", to: "/admin" },
         { label: "Users", to: "/admin/users" },
@@ -63,6 +69,8 @@ export default function AppShell({ user, accountCount, usage, featureAvailabilit
         { label: "Feature Usage", to: "/admin/feature-usage" },
         { label: "Funnels", to: "/admin/feature-funnels" },
         { label: "SEO Analytics", to: "/admin/analytics/seo" },
+        { label: "Data Trust", to: "/admin/data-trust" },
+        { label: "Market Data", to: "/admin/market-data" },
         { label: "Retention Analytics", to: "/admin/retention" },
         { label: "Observability", to: "/admin/observability" },
       ];
