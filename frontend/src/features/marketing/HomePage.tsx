@@ -9,6 +9,7 @@ import { marketingPricing } from "../../config/marketingPricing";
 import { trackSeoCtaClick, trackSeoLandingPageView } from "../../utils/seoAttribution";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
+import { publicSampleAccount, sampleEvidenceMethod } from "./sampleAccount";
 
 const disabledV2Availability: FeatureAvailability = {
   v2FeaturesEnabled: false,
@@ -170,7 +171,7 @@ export default function HomePage() {
                 See the Demo
               </Link>
             </div>
-            <p className="hero-demo-copy">No signup. No CSV. Explore a sample futures trading account.</p>
+            <p className="hero-demo-copy"><Link className="marketing-inline-link" to="/demo">Explore the public sample</Link> with no signup or CSV.</p>
             <p className="marketing-trust-copy">
               {showTradingMemory
                 ? <>AI execution intelligence and coaching for futures traders. Import <Link className="marketing-inline-link" to="/topstep-trading-journal">Topstep</Link> and <Link className="marketing-inline-link" to="/tradovate-trading-journal">Tradovate</Link> trade history by CSV.</>
@@ -194,18 +195,18 @@ export default function HomePage() {
             <p className="marketing-section-copy">The sample account is illustrative only. It shows the shape of a review, not a trading recommendation.</p>
           </header>
           <div className="proof-sequence" aria-label="Sample analysis sequence">
-            <article><span>01 — Pattern</span><strong>Post-loss overtrading</strong></article>
-            <article><span>02 — Evidence</span><strong>8 qualifying occurrences. Triggered performance below baseline.</strong></article>
-            <article><span>03 — Next rule</span><strong>After two consecutive losses, pause for 20 minutes.</strong></article>
+            <article><span>01 — Pattern</span><strong>{publicSampleAccount.primaryFinding.title}</strong></article>
+            <article><span>02 — Evidence</span><strong>{publicSampleAccount.primaryFinding.occurrenceCount} qualifying occurrences. {publicSampleAccount.primaryFinding.evidenceStrength} evidence.</strong></article>
+            <article><span>03 — Next rule</span><strong>{publicSampleAccount.coach.rule}</strong></article>
           </div>
-          <p className="marketing-trust-copy sample-trust-note">TradePilot detects the pattern from your trading data first. AI helps explain it — it does not invent the finding.</p>
+          <p className="marketing-trust-copy sample-trust-note">{sampleEvidenceMethod}</p>
         </div>
       </section>
 
       <section className="marketing-section data-trust-section">
         <div className="marketing-container data-trust-layout">
           <div><div className="marketing-eyebrow">Data trust</div><h2 className="marketing-section-title">Your numbers should match first.</h2><p className="marketing-section-copy">After an import, verify the trade count and net P&amp;L against your platform before you rely on the analysis.</p></div>
-          <div className="data-trust-card"><strong>32 trades imported</strong><strong>Net P&amp;L: +$664.30</strong><span>Does this match your trading platform?</span><div><button type="button">Yes, looks correct</button><button type="button">Something looks wrong</button></div></div>
+          <div className="data-trust-card"><strong>{publicSampleAccount.dataTrust.completedTrades} trades imported</strong><strong>Net P&amp;L: {publicSampleAccount.dataTrust.netPnl}</strong><span>{publicSampleAccount.dataTrust.confirmationPrompt}</span><div><button type="button">Yes, looks correct</button><button type="button">Something looks wrong</button></div></div>
         </div>
       </section>
 
@@ -428,10 +429,10 @@ export default function HomePage() {
         <div className="marketing-container">
           <div className="final-cta">
             <h2 className="marketing-section-title">See what TradePilot Coach finds in your trading.</h2>
-            <p className="marketing-section-copy">Start with the sample account or import supported history when you are ready.</p>
+            <p className="marketing-section-copy">Explore the sample account, then import supported history when you are ready.</p>
             <div className="final-cta-actions">
-              <Link className="marketing-button primary" to="/demo" onClick={() => trackSeoCtaClick("/", "Try Sample Demo", "/demo")}>Try Sample Demo</Link>
-              <Link className="marketing-button ghost" to="/register" onClick={() => trackSeoCtaClick("/", "Start Free", "/register")}>Start Free</Link>
+              <Link className="marketing-button primary" to="/register" onClick={() => trackSeoCtaClick("/", "Try TradePilot Free", "/register")}>Try TradePilot Free</Link>
+              <Link className="marketing-button ghost" to="/demo" onClick={() => trackSeoCtaClick("/", "Explore sample", "/demo")}>Explore sample</Link>
             </div>
             <p className="final-cta-note">No broker password required.</p>
           </div>
@@ -447,6 +448,7 @@ function TradingMemoryHeroPreview() {
       <div className="memory-preview-top">
         <div>
           <div className="report-kicker">Trading Memory</div>
+          <div className="memory-preview-caption">Illustrative memory preview</div>
           <h2>Have you made this trade before?</h2>
           <p className="memory-preview-result">Yes — TradePilot found a recurring pattern.</p>
         </div>
@@ -497,14 +499,16 @@ function StatusPill({ tone, label }: { tone: "included" | "neutral"; label: stri
 }
 
 function LeakReportMockup({ compact = false }: { compact?: boolean }) {
+  const finding = compact ? publicSampleAccount.supportingFinding : publicSampleAccount.primaryFinding;
+  const plan = compact ? publicSampleAccount.supportingFinding.nextRule : publicSampleAccount.coach.rule;
   return (
     <div className={`leak-report-mockup ${compact ? "compact" : ""}`} aria-label="AI Leak Detector report preview">
       <div className="leak-report-header">
         <div>
           <div className="report-kicker">Execution Leak Report</div>
-          <h2>{compact ? "Overtrading follows two consecutive losses." : "You lose the most after continuing to trade following two consecutive losses."}</h2>
+          <h2>{compact ? `${finding.title} can follow a loss.` : "You lose the most after continuing to trade following two consecutive losses."}</h2>
         </div>
-        <span className="report-badge">Strong evidence</span>
+        <span className="report-badge">{finding.evidenceStrength} evidence</span>
       </div>
       <div className="report-stats">
         <div>
@@ -514,19 +518,19 @@ function LeakReportMockup({ compact = false }: { compact?: boolean }) {
         {!compact && (
           <div>
             <span>Trades Analyzed</span>
-            <strong>89</strong>
+            <strong>{publicSampleAccount.dataTrust.completedTrades}</strong>
           </div>
         )}
         <div>
           <span>Evidence strength</span>
-          <strong>Strong</strong>
+          <strong>{finding.evidenceStrength}</strong>
           <div className="confidence-track"><span style={{ width: "76%" }} /></div>
         </div>
       </div>
       <div className="recovery-plan">
         <div className="report-kicker">Focused Improvement Plan</div>
         <ol>
-          <li>Pause for 20 minutes after two consecutive losses.</li>
+          <li>{plan}</li>
           <li>Set a hard trade cap before the session starts.</li>
           {!compact && <li>Review related trades and write one rule.</li>}
         </ol>
@@ -543,15 +547,15 @@ function CoachOutcomeMockup() {
       <h3>Next-Session Focus</h3>
       <div className="coach-metric mission">
         <span>Detected pattern</span>
-        <strong>Trading continued after two consecutive losses.</strong>
+          <strong>{publicSampleAccount.secondaryFinding.title} can appear after a normal session limit is exceeded.</strong>
       </div>
       <div className="coach-metric">
         <span>Relevant context</span>
-        <strong>The pattern was concentrated in the late morning review window.</strong>
+          <strong>{publicSampleAccount.secondaryFinding.description}</strong>
       </div>
       <div className="coach-metric">
         <span>Next-session rule</span>
-        <strong>Pause for 20 minutes after two consecutive losses.</strong>
+          <strong>{publicSampleAccount.secondaryFinding.nextRule}</strong>
       </div>
     </div>
   );

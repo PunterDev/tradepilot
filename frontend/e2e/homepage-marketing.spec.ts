@@ -126,7 +126,20 @@ test("homepage navigation anchors and CTAs target valid public destinations", as
   await expect(page.getByRole("link", { name: "Try Free" }).first()).toHaveAttribute("href", "/register");
   await expect(page.getByRole("link", { name: "See the Demo" }).first()).toHaveAttribute("href", "/demo");
   await expect(page.getByRole("heading", { name: "See what TradePilot Coach finds in your trading." })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Try Sample Demo" })).toHaveAttribute("href", "/demo");
+  await expect(page.getByRole("link", { name: "Explore sample" })).toHaveAttribute("href", "/demo");
+  await expect(page.getByRole("link", { name: "Try TradePilot Free" }).last()).toHaveAttribute("href", "/register");
+});
+
+test("homepage uses the canonical fictional sample account without implying a customer result", async ({ page }) => {
+  await mockFeatureAvailability(page, disabledAvailability);
+  await page.goto("/");
+
+  await expect(page.getByLabel("Sample analysis sequence").getByText("Post-loss overtrading", { exact: true })).toBeVisible();
+  await expect(page.getByText("14 qualifying occurrences. MODERATE evidence.")).toBeVisible();
+  await expect(page.getByText("64 trades imported")).toBeVisible();
+  await expect(page.getByText("Net P&L: -$483.75")).toBeVisible();
+  await expect(page.getByText("TradePilot detects the pattern from your trading data first. AI helps explain it—it does not invent the finding.")).toBeVisible();
+  await expect(page.getByText("Explore the public sample")).toBeVisible();
 });
 
 test("homepage keeps the current five-step workflow readable", async ({ page }) => {
