@@ -129,6 +129,21 @@ test("homepage navigation anchors and CTAs target valid public destinations", as
   await expect(page.getByRole("link", { name: "Try Sample Demo" })).toHaveAttribute("href", "/demo");
 });
 
+test("homepage uses the canonical public post-loss sample", async ({ page }) => {
+  await mockFeatureAvailability(page, disabledAvailability);
+  await page.goto("/");
+
+  const sampleProof = page.locator(".sample-proof-section");
+  await expect(sampleProof.getByText("42 trades analyzed. 9 qualifying occurrences. Weak evidence.")).toBeVisible();
+  const report = page.getByLabel("AI Leak Detector report preview").first();
+  await expect(report.getByText("42", { exact: true })).toBeVisible();
+  await expect(report.getByText("Weak evidence")).toBeVisible();
+  await expect(report.getByText("0.51R worse")).toBeVisible();
+  await expect(page.getByText("8 qualifying occurrences")).toHaveCount(0);
+  await expect(page.getByText("89", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Strong evidence")).toHaveCount(0);
+});
+
 test("homepage keeps the current five-step workflow readable", async ({ page }) => {
   await mockFeatureAvailability(page, disabledAvailability);
   await page.goto("/");

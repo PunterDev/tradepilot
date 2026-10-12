@@ -6,6 +6,7 @@ import { trackSeoCtaClick, trackSeoEvent } from "../../utils/seoAttribution";
 import { Breadcrumbs } from "./Breadcrumbs";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
+import { sampleAccount } from "./sampleAccount";
 
 const PATH = "/demo";
 const TITLE = "See TradePilot Coach in Action | Sample Futures Trading Account";
@@ -91,10 +92,10 @@ function DemoSummary({ onViewLeak }: { onViewLeak: () => void }) {
   return <>
     <div className="demo-panel-heading"><div><span>Performance summary</span><h2>Review the session before drawing a conclusion.</h2></div><em>Sample data</em></div>
     <div className="demo-metric-grid">
-      <DemoMetric label="Completed trades" value="42" helper="Across the selected sample" />
+      <DemoMetric label="Completed trades" value={String(sampleAccount.totalTrades)} helper="Across the selected sample" />
       <DemoMetric label="Average result" value="-0.18R" helper="Historical sample only" tone="loss" />
       <DemoMetric label="Most active window" value="9:30-11:00 ET" helper="Session context" />
-      <DemoMetric label="Post-loss trades" value="14" helper="Available for comparison" />
+      <DemoMetric label="Post-loss trades" value={String(sampleAccount.postLossTrades)} helper="Available for comparison" />
     </div>
     <div className="demo-analysis-card">
       <div><span>Session analysis</span><h3>The later part of this sample contains more trades after losses than the earlier baseline.</h3><p>This is a starting point for review, not a diagnosis or prediction.</p></div>
@@ -107,16 +108,16 @@ function DemoLeak({ onViewCoach }: { onViewCoach: () => void }) {
   return <>
     <div className="demo-panel-heading"><div><span>Leak Detector</span><h2>One pattern, supported by the selected trades.</h2></div><em>Sample data</em></div>
     <div className="demo-leak-card">
-      <div className="demo-leak-topline"><span>Primary behavioral pattern</span><strong>Strong evidence</strong></div>
-      <h3>Revenge Trading After Losses</h3>
+      <div className="demo-leak-topline"><span>Primary behavioral pattern</span><strong>{sampleAccount.finding.evidenceLabel}</strong></div>
+      <h3>{sampleAccount.finding.title}</h3>
       <p>In this illustrative account, trades placed after two consecutive losses performed worse than the earlier-session comparison group.</p>
       <div className="demo-evidence-grid">
-        <DemoMetric label="Qualifying trades" value="9" helper="Selected pattern sample" />
-        <DemoMetric label="Comparison" value="-0.62R vs -0.11R" helper="After-loss vs baseline average" tone="loss" />
-        <DemoMetric label="Evidence strength" value="Strong" helper="Enough repeated observations to review" />
-        <DemoMetric label="Estimated historical impact" value="Directional" helper="Not guaranteed future recovery" />
+        <DemoMetric label="Qualifying occurrences" value={String(sampleAccount.qualifyingOccurrences)} helper="Post-loss pattern triggers" />
+        <DemoMetric label="Comparison" value={`${sampleAccount.finding.triggeredAverageR}R vs ${sampleAccount.finding.baselineAverageR}R`} helper="After-loss vs baseline average" tone="loss" />
+        <DemoMetric label="Evidence strength" value="Weak" helper="Repeated observations worth reviewing" />
+        <DemoMetric label="Average deterioration" value={`${sampleAccount.finding.deteriorationR}R worse`} helper="Triggered average vs baseline" tone="loss" />
       </div>
-      <div className="demo-explanation"><strong>What this means</strong><p>Evidence strength describes how much repeated historical support this pattern has. Estimated impact is directional: it summarizes the observed trades and does not predict future P&L.</p></div>
+      <div className="demo-explanation"><strong>What this means</strong><p>Evidence strength describes how much repeated historical support this pattern has. The comparison summarizes observed historical trades and does not predict future P&L.</p></div>
       <button type="button" className="marketing-button primary" onClick={onViewCoach}>See the coaching rule</button>
     </div>
   </>;
@@ -127,7 +128,7 @@ function DemoCoach() {
     <div className="demo-panel-heading"><div><span>Coaching recommendation</span><h2>Turn the review into one guardrail for the next session.</h2></div><em>Sample data</em></div>
     <div className="demo-coach-card">
       <span>Sample rule</span>
-      <h3>After two consecutive losses, pause trading for 20 minutes.</h3>
+      <h3>{sampleAccount.finding.coachRule}</h3>
       <p>Use the pause to reset the plan, identify the next valid setup, and decide whether another trade still meets your rules.</p>
       <div className="demo-coach-checklist"><span>Based on historical behavior, not a market prediction</span><span>One observable rule to review after the next session</span><span>Adjust only after collecting more evidence</span></div>
     </div>

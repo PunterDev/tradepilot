@@ -9,6 +9,7 @@ import { marketingPricing } from "../../config/marketingPricing";
 import { trackSeoCtaClick, trackSeoLandingPageView } from "../../utils/seoAttribution";
 import "./HomePage.css";
 import { MarketingShell } from "./MarketingLayout";
+import { sampleAccount } from "./sampleAccount";
 
 const disabledV2Availability: FeatureAvailability = {
   v2FeaturesEnabled: false,
@@ -194,9 +195,9 @@ export default function HomePage() {
             <p className="marketing-section-copy">The sample account is illustrative only. It shows the shape of a review, not a trading recommendation.</p>
           </header>
           <div className="proof-sequence" aria-label="Sample analysis sequence">
-            <article><span>01 — Pattern</span><strong>Post-loss overtrading</strong></article>
-            <article><span>02 — Evidence</span><strong>8 qualifying occurrences. Triggered performance below baseline.</strong></article>
-            <article><span>03 — Next rule</span><strong>After two consecutive losses, pause for 20 minutes.</strong></article>
+            <article><span>01 — Pattern</span><strong>{sampleAccount.finding.pattern}</strong></article>
+            <article><span>02 — Evidence</span><strong>{sampleAccount.totalTrades} trades analyzed. {sampleAccount.qualifyingOccurrences} qualifying occurrences. Weak evidence.</strong></article>
+            <article><span>03 — Next rule</span><strong>{sampleAccount.finding.coachRule}</strong></article>
           </div>
           <p className="marketing-trust-copy sample-trust-note">TradePilot detects the pattern from your trading data first. AI helps explain it — it does not invent the finding.</p>
         </div>
@@ -504,29 +505,29 @@ function LeakReportMockup({ compact = false }: { compact?: boolean }) {
           <div className="report-kicker">Execution Leak Report</div>
           <h2>{compact ? "Overtrading follows two consecutive losses." : "You lose the most after continuing to trade following two consecutive losses."}</h2>
         </div>
-        <span className="report-badge">Strong evidence</span>
+        <span className="report-badge">{sampleAccount.finding.evidenceLabel}</span>
       </div>
       <div className="report-stats">
         <div>
-          <span>Illustrative historical impact</span>
-          <strong className="loss">Directional</strong>
+          <span>Average deterioration</span>
+          <strong className="loss">{sampleAccount.finding.deteriorationR}R worse</strong>
         </div>
         {!compact && (
           <div>
             <span>Trades Analyzed</span>
-            <strong>89</strong>
+            <strong>{sampleAccount.totalTrades}</strong>
           </div>
         )}
         <div>
           <span>Evidence strength</span>
-          <strong>Strong</strong>
-          <div className="confidence-track"><span style={{ width: "76%" }} /></div>
+          <strong>Weak</strong>
+          <div className="confidence-track"><span style={{ width: "36%" }} /></div>
         </div>
       </div>
       <div className="recovery-plan">
         <div className="report-kicker">Focused Improvement Plan</div>
         <ol>
-          <li>Pause for 20 minutes after two consecutive losses.</li>
+          <li>{sampleAccount.finding.coachRule}</li>
           <li>Set a hard trade cap before the session starts.</li>
           {!compact && <li>Review related trades and write one rule.</li>}
         </ol>
