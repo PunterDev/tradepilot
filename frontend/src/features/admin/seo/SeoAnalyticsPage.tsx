@@ -254,16 +254,17 @@ export default function SeoAnalyticsPage() {
   );
 }
 
-type Column<T> = { label: string; value: (row: T) => string | number };
+type TableColumn = { label: string; minWidth?: number };
+type Column<T> = TableColumn & { value: (row: T) => string | number };
 
 function Table<T>({ title, rows, columns, rowKey }: { title: string; rows: T[]; columns: Column<T>[]; rowKey: (row: T) => string }) {
   return (
     <section style={sectionCard}>
       <h2 style={sectionTitle}>{title}</h2>
       <div style={tableWrap}>
-        <div style={{ ...tableRow(columns.length), ...tableHeader }}>{columns.map((column) => <span key={column.label}>{column.label}</span>)}</div>
+        <div style={{ ...tableRow(columns), ...tableHeader }}>{columns.map((column) => <span key={column.label} style={tableCell}>{column.label}</span>)}</div>
         {rows.map((row) => (
-          <div key={rowKey(row)} style={tableRow(columns.length)}>{columns.map((column) => <span key={column.label}>{column.value(row)}</span>)}</div>
+          <div key={rowKey(row)} style={tableRow(columns)}>{columns.map((column) => <span key={column.label} style={tableCell}>{column.value(row)}</span>)}</div>
         ))}
         {rows.length === 0 && <div style={emptyState}>No rows in this range.</div>}
       </div>
@@ -330,7 +331,7 @@ const opportunityColumns = [
 ];
 
 const toolColumns = [
-  { label: "Tool", value: (row: any) => toolLabel(row.tool) },
+  { label: "Tool", minWidth: 210, value: (row: any) => toolLabel(row.tool) },
   { label: "Views", value: (row: any) => number(row.views) },
   { label: "Started", value: (row: any) => number(row.started) },
   { label: "Completed", value: (row: any) => number(row.completed) },
@@ -372,7 +373,14 @@ function percent(value: number) { return `${value}%`; }
 function decimal(value: number) { return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value); }
 function minutes(value?: number | null) { return value == null ? "Not enough data" : `${number(Math.round(value))} min`; }
 function toolLabel(value: string) {
-  return ({ trading_expectancy: "Trading Expectancy", overtrading: "Overtrading", revenge_trading: "Revenge Trading" } as Record<string, string>)[value] ?? value;
+  return ({
+    trading_expectancy: "Trading Expectancy",
+    trading_expectancy_calculator: "Trading Expectancy Calculator",
+    overtrading: "Overtrading",
+    overtrading_calculator: "Overtrading Calculator",
+    revenge_trading: "Revenge Trading",
+    revenge_trading_calculator: "Revenge Trading Calculator",
+  } as Record<string, string>)[value] ?? value;
 }
 
 const pageWrap: CSSProperties = { display: "grid", gap: 22 };
@@ -408,7 +416,17 @@ const noteList: CSSProperties = { display: "grid", gap: 10, marginTop: 16 };
 const noteItem: CSSProperties = { padding: 14, borderRadius: 8, color: "#cbd5e1", background: "rgba(15,23,42,0.56)", border: "1px solid rgba(148,163,184,0.15)" };
 const tableWrap: CSSProperties = { overflowX: "auto", marginTop: 16 };
 const tableHeader: CSSProperties = { color: "#94a3b8", fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0, background: "rgba(15,23,42,0.48)", borderRadius: 8 };
-const tableRow = (columns: number): CSSProperties => ({ minWidth: Math.max(860, columns * 118), display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(90px, 1fr))`, gap: 12, alignItems: "center", padding: "12px 14px", borderBottom: "1px solid rgba(148,163,184,0.12)", color: "#cbd5e1" });
+const tableCell: CSSProperties = { minWidth: 0, overflowWrap: "anywhere" };
+const tableRow = (columns: readonly TableColumn[]): CSSProperties => ({
+  minWidth: Math.max(860, columns.length * 118),
+  display: "grid",
+  gridTemplateColumns: columns.map((column) => `minmax(${column.minWidth ?? 90}px, 1fr)`).join(" "),
+  gap: 12,
+  alignItems: "center",
+  padding: "12px 14px",
+  borderBottom: "1px solid rgba(148,163,184,0.12)",
+  color: "#cbd5e1",
+});
 const emptyState: CSSProperties = { color: "#94a3b8", padding: 16 };
 const errorBox: CSSProperties = { padding: 14, borderRadius: 8, color: "#fecaca", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.28)" };
 const adminBadge: CSSProperties = { ...button, width: "fit-content", borderRadius: 8, padding: "10px 13px", boxShadow: "none" };

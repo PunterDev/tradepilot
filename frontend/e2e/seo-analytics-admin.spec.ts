@@ -180,7 +180,11 @@ test("admin SEO acquisition dashboard renders KPI, funnel, tool, source, and cam
           { key: "pro_upgrade", label: "Pro Upgrade", count: 3, conversionFromPrevious: 33.3, conversionFromInitial: 2.5 },
         ],
         landingPages: [{ landingPage: "/tools/revenge-trading-calculator", views: 40, ctaClicks: 12, signups: 7, firstImports: 5, firstInsights: 4, proConversions: 1, signupRate: 17.5, activationRate: 57.1, paidConversionRate: 14.3 }],
-        tools: [{ tool: "revenge_trading", views: 40, started: 28, completed: 22, ctaClicks: 12, signups: 7, firstImports: 5, firstInsights: 4, proConversions: 1, completionRate: 78.6, signupRate: 17.5, activationRate: 57.1, paidConversionRate: 14.3 }],
+        tools: [
+          { tool: "overtrading_calculator", views: 40, started: 28, completed: 22, ctaClicks: 12, signups: 7, firstImports: 5, firstInsights: 4, proConversions: 1, completionRate: 78.6, signupRate: 17.5, activationRate: 57.1, paidConversionRate: 14.3 },
+          { tool: "revenge_trading_calculator", views: 39, started: 27, completed: 21, ctaClicks: 11, signups: 6, firstImports: 4, firstInsights: 3, proConversions: 1, completionRate: 77.8, signupRate: 15.4, activationRate: 50, paidConversionRate: 16.7 },
+          { tool: "trading_expectancy_calculator", views: 38, started: 26, completed: 20, ctaClicks: 10, signups: 5, firstImports: 3, firstInsights: 2, proConversions: 0, completionRate: 76.9, signupRate: 13.2, activationRate: 40, paidConversionRate: 0 },
+        ],
         sources: [{ source: "google", medium: "organic", views: 80, ctaClicks: 24, signups: 12, firstInsights: 6, proConversions: 2, signupRate: 15, activationRate: 50, paidConversionRate: 16.7 }],
         campaigns: [
           { campaign: "revenge", views: 40, signups: 7, firstInsights: 4, proConversions: 1, signupRate: 17.5, activationRate: 57.1, paidConversionRate: 14.3 },
@@ -218,7 +222,23 @@ test("admin SEO acquisition dashboard renders KPI, funnel, tool, source, and cam
   await expect(page.getByText("Activated / 100 Clicks")).toBeVisible();
   await expect(page.getByText("SEO Opportunities")).toBeVisible();
   await expect(page.getByText("Striking Distance")).toBeVisible();
-  await expect(page.getByText("Revenge Trading", { exact: true })).toBeVisible();
+  const freeToolPerformance = page.locator("section").filter({ has: page.getByRole("heading", { name: "Free Tool Performance" }) });
+  await expect(freeToolPerformance.getByText("Overtrading Calculator", { exact: true })).toBeVisible();
+  await expect(freeToolPerformance.getByText("Revenge Trading Calculator", { exact: true })).toBeVisible();
+  await expect(freeToolPerformance.getByText("Trading Expectancy Calculator", { exact: true })).toBeVisible();
+  await expect(freeToolPerformance.getByText("revenge_trading_calculator", { exact: true })).toHaveCount(0);
+  const toolCell = freeToolPerformance.getByText("Revenge Trading Calculator", { exact: true });
+  const viewsCell = toolCell.locator("xpath=..").locator("span").nth(1);
+  const tableWrap = toolCell.locator("xpath=../..");
+  for (const width of [1440, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const [toolBox, viewsBox] = await Promise.all([toolCell.boundingBox(), viewsCell.boundingBox()]);
+    expect(toolBox).not.toBeNull();
+    expect(viewsBox).not.toBeNull();
+    expect(viewsBox!.x).toBeGreaterThanOrEqual(toolBox!.x + toolBox!.width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  }
+  expect(await tableWrap.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
   await expect(page.getByText("<img src=x onerror=alert(1)>").first()).toBeVisible();
   await expect(page.getByText("Signup to first insight")).toBeVisible();
   await expect(page.getByText("Generated 8/30/2026, 12:00 PM CDT")).toBeVisible();
