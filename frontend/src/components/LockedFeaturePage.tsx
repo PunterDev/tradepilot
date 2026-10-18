@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { useEffect, type CSSProperties } from "react";
+import { trackLockedPreviewViewed } from "../api/featureUsageApi";
 import { button } from "../styles/dashboardStyles";
 
 export type LockedFeaturePreview = {
@@ -33,6 +34,10 @@ export default function LockedFeaturePage({
   onUpgrade,
 }: LockedFeaturePageProps) {
   const visibleCredits = creditsRemaining ?? creditsLimit;
+
+  useEffect(() => {
+    void trackLockedPreviewViewed().catch(() => undefined);
+  }, []);
 
   return (
     <section style={pageShell}>

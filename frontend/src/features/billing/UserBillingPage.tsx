@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useLocation } from "react-router-dom";
 import { createCheckoutSession, createCreditPackCheckoutSession, createPortalSession, type CreditPackId } from "../../api/billingApi";
 import type { AuthUser } from "../../api/authApi";
@@ -10,6 +10,7 @@ import { getEnabledProBenefits } from "../../config/planBenefits";
 import PageHeader from "../../layout/PageHeader";
 import { button, card, mutedText, sectionTitle } from "../../styles/dashboardStyles";
 import type { BillingUsage } from "../../types/billing";
+import { trackBillingPageViewed } from "../../api/featureUsageApi";
 
 type Props = {
   user: AuthUser;
@@ -31,6 +32,10 @@ export default function UserBillingPage({ user, usage, loading, error, featureAv
   const isScheduledCancellation = isPro && usage?.subscriptionStatus === "CANCELED";
   const freeBenefits = marketingPricing.free.benefits;
   const proBenefits = getEnabledProBenefits(featureAvailability);
+
+  useEffect(() => {
+    void trackBillingPageViewed().catch(() => undefined);
+  }, []);
 
   async function startCheckout(plan: "monthly" | "yearly") {
     setCheckoutLoading(plan);

@@ -99,12 +99,14 @@ public class FeatureFunnelService {
     }
 
     private CalculatedFunnel calculate(FunnelDefinition definition, List<FeatureUsageEvent> allEvents, Map<Long, User> usersById, FilterWindow window) {
-        List<FeatureUsageEvent> relevant = allEvents.stream()
+        Map<Long, List<FeatureUsageEvent>> candidateEvents = allEvents.stream()
                 .filter(event -> usersById.containsKey(event.getUserId()))
-                .filter(event -> eligible(definition, usersById.get(event.getUserId())))
                 .sorted(eventComparator())
-                .toList();
-        Map<Long, List<FeatureUsageEvent>> byUser = relevant.stream().collect(Collectors.groupingBy(FeatureUsageEvent::getUserId, LinkedHashMap::new, Collectors.toList()));
+                .collect(Collectors.groupingBy(FeatureUsageEvent::getUserId, LinkedHashMap::new, Collectors.toList()));
+        Map<Long, List<FeatureUsageEvent>> byUser = candidateEvents.entrySet().stream()
+                .filter(entry -> eligible(definition, usersById.get(entry.getKey()), entry.getValue()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (left, right) -> left, LinkedHashMap::new));
+        List<FeatureUsageEvent> relevant = byUser.values().stream().flatMap(List::stream).toList();
         Map<Long, UserFunnelState> states = new LinkedHashMap<>();
         for (Map.Entry<Long, List<FeatureUsageEvent>> entry : byUser.entrySet()) {
             UserFunnelState state = progress(definition, entry.getValue());
@@ -317,10 +319,13 @@ public class FeatureFunnelService {
         return userRepository.findAllById(ids).stream().collect(Collectors.toMap(User::getId, Function.identity()));
     }
 
-    private boolean eligible(FunnelDefinition definition, User user) {
+    private boolean eligible(FunnelDefinition definition, User user, List<FeatureUsageEvent> events) {
         if (user == null) return false;
         if (definition.planEligibility() == PlanEligibility.PRO_ONLY) return user.getPlan() == PlanType.PRO;
-        if (definition.planEligibility() == PlanEligibility.FREE_ONLY) return user.getPlan() == PlanType.FREE;
+        if (definition.planEligibility() == PlanEligibility.FREE_ONLY) {
+            return user.getPlan() == PlanType.FREE || events.stream()
+                    .anyMatch(event -> matches(definition.steps().get(0), event) && PlanType.FREE.name().equals(event.getPlanAtEvent()));
+        }
         return true;
     }
 

@@ -25,6 +25,15 @@ import com.tradepilot.dto.admin.AdminPlanChangeRequest;
 import com.tradepilot.dto.account.TradingAccountRequest;
 import com.tradepilot.dto.account.TradingAccountResponse;
 import com.tradepilot.entity.User;
+import com.tradepilot.featureusage.FeatureKey;
+import com.tradepilot.featureusage.FeatureUsageAction;
+import com.tradepilot.featureusage.FeatureUsageEvent;
+import com.tradepilot.featureusage.FeatureUsageEventType;
+import com.tradepilot.featureusage.FeatureUsageRepository;
+import com.tradepilot.featurefunnel.FeatureFunnelCalculationMode;
+import com.tradepilot.featurefunnel.FeatureFunnelKey;
+import com.tradepilot.featurefunnel.FeatureFunnelService;
+import com.tradepilot.featurefunnel.dto.FeatureFunnelSummaryResponse;
 import com.tradepilot.enums.PropFirmType;
 import com.tradepilot.enums.TradingAccountStatus;
 import com.tradepilot.repository.UserRepository;
@@ -38,6 +47,9 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -83,6 +95,8 @@ class StripeBillingTests {
     @Autowired ProcessedStripeEventRepository processedStripeEventRepository;
     @Autowired StripeCheckoutAttemptRepository stripeCheckoutAttemptRepository;
     @Autowired AiCreditPurchaseRepository aiCreditPurchaseRepository;
+    @Autowired FeatureUsageRepository featureUsageRepository;
+    @Autowired FeatureFunnelService featureFunnelService;
     @MockBean StripeApiClient stripeApiClient;
 
     @Test
@@ -127,6 +141,8 @@ class StripeBillingTests {
         assertThat(updated.getStripeSubscriptionId()).isEqualTo("sub_test_123");
         assertThat(processedStripeEventRepository.existsByEventId("evt_checkout_" + user.getId())).isTrue();
         assertThat(stripeCheckoutAttemptRepository.findById(attempt.getId()).orElseThrow().getStatus()).isEqualTo(StripeCheckoutAttemptStatus.COMPLETED);
+        assertLifecycleEventCount(user, FeatureKey.PLAYBOOK, FeatureUsageAction.CHECKOUT_COMPLETED, 1);
+        assertLifecycleEventCount(user, FeatureKey.PLAYBOOK, FeatureUsageAction.SUBSCRIPTION_ACTIVATED, 1);
     }
 
     @Test
@@ -139,6 +155,33 @@ class StripeBillingTests {
         User updated = userRepository.findById(user.getId()).orElseThrow();
         assertThat(updated.getPlan()).isEqualTo(PlanType.PRO);
         assertThat(updated.getSubscriptionStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+        assertThat(lifecycleEvents(user, FeatureUsageAction.SUBSCRIPTION_ACTIVATED)).singleElement()
+                .extracting(FeatureUsageEvent::getMetadataJson).asString().contains("YEARLY");
+    }
+
+    @Test
+    void authoritativeSubscriptionEventsCompleteTheExistingUpgradeFunnel() throws Exception {
+        User user = createUser("stripe-funnel-upgrade@example.com");
+        recordUpgradeFunnelPrelude(user);
+        prepareValidSubscriptionCheckout(user, "price_test_pro");
+        when(stripeApiClient.retrieveCustomer("cus_test_123")).thenReturn(customer("cus_test_123", false));
+        when(stripeApiClient.createCheckoutSession(any(User.class), eq("cus_test_123"), eq("price_test_pro"), eq("http://localhost:5173")))
+                .thenReturn(stripeCheckoutSession("cs_test_123", "cus_test_123", "subscription", "open", "https://checkout.test/upgrade", "sub_test_123"));
+        stripeBillingService.createCheckoutSession(user);
+
+        postWebhook(checkoutCompletedPayload(user.getId()));
+
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "admin", "N/A", AuthorityUtils.createAuthorityList("ROLE_ADMIN")));
+        try {
+            FeatureFunnelSummaryResponse summary = featureFunnelService.detail(
+                    FeatureFunnelKey.FREE_TO_PRO_UPGRADE, "LAST_30_DAYS", null, null, null, null,
+                    false, true, FeatureFunnelCalculationMode.UNIQUE_USERS, null);
+            assertThat(summary.completedUsers()).isEqualTo(1);
+            assertThat(summary.steps()).allSatisfy(step -> assertThat(step.usersReached()).isEqualTo(1));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
     @Test
@@ -202,6 +245,8 @@ class StripeBillingTests {
 
         assertThat(checkoutUrl).isEqualTo("https://checkout.test/credits");
         verify(stripeApiClient).createCreditPackCheckoutSession(user, "cus_credit_pack_pro", AiCreditPack.STARTER_25, "http://localhost:5173");
+        assertLifecycleEventCount(user, FeatureKey.DAILY_COACH, FeatureUsageAction.BUY_CREDITS_CTA_CLICKED, 1);
+        assertLifecycleEventCount(user, FeatureKey.DAILY_COACH, FeatureUsageAction.CREDIT_PACK_SELECTED, 1);
     }
 
     @Test
@@ -239,6 +284,7 @@ class StripeBillingTests {
         assertThat(aiCreditPurchaseRepository.findAll())
                 .filteredOn(purchase -> purchase.getUserId().equals(user.getId()))
                 .hasSize(1);
+        assertLifecycleEventCount(user, FeatureKey.DAILY_COACH, FeatureUsageAction.CHECKOUT_COMPLETED, 1);
     }
 
     @Test
@@ -1587,6 +1633,33 @@ class StripeBillingTests {
                 .plan(PlanType.FREE)
                 .subscriptionStatus(SubscriptionStatus.NONE)
                 .build());
+    }
+
+    private List<FeatureUsageEvent> lifecycleEvents(User user, FeatureUsageAction action) {
+        return featureUsageRepository.findByUserIdOrderByCreatedAtAscIdAsc(user.getId()).stream()
+                .filter(event -> event.getAction() == action)
+                .toList();
+    }
+
+    private void assertLifecycleEventCount(User user, FeatureKey feature, FeatureUsageAction action, int expected) {
+        assertThat(lifecycleEvents(user, action))
+                .filteredOn(event -> event.getFeature() == feature)
+                .hasSize(expected);
+    }
+
+    private void recordUpgradeFunnelPrelude(User user) {
+        for (FeatureUsageEvent event : List.of(
+                lifecycleEvent(user, FeatureKey.TRADING_DNA, FeatureUsageAction.LOCKED_PREVIEW_VIEWED, FeatureUsageEventType.PAGE_VIEW),
+                lifecycleEvent(user, FeatureKey.TRADING_DNA, FeatureUsageAction.UPGRADE_CTA_CLICKED, FeatureUsageEventType.USER_ACTION),
+                lifecycleEvent(user, FeatureKey.PLAYBOOK, FeatureUsageAction.BILLING_PAGE_VIEWED, FeatureUsageEventType.PAGE_VIEW)
+        )) {
+            featureUsageRepository.save(event);
+        }
+    }
+
+    private FeatureUsageEvent lifecycleEvent(User user, FeatureKey feature, FeatureUsageAction action, FeatureUsageEventType eventType) {
+        return FeatureUsageEvent.builder().userId(user.getId()).feature(feature).action(action).eventType(eventType)
+                .planAtEvent(user.getPlan().name()).occurredAt(LocalDateTime.now()).createdAt(LocalDateTime.now()).build();
     }
 
     private User createProStripeUser(String email, String stripeCustomerId) {

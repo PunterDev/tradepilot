@@ -230,6 +230,14 @@ export async function trackFeatureUsage(feature: FeatureKey): Promise<void> {
   await api.post("/feature-usage/track", { feature });
 }
 
+export async function trackLockedPreviewViewed(): Promise<void> {
+  await api.post("/feature-usage/conversion/locked-preview-viewed");
+}
+
+export async function trackBillingPageViewed(): Promise<void> {
+  await api.post("/feature-usage/conversion/billing-page-viewed");
+}
+
 function filterParams(filters?: FeatureUsageFilters) {
   const params: Record<string, string | boolean> = {};
   if (!filters) return params;

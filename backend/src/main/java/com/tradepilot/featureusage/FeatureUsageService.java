@@ -87,6 +87,28 @@ public class FeatureUsageService {
         }
     }
 
+    /**
+     * Persists a lifecycle event in the caller's transaction. Use this only when
+     * the event is part of the authoritative outcome being committed.
+     */
+    public void trackAuthoritative(User user, FeatureKey feature, FeatureUsageAction action, FeatureUsageEventType eventType,
+                                   String entityType, String entityId, String source, String metadataJson) {
+        if (user == null || feature == null) {
+            throw new IllegalArgumentException("Authoritative feature usage requires a user and feature.");
+        }
+        FeatureUsageEvent event = new FeatureUsageEvent();
+        event.setUserId(user.getId());
+        event.setFeature(feature);
+        event.setAction(action);
+        event.setEventType(eventType);
+        event.setEntityType(entityType);
+        event.setEntityId(entityId);
+        event.setSource(source);
+        event.setPlanAtEvent(user.getPlan() == null ? null : user.getPlan().name());
+        event.setMetadataJson(metadataJson);
+        featureUsageRepository.save(event);
+    }
+
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional(readOnly = true)
     public FeatureUsageSummaryResponse summary() {

@@ -6,6 +6,10 @@ import com.tradepilot.repository.TradingAccountRepository;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.service.AggregateCacheService;
 import com.tradepilot.service.PerformanceCacheInvalidationService;
+import com.tradepilot.featureusage.FeatureKey;
+import com.tradepilot.featureusage.FeatureUsageAction;
+import com.tradepilot.featureusage.FeatureUsageEventType;
+import com.tradepilot.featureusage.FeatureUsageService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
@@ -30,6 +34,7 @@ public class UsageLimitService {
     private final AggregateCacheService aggregateCacheService;
     private final PerformanceCacheInvalidationService cacheInvalidationService;
     private final FeatureAccessService featureAccessService;
+    private final FeatureUsageService featureUsageService;
 
     public void enforceAccountCreation(User user) {
         if (plan(user) == PlanType.PRO) {
@@ -56,7 +61,15 @@ public class UsageLimitService {
     public void enforceAiUsage(User user, UsageType usageType) {
         Feature feature = featureFor(usageType);
         featureAccessService.requireFeature(user, feature);
-        requireCredits(user, creditsFor(feature));
+        try {
+            requireCredits(user, creditsFor(feature));
+        } catch (AiCreditLimitExceededException ex) {
+            if (feature == Feature.DAILY_COACH) {
+                featureUsageService.track(user, FeatureKey.DAILY_COACH, FeatureUsageAction.INSUFFICIENT_CREDIT_STATE_VIEWED,
+                        FeatureUsageEventType.PAGE_VIEW, null, "AI_CREDIT_LIMIT", null, "server", null);
+            }
+            throw ex;
+        }
     }
 
     public int getMonthlyCreditLimit(User user) {
@@ -129,6 +142,10 @@ public class UsageLimitService {
             user.setPurchasedAiCreditsBalance(managedUser.getPurchasedAiCreditsBalance());
         }
         creditUsageRepository.save(AiCreditUsage.builder().userId(user.getId()).feature(feature).credits(credits).monthlyCredits(monthlyCredits).purchasedCredits(purchasedCredits).requestId(requestId).metadata(metadata).build());
+        if (feature == Feature.DAILY_COACH) {
+            featureUsageService.trackAuthoritative(managedUser, FeatureKey.DAILY_COACH, FeatureUsageAction.CREDITS_USED,
+                    FeatureUsageEventType.AI_GENERATION, "AI_CREDIT_USAGE", requestId == null ? null : requestId.toString(), "server", metadata);
+        }
         log.info("AI credits consumed. userId={}, feature={}, credits={}, monthlyCredits={}, purchasedCredits={}, requestId={}", user.getId(), feature, credits, monthlyCredits, purchasedCredits, requestId);
         cacheInvalidationService.invalidateBillingUsage(user.getId());
     }
@@ -264,7 +281,7 @@ public class UsageLimitService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public UsageLimitService(final AiUsageEventRepository usageEventRepository, final AiCreditUsageRepository creditUsageRepository, final TradingAccountRepository tradingAccountRepository, final TradeRepository tradeRepository, final UserRepository userRepository, final AggregateCacheService aggregateCacheService, final PerformanceCacheInvalidationService cacheInvalidationService, final FeatureAccessService featureAccessService) {
+    public UsageLimitService(final AiUsageEventRepository usageEventRepository, final AiCreditUsageRepository creditUsageRepository, final TradingAccountRepository tradingAccountRepository, final TradeRepository tradeRepository, final UserRepository userRepository, final AggregateCacheService aggregateCacheService, final PerformanceCacheInvalidationService cacheInvalidationService, final FeatureAccessService featureAccessService, final FeatureUsageService featureUsageService) {
         this.usageEventRepository = usageEventRepository;
         this.creditUsageRepository = creditUsageRepository;
         this.tradingAccountRepository = tradingAccountRepository;
@@ -273,5 +290,6 @@ public class UsageLimitService {
         this.aggregateCacheService = aggregateCacheService;
         this.cacheInvalidationService = cacheInvalidationService;
         this.featureAccessService = featureAccessService;
+        this.featureUsageService = featureUsageService;
     }
 }

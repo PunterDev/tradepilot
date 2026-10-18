@@ -12,6 +12,10 @@ import com.stripe.model.Subscription;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
 import com.tradepilot.entity.User;
+import com.tradepilot.featureusage.FeatureKey;
+import com.tradepilot.featureusage.FeatureUsageAction;
+import com.tradepilot.featureusage.FeatureUsageEventType;
+import com.tradepilot.featureusage.FeatureUsageService;
 import com.tradepilot.observability.ObservabilityService;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.seoanalytics.SeoAnalyticsService;
@@ -31,6 +35,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -50,6 +55,7 @@ public class StripeBillingService {
     private final AiCreditPurchaseRepository aiCreditPurchaseRepository;
     private final UsageLimitService usageLimitService;
     private final SeoAnalyticsService seoAnalyticsService;
+    private final FeatureUsageService featureUsageService;
     private static final Duration SUBSCRIPTION_CHECKOUT_CREATION_LOCK_TTL = Duration.ofMinutes(2);
     private Runnable afterCreditPackFulfillmentClaimed = () -> {
     };
@@ -99,6 +105,7 @@ public class StripeBillingService {
             checkoutAttempt.setStatus(StripeCheckoutAttemptStatus.PENDING);
             checkoutAttempt.setExpiresAt(LocalDateTime.now().plus(SUBSCRIPTION_CHECKOUT_CREATION_LOCK_TTL));
             stripeCheckoutAttemptRepository.save(checkoutAttempt);
+            trackSubscriptionCheckoutStarted(lockedUser, session.getId(), normalizedBillingCycle);
             observabilityService.recordStripeEvent("checkout.session.create", true, System.currentTimeMillis() - start, null);
             log.info("Stripe checkout session creation completed. userId={}, billingCycle={}, durationMs={}", lockedUser.getId(), normalizedBillingCycle, System.currentTimeMillis() - start);
             return session.getUrl();
@@ -163,6 +170,7 @@ public class StripeBillingService {
                 user.setStripeCustomerId(session.getCustomer());
                 transactionTemplate.executeWithoutResult(status -> userRepository.save(user));
             }
+            trackCreditPackCheckoutSelected(user, session.getId(), pack);
             observabilityService.recordStripeEvent("checkout.session.create.credit_pack", true, System.currentTimeMillis() - start, null);
             return session.getUrl();
         } catch (RuntimeException | StripeException ex) {
@@ -602,6 +610,7 @@ public class StripeBillingService {
             });
             usageLimitService.invalidateUsageCache(user.getId());
             seoAnalyticsService.markProConverted(user, LocalDateTime.now());
+            trackSubscriptionCompletedAndActivated(user, textField(object, "id"), subscription);
             log.info("Stripe checkout completed upgraded user. userId={}, subscriptionId={}, status={}", user.getId(), subscription.getId(), subscription.getStatus());
         }, () -> log.warn("Stripe subscription checkout completed for unknown user. sessionId={}, userId={}", textField(object, "id"), userId));
     }
@@ -706,6 +715,7 @@ public class StripeBillingService {
             userRepository.save(user);
             afterCreditPackCreditsIncremented.run();
             usageLimitService.invalidateUsageCache(user.getId());
+            trackCreditPackCompleted(user, sessionId, pack, "checkout.session.completed");
             log.info("Stripe AI credit pack applied. userId={}, sessionId={}, packId={}, credits={}, newBalance={}", user.getId(), sessionId, pack.name(), pack.credits(), user.getPurchasedAiCreditsBalance());
         }, () -> log.warn("Stripe AI credit pack checkout could not be mapped to user. sessionId={}, userId={}", sessionId, userId));
     }
@@ -1241,7 +1251,55 @@ public class StripeBillingService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public StripeBillingService(final StripeProperties stripeProperties, final UserRepository userRepository, final ObjectMapper objectMapper, final StripeApiClient stripeApiClient, final Environment environment, final TransactionTemplate transactionTemplate, final ObservabilityService observabilityService, final ProcessedStripeEventRepository processedStripeEventRepository, final StripeSubscriptionStateRepository stripeSubscriptionStateRepository, final StripeCheckoutAttemptRepository stripeCheckoutAttemptRepository, final AiCreditPurchaseRepository aiCreditPurchaseRepository, final UsageLimitService usageLimitService, final SeoAnalyticsService seoAnalyticsService) {
+    private void trackSubscriptionCheckoutStarted(User user, String sessionId, String billingCycle) {
+        String metadata = lifecycleMetadata(Map.of("billingCycle", billingCycle, "source", "STRIPE", "checkoutType", "SUBSCRIPTION"));
+        featureUsageService.trackAuthoritative(user, FeatureKey.TRADING_DNA, FeatureUsageAction.UPGRADE_CTA_CLICKED,
+                FeatureUsageEventType.USER_ACTION, "STRIPE_CHECKOUT_SESSION", sessionId, "stripe", metadata);
+        featureUsageService.trackAuthoritative(user, FeatureKey.PLAYBOOK, FeatureUsageAction.CHECKOUT_STARTED,
+                FeatureUsageEventType.USER_ACTION, "STRIPE_CHECKOUT_SESSION", sessionId, "stripe", metadata);
+    }
+
+    private void trackSubscriptionCompletedAndActivated(User user, String sessionId, Subscription subscription) {
+        Map<String, String> metadata = Map.of("billingCycle", billingCycleForSubscription(subscription), "source", "STRIPE", "stripeEventType", "checkout.session.completed");
+        featureUsageService.trackAuthoritative(user, FeatureKey.PLAYBOOK, FeatureUsageAction.CHECKOUT_COMPLETED,
+                FeatureUsageEventType.USER_ACTION, "STRIPE_CHECKOUT_SESSION", sessionId, "stripe", lifecycleMetadata(metadata));
+        featureUsageService.trackAuthoritative(user, FeatureKey.PLAYBOOK, FeatureUsageAction.SUBSCRIPTION_ACTIVATED,
+                FeatureUsageEventType.USER_ACTION, "STRIPE_SUBSCRIPTION", subscription.getId(), "stripe", lifecycleMetadata(metadata));
+    }
+
+    private void trackCreditPackCheckoutSelected(User user, String sessionId, AiCreditPack pack) {
+        String metadata = lifecycleMetadata(Map.of("credits", pack.credits(), "source", "STRIPE", "checkoutType", "AI_CREDIT_PACK"));
+        featureUsageService.trackAuthoritative(user, FeatureKey.DAILY_COACH, FeatureUsageAction.BUY_CREDITS_CTA_CLICKED,
+                FeatureUsageEventType.USER_ACTION, "STRIPE_CHECKOUT_SESSION", sessionId, "stripe", metadata);
+        featureUsageService.trackAuthoritative(user, FeatureKey.DAILY_COACH, FeatureUsageAction.CREDIT_PACK_SELECTED,
+                FeatureUsageEventType.CREDIT_PURCHASE, "STRIPE_CHECKOUT_SESSION", sessionId, "stripe", metadata);
+    }
+
+    private void trackCreditPackCompleted(User user, String sessionId, AiCreditPack pack, String stripeEventType) {
+        featureUsageService.trackAuthoritative(user, FeatureKey.DAILY_COACH, FeatureUsageAction.CHECKOUT_COMPLETED,
+                FeatureUsageEventType.CREDIT_PURCHASE, "STRIPE_CHECKOUT_SESSION", sessionId, "stripe",
+                lifecycleMetadata(Map.of("credits", pack.credits(), "source", "STRIPE", "stripeEventType", stripeEventType)));
+    }
+
+    private String billingCycleForSubscription(Subscription subscription) {
+        return hasPrice(subscription, stripeProperties.getProYearlyPriceId()) ? "YEARLY" : "MONTHLY";
+    }
+
+    private boolean hasPrice(Subscription subscription, String priceId) {
+        return StringUtils.hasText(priceId) && subscription.getItems() != null && subscription.getItems().getData() != null
+                && subscription.getItems().getData().stream().map(com.stripe.model.SubscriptionItem::getPrice)
+                .filter(java.util.Objects::nonNull).anyMatch(price -> priceId.equals(price.getId()));
+    }
+
+    private String lifecycleMetadata(Map<String, ?> metadata) {
+        try {
+            return objectMapper.writeValueAsString(metadata);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            throw new IllegalStateException("Unable to serialize Stripe lifecycle telemetry", ex);
+        }
+    }
+
+    public StripeBillingService(final StripeProperties stripeProperties, final UserRepository userRepository, final ObjectMapper objectMapper, final StripeApiClient stripeApiClient, final Environment environment, final TransactionTemplate transactionTemplate, final ObservabilityService observabilityService, final ProcessedStripeEventRepository processedStripeEventRepository, final StripeSubscriptionStateRepository stripeSubscriptionStateRepository, final StripeCheckoutAttemptRepository stripeCheckoutAttemptRepository, final AiCreditPurchaseRepository aiCreditPurchaseRepository, final UsageLimitService usageLimitService, final SeoAnalyticsService seoAnalyticsService, final FeatureUsageService featureUsageService) {
         this.stripeProperties = stripeProperties;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
@@ -1255,5 +1313,6 @@ public class StripeBillingService {
         this.aiCreditPurchaseRepository = aiCreditPurchaseRepository;
         this.usageLimitService = usageLimitService;
         this.seoAnalyticsService = seoAnalyticsService;
+        this.featureUsageService = featureUsageService;
     }
 }
