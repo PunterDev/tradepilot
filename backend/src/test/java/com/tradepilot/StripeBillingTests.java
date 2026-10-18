@@ -4,6 +4,8 @@ import com.tradepilot.billing.AiCreditPack;
 import com.tradepilot.billing.AiCreditPurchase;
 import com.tradepilot.billing.AiCreditPurchaseRepository;
 import com.tradepilot.billing.AiCreditPurchaseStatus;
+import com.tradepilot.billing.AiCreditLimitExceededException;
+import com.tradepilot.billing.Feature;
 import com.tradepilot.billing.PlanLimitExceededException;
 import com.tradepilot.billing.PlanType;
 import com.tradepilot.billing.ProcessedStripeEventRepository;
@@ -13,6 +15,8 @@ import com.tradepilot.billing.StripeCheckoutAttempt;
 import com.tradepilot.billing.StripeCheckoutAttemptRepository;
 import com.tradepilot.billing.StripeCheckoutAttemptStatus;
 import com.tradepilot.billing.SubscriptionStatus;
+import com.tradepilot.billing.UsageLimitService;
+import com.tradepilot.billing.UsageType;
 import com.stripe.exception.InvalidRequestException;
 import com.stripe.model.Customer;
 import com.stripe.model.Invoice;
@@ -97,6 +101,7 @@ class StripeBillingTests {
     @Autowired AiCreditPurchaseRepository aiCreditPurchaseRepository;
     @Autowired FeatureUsageRepository featureUsageRepository;
     @Autowired FeatureFunnelService featureFunnelService;
+    @Autowired UsageLimitService usageLimitService;
     @MockBean StripeApiClient stripeApiClient;
 
     @Test
@@ -176,6 +181,34 @@ class StripeBillingTests {
         try {
             FeatureFunnelSummaryResponse summary = featureFunnelService.detail(
                     FeatureFunnelKey.FREE_TO_PRO_UPGRADE, "LAST_30_DAYS", null, null, null, null,
+                    false, true, FeatureFunnelCalculationMode.UNIQUE_USERS, null);
+            assertThat(summary.completedUsers()).isEqualTo(1);
+            assertThat(summary.steps()).allSatisfy(step -> assertThat(step.usersReached()).isEqualTo(1));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    void authoritativeCreditPurchaseEventsCompleteTheExistingCreditFunnel() throws Exception {
+        User user = createProStripeUser("stripe-funnel-credits@example.com", "cus_credit_funnel");
+        usageLimitService.consumeCredits(user, Feature.DAILY_COACH, 100);
+        assertThatThrownBy(() -> usageLimitService.enforceAiUsage(user, UsageType.DAILY_COACH))
+                .isInstanceOf(AiCreditLimitExceededException.class);
+
+        when(stripeApiClient.retrieveCustomer("cus_credit_funnel")).thenReturn(customer("cus_credit_funnel", false));
+        when(stripeApiClient.createCreditPackCheckoutSession(user, "cus_credit_funnel", AiCreditPack.STARTER_25, "http://localhost:5173"))
+                .thenReturn(session("cus_credit_funnel", "https://checkout.test/credit-funnel"));
+        stripeBillingService.createCreditPackCheckoutSession(user, AiCreditPack.STARTER_25);
+        postWebhook(creditPackCheckoutCompletedPayload(user.getId(), "evt_credit_funnel", "cs_credit_funnel", AiCreditPack.STARTER_25,
+                "cus_credit_funnel", "payment", "paid", "usd", 999));
+        usageLimitService.consumeCredits(userRepository.findById(user.getId()).orElseThrow(), Feature.DAILY_COACH, 2);
+
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "admin", "N/A", AuthorityUtils.createAuthorityList("ROLE_ADMIN")));
+        try {
+            FeatureFunnelSummaryResponse summary = featureFunnelService.detail(
+                    FeatureFunnelKey.AI_CREDIT_PURCHASE, "LAST_30_DAYS", null, null, null, null,
                     false, true, FeatureFunnelCalculationMode.UNIQUE_USERS, null);
             assertThat(summary.completedUsers()).isEqualTo(1);
             assertThat(summary.steps()).allSatisfy(step -> assertThat(step.usersReached()).isEqualTo(1));
