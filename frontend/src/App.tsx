@@ -89,6 +89,7 @@ const ObservabilityPage = lazy(() => import("./features/admin/observability/Obse
 const RetentionAnalyticsPage = lazy(() => import("./features/admin/retention/RetentionAnalyticsPage"));
 const SeoAnalyticsPage = lazy(() => import("./features/admin/seo/SeoAnalyticsPage"));
 const DataTrustQualityPage = lazy(() => import("./features/admin/DataTrustQualityPage"));
+const ImportHealthPage = lazy(() => import("./features/admin/ImportHealthPage"));
 const MarketDataPage = lazy(() => import("./features/admin/market-data/MarketDataPage"));
 const BacktestPage = lazy(() => import("./features/admin/backtest/BacktestPage"));
 const ManualBacktestPage = lazy(() => import("./features/manual-backtest/ManualBacktestPage"));
@@ -783,6 +784,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           <Route path="/admin/backtest" element={<Navigate to="/backtest" replace />} />
           <Route path="/admin/retention" element={<RetentionAnalyticsPage />} />
           <Route path="/admin/data-trust" element={<DataTrustQualityPage />} />
+          <Route path="/admin/import-health" element={<ImportHealthPage />} />
           <Route path="/admin/observability" element={<ObservabilityPage />} />
           <Route
             path="/billing"
@@ -1254,6 +1256,7 @@ function DashboardApp({ user, onLogout, onUserRefresh }: DashboardAppProps) {
           }
         />
         <Route path="/admin/data-trust" element={user.role === "ADMIN" ? <DataTrustQualityPage /> : <NotAuthorized />} />
+        <Route path="/admin/import-health" element={user.role === "ADMIN" ? <ImportHealthPage /> : <NotAuthorized />} />
         <Route
           path="/trades/:tradeId"
           element={<TradeDetailRoute onOpenTrade={setSelectedTradeId} />}

@@ -11,6 +11,8 @@ import com.tradepilot.enums.AdminAuditAction;
 import com.tradepilot.enums.ContactMessageStatus;
 import com.tradepilot.enums.UserRole;
 import com.tradepilot.featureusage.FeatureKey;
+import com.tradepilot.featureusage.FeatureUsageAction;
+import com.tradepilot.featureusage.FeatureUsageEventType;
 import com.tradepilot.featureusage.FeatureUsageEvent;
 import com.tradepilot.featureusage.FeatureUsageRepository;
 import com.tradepilot.observability.CacheMetric;
@@ -199,6 +201,41 @@ class AdminPortalTests {
         assertFeatureHasDisplayName(json, FeatureKey.PLAYBOOK, "AI Trading Playbook");
 
         mockMvc.perform(get("/api/admin/feature-usage/summary")
+                        .header("Authorization", "Bearer " + tokenFor(normal)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminCanViewImportHealthWhileUserCannotAndLifecycleMetricsRemainSafe() throws Exception {
+        featureUsageRepository.deleteAll();
+        User admin = createUser("admin-import-health@example.com", UserRole.ADMIN, PlanType.PRO);
+        User normal = createUser("normal-import-health@example.com", UserRole.USER, PlanType.FREE);
+        LocalDateTime now = LocalDateTime.now();
+        featureUsageRepository.save(FeatureUsageEvent.builder().userId(normal.getId()).feature(FeatureKey.ACTIVATION).action(FeatureUsageAction.CSV_IMPORT_COMPLETED).eventType(FeatureUsageEventType.USER_ACTION).metadataJson("{\"stage\":\"save\",\"parserSource\":\"TOPSTEP\",\"totalRows\":4,\"parsedTrades\":3,\"savedRows\":2,\"duplicateRows\":1,\"exception\":\"never expose\"}").createdAt(now).occurredAt(now).build());
+        featureUsageRepository.save(FeatureUsageEvent.builder().userId(normal.getId()).feature(FeatureKey.ACTIVATION).action(FeatureUsageAction.CSV_IMPORT_FAILED).eventType(FeatureUsageEventType.USER_ACTION).metadataJson("{\"stage\":\"save\",\"parserSource\":\"TRADOVATE\",\"failureCategory\":\"SAVE_ERROR\"}").createdAt(now).occurredAt(now).build());
+        featureUsageRepository.save(FeatureUsageEvent.builder().userId(normal.getId()).feature(FeatureKey.ACTIVATION).action(FeatureUsageAction.CSV_IMPORT_FAILED).eventType(FeatureUsageEventType.USER_ACTION).metadataJson("{\"stage\":\"preview\",\"parserSource\":\"UNKNOWN\",\"failureCategory\":\"UNSUPPORTED_FORMAT\"}").createdAt(now).occurredAt(now).build());
+        featureUsageRepository.save(FeatureUsageEvent.builder().userId(normal.getId()).feature(FeatureKey.ACTIVATION).action(FeatureUsageAction.FIRST_IMPORT_COMPLETED).eventType(FeatureUsageEventType.USER_ACTION).metadataJson("{\"stage\":\"save\",\"parserSource\":\"TOPSTEP\",\"savedRows\":2}").createdAt(now).occurredAt(now).build());
+
+        String response = mockMvc.perform(get("/api/admin/import-health/summary")
+                        .header("Authorization", "Bearer " + tokenFor(admin)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        JsonNode json = objectMapper.readTree(response);
+        assertThat(json.get("importAttempts").asLong()).isEqualTo(2);
+        assertThat(json.get("completedImports").asLong()).isEqualTo(1);
+        assertThat(json.get("failedImports").asLong()).isEqualTo(1);
+        assertThat(json.get("previewFailures").asLong()).isEqualTo(1);
+        assertThat(json.get("tradesSaved").asLong()).isEqualTo(2);
+        assertThat(json.get("duplicates").asLong()).isEqualTo(1);
+        assertThat(json.get("firstImports").asLong()).isEqualTo(1);
+
+        String recent = mockMvc.perform(get("/api/admin/import-health/recent")
+                        .header("Authorization", "Bearer " + tokenFor(admin)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(recent).doesNotContain("metadataJson", "never expose", "exception");
+        mockMvc.perform(get("/api/admin/import-health/summary")
+                        .header("Authorization", "Bearer " + tokenFor(normal)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/admin/import-health/recent")
                         .header("Authorization", "Bearer " + tokenFor(normal)))
                 .andExpect(status().isForbidden());
     }

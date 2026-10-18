@@ -18,6 +18,7 @@ import com.tradepilot.service.TradingAccountService;
 import com.tradepilot.repository.ImportBatchRepository;
 import com.tradepilot.datatrust.DataTrustService;
 import com.tradepilot.tradereplay.service.TradeReplayService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -42,6 +43,7 @@ public class TradeCsvImportService {
     private final SeoAnalyticsService seoAnalyticsService;
     private final ImportBatchRepository importBatchRepository;
     private final DataTrustService dataTrustService;
+    private final ObjectMapper objectMapper;
 
     public TradeCsvImportService(
             TopstepCsvParser topstepCsvParser,
@@ -52,7 +54,7 @@ public class TradeCsvImportService {
             TradeReplayService tradeReplayService,
             FeatureUsageService featureUsageService,
             FeatureUsageRepository featureUsageRepository,
-            SeoAnalyticsService seoAnalyticsService, ImportBatchRepository importBatchRepository, DataTrustService dataTrustService
+            SeoAnalyticsService seoAnalyticsService, ImportBatchRepository importBatchRepository, DataTrustService dataTrustService, ObjectMapper objectMapper
     ) {
         this.topstepCsvParser = topstepCsvParser;
         this.tradovateCsvParser = tradovateCsvParser;
@@ -65,15 +67,16 @@ public class TradeCsvImportService {
         this.seoAnalyticsService = seoAnalyticsService;
         this.importBatchRepository = importBatchRepository;
         this.dataTrustService = dataTrustService;
+        this.objectMapper = objectMapper;
     }
 
     public TradeImportPreviewResponse preview(User user, Long accountId, MultipartFile file) {
-        featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_STARTED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", null);
+        featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_STARTED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", ImportTelemetry.failure(objectMapper, "preview", ImportTelemetry.ParserSource.UNKNOWN, ImportTelemetry.FailureCategory.UNKNOWN));
         try {
             ParsedImport parsed = parse(user, accountId, file);
             return toPreview(user, accountId, parsed);
         } catch (RuntimeException ex) {
-            featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_FAILED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"stage\":\"preview\"}");
+            recordFailure(user, accountId, file, "preview", ex);
             throw ex;
         }
     }
@@ -81,51 +84,53 @@ public class TradeCsvImportService {
     @org.springframework.transaction.annotation.Transactional
     public TradeImportSaveResponse save(User user, Long accountId, MultipartFile file) {
         boolean firstImportAlreadyTracked = featureUsageRepository.existsByUserIdAndAction(user.getId(), FeatureUsageAction.FIRST_IMPORT_COMPLETED);
+        ParsedImport parsed = null;
         try {
-            ParsedImport parsed = parse(user, accountId, file);
+            parsed = parse(user, accountId, file);
             TradeImportPreviewResponse preview = toPreview(user, accountId, parsed);
             List<TradeResponse> saved = parsed.trades().isEmpty()
                     ? List.of()
                     : tradeService.importBrokerTrades(user, parsed.trades());
-            Long importId = saved.isEmpty() ? null : importBatchRepository.findTopByUserAndAccount_IdOrderByImportedAtDesc(user, accountId).map(batch -> dataTrustService.createForImport(user, batch, parsed.format().name()).importId()).orElse(null);
+            ParsedImport completedParsed = parsed;
+            Long importId = saved.isEmpty() ? null : importBatchRepository.findTopByUserAndAccount_IdOrderByImportedAtDesc(user, accountId).map(batch -> dataTrustService.createForImport(user, batch, completedParsed.format().name()).importId()).orElse(null);
             tradeReplayService.initializeAfterCommit(tradeService.getImportedTradesForReplayInitialization(user, saved.stream().map(TradeResponse::getId).toList()));
-            featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"savedRows\":" + saved.size() + "}");
+            featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", ImportTelemetry.completed(objectMapper, parsed, saved.size(), preview.duplicateTrades()));
             if (!firstImportAlreadyTracked && !saved.isEmpty()) {
-                featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.FIRST_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"savedRows\":" + saved.size() + "}");
+                featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.FIRST_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", ImportTelemetry.firstImport(objectMapper, parsed, saved.size()));
                 seoAnalyticsService.markFirstImportCompleted(user, null);
             }
             return new TradeImportSaveResponse(preview, saved, saved.size(), importId);
         } catch (RuntimeException ex) {
-            featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_FAILED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", "{\"stage\":\"save\"}");
+            recordFailure(user, accountId, file, "save", parsed == null ? ex : new ImportTelemetryException(ex.getMessage(), ImportTelemetry.sourceFor(parsed), ImportTelemetry.FailureCategory.SAVE_ERROR, ex));
             throw ex;
         }
     }
 
     private ParsedImport parse(User user, Long accountId, MultipartFile file) {
         if (accountId == null) {
-            throw new IllegalArgumentException("accountId is required for CSV import.");
+            throw telemetryError("accountId is required for CSV import.", ImportTelemetry.FailureCategory.ACCOUNT_VALIDATION);
         }
-        tradingAccountService.getAccountForImport(user, accountId);
+        try { tradingAccountService.getAccountForImport(user, accountId); } catch (RuntimeException ex) { throw telemetryError(ex.getMessage(), ImportTelemetry.FailureCategory.ACCOUNT_VALIDATION, ex); }
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("CSV file is required.");
+            throw telemetryError("CSV file is required.", ImportTelemetry.FailureCategory.FILE_REQUIRED);
         }
         if (file.getSize() > MAX_CSV_BYTES) {
-            throw new IllegalArgumentException("CSV file is too large. Upload a file under 2 MB.");
+            throw telemetryError("CSV file is too large. Upload a file under 2 MB.", ImportTelemetry.FailureCategory.FILE_TOO_LARGE);
         }
         String csv = readCsv(file);
         CsvTable table = CsvTable.parse(csv);
         boolean supportsTopstep = topstepCsvParser.supports(table);
         boolean supportsTradovate = tradovateCsvParser.supports(table);
         if (supportsTopstep && supportsTradovate) {
-            throw new IllegalArgumentException("CSV format is ambiguous. Export a clean Tradovate or Topstep CSV and try again.");
+            throw telemetryError("CSV format is ambiguous. Export a clean Tradovate or Topstep CSV and try again.", ImportTelemetry.FailureCategory.AMBIGUOUS_FORMAT);
         }
         if (supportsTopstep) {
-            return topstepCsvParser.parse(csv, accountId, safeFileName(file));
+            return parseSelected(() -> topstepCsvParser.parse(csv, accountId, safeFileName(file)), ImportTelemetry.ParserSource.TOPSTEP);
         }
         if (supportsTradovate) {
-            return tradovateCsvParser.parse(csv, accountId, safeFileName(file));
+            return parseSelected(() -> tradovateCsvParser.parse(csv, accountId, safeFileName(file)), ImportTelemetry.ParserSource.TRADOVATE);
         }
-        throw new IllegalArgumentException("Unsupported CSV format. TradePilot currently supports Tradovate dashboard CSVs and Topstep order-history CSVs.");
+        throw telemetryError("Unsupported CSV format. TradePilot currently supports Tradovate dashboard CSVs and Topstep order-history CSVs.", ImportTelemetry.FailureCategory.UNSUPPORTED_FORMAT);
     }
 
     private TradeImportPreviewResponse toPreview(User user, Long accountId, ParsedImport parsed) {
@@ -182,9 +187,23 @@ public class TradeCsvImportService {
         try {
             return new String(file.getBytes(), StandardCharsets.UTF_8);
         } catch (IOException ex) {
-            throw new IllegalArgumentException("Unable to read CSV file.");
+            throw telemetryError("Unable to read CSV file.", ImportTelemetry.FailureCategory.FILE_READ_FAILED, ex);
         }
     }
+
+    private ParsedImport parseSelected(java.util.concurrent.Callable<ParsedImport> parser, ImportTelemetry.ParserSource source) {
+        try { return parser.call(); } catch (ImportTelemetryException ex) { throw ex; } catch (Exception ex) { throw telemetryError(ex.getMessage(), source, ImportTelemetry.FailureCategory.PARSER_ERROR, ex); }
+    }
+
+    private void recordFailure(User user, Long accountId, MultipartFile file, String stage, RuntimeException ex) {
+        ImportTelemetry.ParserSource source = ex instanceof ImportTelemetryException telemetry ? telemetry.parserSource() : ImportTelemetry.ParserSource.UNKNOWN;
+        ImportTelemetry.FailureCategory category = ex instanceof ImportTelemetryException telemetry ? telemetry.failureCategory() : ImportTelemetry.FailureCategory.UNKNOWN;
+        featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_FAILED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", ImportTelemetry.failure(objectMapper, stage, source, category));
+    }
+
+    private ImportTelemetryException telemetryError(String message, ImportTelemetry.FailureCategory category) { return telemetryError(message, ImportTelemetry.ParserSource.UNKNOWN, category, null); }
+    private ImportTelemetryException telemetryError(String message, ImportTelemetry.FailureCategory category, Throwable cause) { return telemetryError(message, ImportTelemetry.ParserSource.UNKNOWN, category, cause); }
+    private ImportTelemetryException telemetryError(String message, ImportTelemetry.ParserSource source, ImportTelemetry.FailureCategory category, Throwable cause) { return new ImportTelemetryException(message, source, category, cause); }
 
     private String safeFileName(MultipartFile file) {
         if (file == null) {
