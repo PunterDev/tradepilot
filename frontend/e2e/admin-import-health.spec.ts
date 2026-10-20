@@ -16,10 +16,14 @@ test("admin import health shows operational lifecycle metrics without raw metada
   await expect(page.getByText("UNKNOWN")).toBeVisible();
   await expect(page.getByText("UNSUPPORTED_FORMAT")).toBeVisible();
   await expect(page.getByText("Recent Imports")).toBeVisible();
+  await expect(page.getByTestId("recent-imports-scroll")).toHaveCSS("overflow-x", "auto");
   await page.getByRole("button", { name: "Today" }).click();
   await expect(page.getByRole("button", { name: "Today" })).toHaveAttribute("aria-pressed", "true");
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { name: "Import Health" })).toBeVisible();
+  for (const width of [1440, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(page.getByRole("heading", { name: "Import Health" })).toBeVisible();
+    expect(await page.locator("html").evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  }
 });
 
 test("normal users are denied the import health route", async ({ page }) => {
