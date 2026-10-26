@@ -1,0 +1,1 @@
+package com.tradepilot.survival.repository; import com.tradepilot.survival.entity.*; import java.util.*; import org.springframework.data.jpa.repository.JpaRepository; public interface NextSessionProtectionRuleResultRepository extends JpaRepository<NextSessionProtectionRuleResult,Long>{List<NextSessionProtectionRuleResult> findByEvaluation_IdOrderById(Long evaluationId);}

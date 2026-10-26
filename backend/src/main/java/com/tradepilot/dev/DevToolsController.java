@@ -44,6 +44,12 @@ public class DevToolsController {
         return demoDataService.prepareE2eTestData();
     }
 
+    @PostMapping("/e2e/account-survival/prepare")
+    public java.util.Map<String, Object> prepareAccountSurvivalE2eData() {
+        assertEnabled();
+        return demoDataService.prepareAccountSurvivalE2eData();
+    }
+
     @DeleteMapping("/trades/{tradeId}/replay")
     public TradeReplayResetResult resetTradeReplay(@PathVariable Long tradeId, @AuthenticationPrincipal User user) {
         assertEnabled();

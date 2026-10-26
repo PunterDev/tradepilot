@@ -60,7 +60,7 @@ class FlywayPostgresBaselineIntegrationTest {
         }
 
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(24);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(30);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
@@ -110,6 +110,13 @@ class FlywayPostgresBaselineIntegrationTest {
                     .isEqualTo("022");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '023' and success = true"))
                     .isEqualTo("023");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '024' and success = true")).isEqualTo("024");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '025' and success = true")).isEqualTo("025");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '026' and success = true")).isEqualTo("026");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '027' and success = true")).isEqualTo("027");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '028' and success = true")).isEqualTo("028");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '029' and success = true")).isEqualTo("029");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '030' and success = true")).isEqualTo("030");
 
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
@@ -121,6 +128,7 @@ class FlywayPostgresBaselineIntegrationTest {
             assertHistoricalMarketDataSchema(connection);
             assertHistoricalMarketDataDuplicateInsertIsIdempotent(connection);
             assertCanonicalBacktestTradeSchema(connection);
+            assertAccountSurvivalSchema(connection);
             assertStripeIndexesAndConstraints(connection);
             assertNegativePurchasedCreditsAreAllowed(connection);
             assertVerifierScriptReportsOk(connection);
@@ -159,6 +167,7 @@ class FlywayPostgresBaselineIntegrationTest {
                 "manual_backtest_sessions",
                 "manual_backtest_trades",
                 "manual_backtest_trade_events"
+                ,"account_risk_profiles", "next_session_protection_commitments", "next_session_protection_evaluations", "next_session_protection_rule_results"
         );
         for (String table : tables) {
             assertThat(count(connection, """
@@ -168,6 +177,16 @@ class FlywayPostgresBaselineIntegrationTest {
                       and table_name = '%s'
                     """.formatted(table))).as("table " + table).isEqualTo(1);
         }
+    }
+
+    private static void assertAccountSurvivalSchema(Connection connection) throws SQLException {
+        assertThat(count(connection, "select count(*) from information_schema.table_constraints where table_name = 'next_session_protection_evaluations' and constraint_name = 'uk_protection_evaluation_fingerprint'"))
+                .isEqualTo(1);
+        assertThat(count(connection, "select count(*) from information_schema.table_constraints where table_name = 'next_session_protection_rule_results' and constraint_name = 'uk_protection_rule_result'"))
+                .isEqualTo(1);
+        assertVarcharColumn(connection, "next_session_protection_evaluations", "source_fingerprint", 128, "NO");
+        assertThat(scalar(connection, "select data_type from information_schema.columns where table_name = 'next_session_protection_rule_results' and column_name = 'evidence'"))
+                .isEqualTo("text");
     }
 
     private static void assertApplicationTablesAreAbsent(Connection connection) throws SQLException {

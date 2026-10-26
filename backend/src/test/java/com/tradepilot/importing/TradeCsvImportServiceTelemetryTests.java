@@ -12,6 +12,7 @@ import com.tradepilot.seoanalytics.SeoAnalyticsService;
 import com.tradepilot.service.TradeService;
 import com.tradepilot.service.TradingAccountService;
 import com.tradepilot.tradereplay.service.TradeReplayService;
+import com.tradepilot.survival.AccountSurvivalService;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 
@@ -62,7 +63,7 @@ class TradeCsvImportServiceTelemetryTests {
         doAnswer(invocation -> { events.add(invocation.getArgument(2).toString() + ":" + invocation.getArgument(8)); return null; }).when(usage).track(any(), any(), any(), any(), any(), any(), any(), any(), any());
         FeatureUsageRepository eventRepository = mock(FeatureUsageRepository.class);
         when(eventRepository.existsByUserIdAndAction(anyLong(), any())).thenReturn(false);
-        return new TradeCsvImportService(topstep, tradovate, mock(TradingAccountService.class), mock(TradeRepository.class), mock(TradeService.class), mock(TradeReplayService.class), usage, eventRepository, mock(SeoAnalyticsService.class), mock(ImportBatchRepository.class), mock(DataTrustService.class), new ObjectMapper());
+        return new TradeCsvImportService(topstep, tradovate, mock(TradingAccountService.class), mock(TradeRepository.class), mock(TradeService.class), mock(TradeReplayService.class), usage, eventRepository, mock(SeoAnalyticsService.class), mock(ImportBatchRepository.class), mock(DataTrustService.class), new ObjectMapper(), mock(AccountSurvivalService.class));
     }
 
     private static ParsedImport parsed(TradeImportFormat format) { return new ParsedImport(format, List.of(), 3, 3, 0, 0, 0, List.of(), List.of(), List.of()); }

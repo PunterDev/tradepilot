@@ -16,6 +16,7 @@ import DashboardQuickActions from "./DashboardQuickActions";
 import EquityCurveCard from "./EquityCurveCard";
 import { getTradeCalendarDate } from "../../utils/dashboardUtils";
 import ImportReconciliationCard from "./ImportReconciliationCard";
+import AccountSurvivalCard from "./AccountSurvivalCard";
 
 type Metrics = {
   totalPnl: number;
@@ -177,6 +178,8 @@ export default function DashboardHome({
       <CompactUsageWidget usage={billingUsage} loading={billingLoading} error={billingError} />
 
       <DashboardKpiGrid metrics={metrics} dailyPnl={dailyPnl} />
+
+      <AccountSurvivalCard accountId={executionAccountId} />
 
       {executionSummary && <DashboardExecutionSummary summary={executionSummary} />}
 

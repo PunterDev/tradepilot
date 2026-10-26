@@ -12,6 +12,7 @@ import type { TradingAccount } from "../api/accountApi";
 import type { SelectedAccountId } from "../types/dashboard";
 import type { TradovateTrade } from "../utils/tradovateCsv";
 import { formatCurrency, getTradeCalendarDate } from "../utils/dashboardUtils";
+import AccountSurvivalReview from "./AccountSurvivalReview";
 
 type Props = {
   accounts: TradingAccount[];
@@ -149,6 +150,7 @@ export default function SessionReviewPanel({ accounts, selectedAccountId, trades
             </div>
 
             {execution && <SessionExecutionCard execution={execution} />}
+            {accountId && <AccountSurvivalReview accountId={accountId} date={date} />}
 
             {!hasTrades ? (
               <EmptyFilm />

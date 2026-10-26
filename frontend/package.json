@@ -12,6 +12,7 @@
     "verify:og": "node scripts/verify-tradepilot-coach-og.mjs",
     "preview": "vite preview",
     "e2e": "playwright test",
+    "test:unit": "vitest run",
     "test:manual-position": "node --test scripts/manual-position-calculator.test.mjs"
   },
   "engines": {
@@ -34,7 +35,12 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "jsdom": "^30.1.3",
+    "vitest": "^5.0.5"
   }
 }

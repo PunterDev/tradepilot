@@ -18,6 +18,7 @@ import com.tradepilot.service.TradingAccountService;
 import com.tradepilot.repository.ImportBatchRepository;
 import com.tradepilot.datatrust.DataTrustService;
 import com.tradepilot.tradereplay.service.TradeReplayService;
+import com.tradepilot.survival.AccountSurvivalService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -43,6 +44,7 @@ public class TradeCsvImportService {
     private final SeoAnalyticsService seoAnalyticsService;
     private final ImportBatchRepository importBatchRepository;
     private final DataTrustService dataTrustService;
+    private final AccountSurvivalService accountSurvivalService;
     private final ObjectMapper objectMapper;
 
     public TradeCsvImportService(
@@ -54,7 +56,7 @@ public class TradeCsvImportService {
             TradeReplayService tradeReplayService,
             FeatureUsageService featureUsageService,
             FeatureUsageRepository featureUsageRepository,
-            SeoAnalyticsService seoAnalyticsService, ImportBatchRepository importBatchRepository, DataTrustService dataTrustService, ObjectMapper objectMapper
+            SeoAnalyticsService seoAnalyticsService, ImportBatchRepository importBatchRepository, DataTrustService dataTrustService, ObjectMapper objectMapper, AccountSurvivalService accountSurvivalService
     ) {
         this.topstepCsvParser = topstepCsvParser;
         this.tradovateCsvParser = tradovateCsvParser;
@@ -68,6 +70,7 @@ public class TradeCsvImportService {
         this.importBatchRepository = importBatchRepository;
         this.dataTrustService = dataTrustService;
         this.objectMapper = objectMapper;
+        this.accountSurvivalService = accountSurvivalService;
     }
 
     public TradeImportPreviewResponse preview(User user, Long accountId, MultipartFile file) {
@@ -94,6 +97,11 @@ public class TradeCsvImportService {
             ParsedImport completedParsed = parsed;
             Long importId = saved.isEmpty() ? null : importBatchRepository.findTopByUserAndAccount_IdOrderByImportedAtDesc(user, accountId).map(batch -> dataTrustService.createForImport(user, batch, completedParsed.format().name()).importId()).orElse(null);
             tradeReplayService.initializeAfterCommit(tradeService.getImportedTradesForReplayInitialization(user, saved.stream().map(TradeResponse::getId).toList()));
+            if (!saved.isEmpty()) {
+                org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override public void afterCommit() { accountSurvivalService.evaluateEligibleAfterImport(user, accountId); }
+                });
+            }
             featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", ImportTelemetry.completed(objectMapper, parsed, saved.size(), preview.duplicateTrades()));
             if (!firstImportAlreadyTracked && !saved.isEmpty()) {
                 featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.FIRST_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", ImportTelemetry.firstImport(objectMapper, parsed, saved.size()));
