@@ -82,35 +82,38 @@ function parseWinRate(raw: string): ParsedField {
   return parsed;
 }
 
-function formatMoney(value: number, maximumFractionDigits = 2) {
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
-  const absolute = Math.abs(value);
+type MoneyFormatOptions = {
+  maximumFractionDigits?: number;
+};
+
+function formatMoney(value: number, options?: MoneyFormatOptions) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  const requestedDigits = options?.maximumFractionDigits ?? 2;
+  const maximumFractionDigits = Number.isFinite(requestedDigits)
+    ? Math.min(20, Math.max(0, Math.trunc(requestedDigits)))
+    : 2;
+  const sign = safeValue > 0 ? "+" : safeValue < 0 ? "-" : "";
+  const absolute = Math.abs(safeValue);
   return `${sign}${new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: absolute % 1 === 0 ? 0 : 2,
+    minimumFractionDigits: Math.min(2, maximumFractionDigits),
     maximumFractionDigits,
   }).format(absolute)}`;
 }
 
 function formatMoneyWithCents(value: number) {
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
-  const absolute = Math.abs(value);
-  return `${sign}${new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(absolute)}`;
+  return formatMoney(value);
 }
 
 function formatCurrencyWithCents(value: number) {
+  const safeValue = Number.isFinite(value) ? value : 0;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Math.abs(value));
+  }).format(Math.abs(safeValue));
 }
 
 function formatPct(value: number, maximumFractionDigits = 1) {
@@ -573,7 +576,7 @@ function ResultPanel({ result }: { result: CalculatorResult }) {
       {result.monthlyExpectancy !== null && (
         <div className="expectancy-monthly">
           <span>Estimated mathematical expectancy</span>
-          <strong>{formatMoney(result.monthlyExpectancy, 0)}/month</strong>
+          <strong>{formatMoney(result.monthlyExpectancy, { maximumFractionDigits: 0 })}/month</strong>
         </div>
       )}
       {isNetDifferent && (
