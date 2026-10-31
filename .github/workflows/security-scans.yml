@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   secret-scan:
@@ -50,7 +51,14 @@ jobs:
 
       - name: Backend dependency check
         working-directory: backend
-        run: mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::Repository Actions secret NVD_API_KEY must be configured for OWASP Dependency-Check."
+            exit 1
+          fi
+          mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8 -DnvdApiKey="$NVD_API_KEY"
 
       - name: Frontend dependency audit
         working-directory: frontend

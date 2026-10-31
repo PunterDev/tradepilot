@@ -33,6 +33,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
@@ -183,7 +184,8 @@ class SeoAnalyticsTests {
         normal.setPlan(PlanType.PRO);
         normal.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
         seoAnalyticsService.markProConverted(normal, signupAt.plusMinutes(40));
-        assertThat(attributionRepository.findByUserId(normal.getId()).orElseThrow().getFirstInsightGeneratedAt()).isEqualTo(signupAt.plusMinutes(20));
+        assertThat(attributionRepository.findByUserId(normal.getId()).orElseThrow().getFirstInsightGeneratedAt())
+                .isEqualTo(atDatabasePrecision(signupAt.plusMinutes(20)));
 
         String response = mockMvc.perform(get("/api/v1/admin/analytics/seo")
                         .param("startDate", startDate.toString())
@@ -284,12 +286,14 @@ class SeoAnalyticsTests {
         LocalDateTime laterImport = firstImport.plusHours(1);
         seoAnalyticsService.markFirstImportCompleted(user, firstImport);
         seoAnalyticsService.markFirstImportCompleted(user, laterImport);
-        assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getFirstImportCompletedAt()).isEqualTo(firstImport);
+        assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getFirstImportCompletedAt())
+                .isEqualTo(atDatabasePrecision(firstImport));
 
         LocalDateTime firstInsight = LocalDateTime.now().plusMinutes(20);
         seoAnalyticsService.markFirstInsightGenerated(user, firstInsight);
         seoAnalyticsService.markFirstInsightGenerated(user, firstInsight.plusHours(2));
-        assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getFirstInsightGeneratedAt()).isEqualTo(firstInsight);
+        assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getFirstInsightGeneratedAt())
+                .isEqualTo(atDatabasePrecision(firstInsight));
 
         assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getProConvertedAt()).isNull();
         seoAnalyticsService.markProConverted(user, firstInsight.plusMinutes(5));
@@ -298,7 +302,8 @@ class SeoAnalyticsTests {
         user.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
         seoAnalyticsService.markProConverted(user, firstInsight.plusMinutes(15));
         seoAnalyticsService.markProConverted(user, firstInsight.plusHours(3));
-        assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getProConvertedAt()).isEqualTo(firstInsight.plusMinutes(15));
+        assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getProConvertedAt())
+                .isEqualTo(atDatabasePrecision(firstInsight.plusMinutes(15)));
     }
 
     @Test
@@ -399,5 +404,9 @@ class SeoAnalyticsTests {
 
     private Timestamp toDatabaseTimestamp(LocalDateTime value) {
         return Timestamp.valueOf(value.atZone(ZoneId.systemDefault()).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime());
+    }
+
+    private LocalDateTime atDatabasePrecision(LocalDateTime value) {
+        return value.truncatedTo(ChronoUnit.MICROS);
     }
 }
