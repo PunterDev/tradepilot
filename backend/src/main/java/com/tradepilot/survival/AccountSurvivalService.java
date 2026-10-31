@@ -22,6 +22,7 @@ public class AccountSurvivalService {
     private static final Logger log = LoggerFactory.getLogger(AccountSurvivalService.class);
     public static final String CALCULATION_VERSION = "account-survival-v1";
     private static final Duration RAPID_REENTRY_WINDOW = Duration.ofMinutes(10);
+    private static final int HISTORY_WINDOW_SESSIONS = 30;
     private final TradingAccountService accountService;
     private final TradeRepository tradeRepository;
     private final AccountRiskProfileRepository profileRepository;
@@ -105,7 +106,7 @@ public class AccountSurvivalService {
         validateCommitment(request);
         TradingAccount account = accountService.getAccountForImport(user, accountId);
         AccountSurvivalAssessmentResponse assessment = assessment(user, accountId, request.effectiveSessionDate());
-        NextSessionProtectionCommitment commitment = commitmentRepository.findByAccount_IdAndUserAndEffectiveSessionDate(accountId, user, request.effectiveSessionDate()).orElseGet(NextSessionProtectionCommitment::new);
+        NextSessionProtectionCommitment commitment = commitmentRepository.findForUpdate(accountId, user, request.effectiveSessionDate()).orElseGet(NextSessionProtectionCommitment::new);
         // A protection rule becomes part of the historical accountability record once accepted.
         // Changes must be saved as a new commitment for a future session, never backdated.
         if (commitment.getId() != null && (commitment.getAcceptedAt() != null || commitment.getStatus() != ProtectionCommitmentStatus.DRAFT)) {
@@ -125,7 +126,7 @@ public class AccountSurvivalService {
     @Transactional
     public ProtectionCommitmentResponse acceptCommitment(User user, Long accountId, LocalDate date) {
         accountService.getAccountForImport(user, accountId);
-        NextSessionProtectionCommitment commitment = commitmentRepository.findByAccount_IdAndUserAndEffectiveSessionDate(accountId, user, date).orElseThrow(() -> new ResourceNotFoundException("Protection commitment not found"));
+        NextSessionProtectionCommitment commitment = commitmentRepository.findForUpdate(accountId, user, date).orElseThrow(() -> new ResourceNotFoundException("Protection commitment not found"));
         // Repeated acceptance must not reset the original acceptance time or an existing evaluation.
         if (commitment.getStatus() != ProtectionCommitmentStatus.DRAFT) {
             if (commitment.getAcceptedAt() != null) return commitmentResponse(commitment);
@@ -201,12 +202,16 @@ public class AccountSurvivalService {
                 .orElseThrow(() -> new ResourceNotFoundException("Protection commitment not found"));
         List<CommitmentEvaluationResponse> evaluations = evaluationRepository
                 .findByCommitment_IdAndIsCurrentTrueOrderByEvaluatedSessionDateDescIdDesc(commitment.getId()).stream()
-                .limit(30).map(this::evaluationResponse).toList();
+                .limit(HISTORY_WINDOW_SESSIONS).map(this::evaluationResponse).toList();
         int followed = (int) evaluations.stream().filter(e -> e.overallStatus() == ProtectionCommitmentStatus.COMPLETED).count();
         int broken = (int) evaluations.stream().filter(e -> e.overallStatus() == ProtectionCommitmentStatus.BROKEN).count();
         int partial = (int) evaluations.stream().filter(e -> e.overallStatus() == ProtectionCommitmentStatus.PARTIALLY_OBSERVED).count();
         int unavailable = (int) evaluations.stream().filter(e -> e.overallStatus() == ProtectionCommitmentStatus.NOT_EVALUABLE).count();
-        return new CommitmentEvaluationHistoryResponse(evaluations, evaluations.size(), followed, broken, partial, unavailable);
+        int fullyEvaluable = followed + broken;
+        Integer adherencePercent = fullyEvaluable == 0 ? null
+                : BigDecimal.valueOf(followed).multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(fullyEvaluable), 0, RoundingMode.HALF_UP).intValue();
+        return new CommitmentEvaluationHistoryResponse(evaluations, HISTORY_WINDOW_SESSIONS, evaluations.size(), followed,
+                broken, partial, unavailable, fullyEvaluable, adherencePercent);
     }
     @Transactional
     public void evaluateEligibleAfterImport(User user, Long accountId) {
