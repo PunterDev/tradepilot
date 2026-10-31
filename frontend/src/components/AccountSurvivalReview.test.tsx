@@ -67,7 +67,7 @@ const rules: CommitmentRuleResult[] = [
   { rule: "MAX_ATTEMPTS", status: "FOLLOWED", configuredValue: "3", observedValue: "2", message: "Two completed attempts were observed." },
   { rule: "MAX_NORMALIZED_EXPOSURE", status: "FOLLOWED", configuredValue: "20", observedValue: "10", message: "Maximum normalized exposure remained within the commitment." },
   { rule: "MAX_SESSION_LOSS", status: "FOLLOWED", configuredValue: "200.00", observedValue: "-24.50", message: "Realized session loss remained within the configured maximum." },
-  { rule: "MIN_POST_LOSS_PAUSE", status: "FOLLOWED", configuredValue: "20", observedValue: "26", message: "The shortest post-loss pause was 26 minutes." },
+  { rule: "POST_LOSS_PAUSE", status: "FOLLOWED", configuredValue: "20", observedValue: "26", message: "Every realized losing attempt is checked against its next completed-attempt entry; the shortest observed pause is reported." },
   { rule: "TRADING_WINDOW", status: "FOLLOWED", configuredValue: "09:30–16:00", observedValue: "09:30", message: "All completed attempts opened inside the configured window." },
   { rule: "FRESH_CONFIRMATION", status: "NOT_EVALUABLE", configuredValue: "Enabled", observedValue: null, message: "Completed-trade data does not prove contemporaneous confirmation." },
 ];
@@ -79,7 +79,7 @@ const completedEvaluation: CommitmentEvaluation = {
   evaluationVersion: "account-survival-v1",
   rules,
 };
-const evaluationHistory: CommitmentEvaluationHistory = { evaluations: [completedEvaluation], evaluatedSessions: 1, followedSessions: 1, brokenSessions: 0, partiallyObservedSessions: 0, notEvaluableSessions: 0 };
+const evaluationHistory: CommitmentEvaluationHistory = { evaluations: [completedEvaluation], reportingWindowSessions: 30, evaluatedSessions: 1, followedSessions: 1, brokenSessions: 0, partiallyObservedSessions: 0, notEvaluableSessions: 0, fullyEvaluableSessions: 1, adherencePercent: 100 };
 
 function mockLoad(evaluation: CommitmentEvaluation | Error = completedEvaluation) {
   vi.mocked(survivalApi.getSurvivalAssessment).mockResolvedValue(assessment);
@@ -132,13 +132,29 @@ describe("AccountSurvivalReview commitment evaluation", () => {
     expect(screen.getByText("Trading date: Apr 7, 2026 · account-survival-v1")).toBeVisible();
     expect(screen.getByText("Max Attempts — Followed")).toBeVisible();
     expect(screen.getByText("Max Normalized Exposure — Followed")).toBeVisible();
-    expect(screen.getByText("Min Post Loss Pause — Followed")).toBeVisible();
+    expect(screen.getByText("Post Loss Pause — Followed")).toBeVisible();
     expect(screen.getByText("Configured: $200.00 · Observed: -$24.50")).toBeVisible();
     expect(screen.getByText("Configured: 20 contracts · Observed: 10 contracts")).toBeVisible();
     expect(screen.getByText("Configured: 20 min · Observed: 26 min")).toBeVisible();
     expect(screen.getByText("Configured: Enabled · Observed: —")).toBeVisible();
     expect(screen.getByText("Remaining buffer").parentElement).toHaveTextContent("$2,000.50");
     expect(screen.getByRole("region", { name: "Commitment evaluation history" })).toHaveTextContent("Adherence history");
+    expect(screen.getByRole("region", { name: "Commitment evaluation history" })).toHaveTextContent("Latest 1 of 30 evaluated sessions");
+    expect(screen.getByRole("region", { name: "Commitment evaluation history" })).toHaveTextContent("100%");
+  });
+
+  it("shows no adherence percentage when the visible window has no fully evaluable sessions", async () => {
+    mockLoad();
+    vi.mocked(survivalApi.getCommitmentEvaluationHistory).mockResolvedValue({
+      ...evaluationHistory,
+      followedSessions: 0,
+      partiallyObservedSessions: 1,
+      fullyEvaluableSessions: 0,
+      adherencePercent: null,
+    });
+    render(<AccountSurvivalReview accountId={7} date="2026-04-06" />);
+    const history = await screen.findByRole("region", { name: "Commitment evaluation history" });
+    expect(within(history).getByText("Adherence").parentElement).toHaveTextContent("—");
   });
 
   it("renders broken rules as measurable violations while preserving followed rules", async () => {

@@ -105,13 +105,16 @@ public class ProtectionCommitmentEvaluator {
             Attempt next = attempts.get(i + 1);
             if (losing.pnl().signum() >= 0) continue;
             Duration pause = Duration.between(losing.closedAt(), next.openedAt());
-            if (pause.isNegative()) return notEvaluable("POST_LOSS_PAUSE", configuredMinutes + " minutes", "Completed trade timestamps overlap; sequence cannot be evaluated.");
+            if (!next.openedAt().isAfter(losing.closedAt())) {
+                return notEvaluable("POST_LOSS_PAUSE", configuredMinutes + " minutes",
+                        "A later attempt overlaps or shares the loss close timestamp, so the post-loss sequence cannot be established.");
+            }
             if (shortest == null || pause.compareTo(shortest) < 0) shortest = pause;
         }
         if (shortest == null) return notEvaluable("POST_LOSS_PAUSE", configuredMinutes + " minutes", "No post-loss re-entry occurred; the configured pause was not tested.");
         long minutes = shortest.toMinutes();
         return rule("POST_LOSS_PAUSE", configuredMinutes + " minutes", minutes + " minutes", minutes >= configuredMinutes,
-                "Shortest elapsed time from a completed losing attempt to the next completed attempt.");
+                "Every realized losing attempt is checked against its next completed-attempt entry; the shortest observed pause is reported.");
     }
 
     private CommitmentEvaluationResponse.RuleResult windowRule(LocalTime start, LocalTime end, List<Attempt> attempts, ZoneId zone) {

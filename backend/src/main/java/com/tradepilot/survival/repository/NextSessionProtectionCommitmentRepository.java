@@ -17,5 +17,8 @@ public interface NextSessionProtectionCommitmentRepository extends JpaRepository
     List<NextSessionProtectionCommitment> findByAccount_IdAndUserAndStatusNot(Long accountId, User user, ProtectionCommitmentStatus status);
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select commitment from NextSessionProtectionCommitment commitment where commitment.account.id = :accountId and commitment.user = :user and commitment.effectiveSessionDate = :date")
+    Optional<NextSessionProtectionCommitment> findForUpdate(@Param("accountId") Long accountId, @Param("user") User user, @Param("date") LocalDate date);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select commitment from NextSessionProtectionCommitment commitment where commitment.account.id = :accountId and commitment.user = :user and commitment.effectiveSessionDate = :date")
     Optional<NextSessionProtectionCommitment> findForEvaluation(@Param("accountId") Long accountId, @Param("user") User user, @Param("date") LocalDate date);
 }

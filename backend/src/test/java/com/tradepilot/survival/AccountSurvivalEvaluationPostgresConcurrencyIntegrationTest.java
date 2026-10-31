@@ -19,6 +19,8 @@ import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.repository.TradingAccountRepository;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.survival.dto.CommitmentEvaluationResponse;
+import com.tradepilot.survival.dto.CommitmentEvaluationHistoryResponse;
+import com.tradepilot.survival.dto.ProtectionCommitmentRequest;
 import com.tradepilot.survival.entity.NextSessionProtectionCommitment;
 import com.tradepilot.survival.repository.NextSessionProtectionCommitmentRepository;
 import java.math.BigDecimal;
@@ -210,6 +212,35 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
     }
 
     @Test
+    void adherenceHistoryUsesItsExplicitLatestThirtySessionWindowAndExcludesPartialSessions() {
+        Fixture fixture = committedFixture("history-summary");
+        LocalDate secondSession = fixture.eligibleDate().plusDays(1);
+        transactions.executeWithoutResult(status -> trades.save(trade(
+                users.getReferenceById(fixture.userId()), accounts.getReferenceById(fixture.accountId()), secondSession,
+                "09:30", "09:45", "20.00", 1)));
+        evaluate(fixture);
+
+        CommitmentEvaluationHistoryResponse partialOnly = transactions.execute(status -> service.evaluationHistory(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate()));
+        assertThat(partialOnly.reportingWindowSessions()).isEqualTo(30);
+        assertThat(partialOnly.evaluatedSessions()).isEqualTo(2);
+        assertThat(partialOnly.fullyEvaluableSessions()).isZero();
+        assertThat(partialOnly.adherencePercent()).isNull();
+        assertThat(partialOnly.followedSessions()).isZero();
+
+        jdbc.update("update next_session_protection_commitments set require_fresh_setup_confirmation = false where id = ?", fixture.commitmentId());
+        evaluate(fixture);
+        CommitmentEvaluationHistoryResponse fullyEvaluable = transactions.execute(status -> service.evaluationHistory(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate()));
+        assertThat(fullyEvaluable.evaluatedSessions()).isEqualTo(2);
+        assertThat(fullyEvaluable.followedSessions()).isEqualTo(1);
+        assertThat(fullyEvaluable.partiallyObservedSessions()).isEqualTo(1);
+        assertThat(fullyEvaluable.fullyEvaluableSessions()).isEqualTo(1);
+        assertThat(fullyEvaluable.adherencePercent()).isEqualTo(100);
+        assertThat(fullyEvaluable.notEvaluableSessions()).isZero();
+    }
+
+    @Test
     void doesNotRepresentHistoricalImportsAsComplianceWhenAcceptanceWasRecordedLater() {
         Fixture fixture = committedFixture("backdated");
         jdbc.update("update next_session_protection_commitments set accepted_at = ? where id = ?",
@@ -220,6 +251,52 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
         assertThat(response.available()).isFalse();
         assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ?", Long.class, fixture.commitmentId()))
                 .isZero();
+    }
+
+    @Test
+    void concurrentDraftSaveCannotOverwriteAnAcceptedCommitment() throws Exception {
+        Fixture fixture = committedFixture("save-accept");
+        jdbc.update("update next_session_protection_commitments set status = 'DRAFT', accepted_at = null where id = ?", fixture.commitmentId());
+        ProtectionCommitmentRequest staleDraftUpdate = new ProtectionCommitmentRequest(fixture.commitmentDate(),
+                new BigDecimal("20.00"), 1, new BigDecimal("200.00"), 20, LocalTime.of(9, 30), LocalTime.of(16, 0), false);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<Boolean> save = executor.submit(() -> {
+                ready.countDown(); await(start);
+                try {
+                    transactions.execute(status -> service.saveCommitment(users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), staleDraftUpdate));
+                    return true;
+                } catch (IllegalArgumentException expectedAfterAcceptance) {
+                    return false;
+                }
+            });
+            Future<?> accept = executor.submit(() -> {
+                ready.countDown(); await(start);
+                transactions.execute(status -> service.acceptCommitment(users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate()));
+                return null;
+            });
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            accept.get(30, TimeUnit.SECONDS);
+            save.get(30, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdown();
+            assertThat(executor.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+        }
+
+        assertThat(jdbc.queryForObject("select status from next_session_protection_commitments where id = ?", String.class, fixture.commitmentId()))
+                .isEqualTo("ACCEPTED");
+        Integer acceptedMaxAttempts = jdbc.queryForObject("select max_attempts from next_session_protection_commitments where id = ?", Integer.class, fixture.commitmentId());
+        assertThat(acceptedMaxAttempts).isIn(1, 3);
+        assertThatThrownBy(() -> transactions.execute(status -> service.saveCommitment(users.findById(fixture.userId()).orElseThrow(),
+                fixture.accountId(), new ProtectionCommitmentRequest(fixture.commitmentDate(), new BigDecimal("20.00"), 99,
+                        new BigDecimal("200.00"), 20, LocalTime.of(9, 30), LocalTime.of(16, 0), false))))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(jdbc.queryForObject("select max_attempts from next_session_protection_commitments where id = ?", Integer.class, fixture.commitmentId()))
+                .isEqualTo(acceptedMaxAttempts);
     }
 
     private static List<CommitmentEvaluationResponse> evaluateConcurrently(Fixture fixture, boolean includePostImport) throws Exception {
