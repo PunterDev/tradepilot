@@ -143,7 +143,7 @@ test("Account Survival review completes the deterministic cross-account commitme
   await page.keyboard.press("Enter");
   await expect(evidenceButton).toHaveAttribute("aria-expanded", "true");
 
-  await page.getByRole("button", { name: "Edit commitment" }).click();
+  await page.getByRole("button", { name: "Edit draft commitment" }).click();
   await page.getByLabel("Maximum attempts").fill("3");
   await page.getByRole("button", { name: "Save commitment" }).click();
   await expect(page.getByRole("button", { name: "Accept commitment" })).toBeVisible();
@@ -186,7 +186,7 @@ test("Account Survival keeps profile and commitment visible when evaluation retr
   await openSessionReview(page);
   await expect(page.getByRole("alert")).toHaveText("Unable to load the commitment evaluation.");
   await expect(page.getByText("Remaining buffer")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit commitment" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit draft commitment" })).toBeVisible();
 });
 
 for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }]) {
@@ -197,8 +197,8 @@ for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }
     const evidenceButton = page.getByRole("button", { name: "Cross-account evidence" });
     await evidenceButton.click();
     await expect(evidenceButton.locator("xpath=..").getByText("Apex 50K B")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Edit commitment" })).toBeVisible();
-    await page.getByRole("button", { name: "Edit commitment" }).click();
+    await expect(page.getByRole("button", { name: "Edit draft commitment" })).toBeVisible();
+    await page.getByRole("button", { name: "Edit draft commitment" }).click();
     await expect(page.getByLabel("Maximum attempts")).toBeVisible();
     await expectNoHorizontalOverflow(page);
     if (viewport.width !== 390) await page.screenshot({ path: testInfo.outputPath(`account-survival-${viewport.width}.png`), fullPage: true });
