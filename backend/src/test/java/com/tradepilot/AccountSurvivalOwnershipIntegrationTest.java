@@ -89,9 +89,11 @@ class AccountSurvivalOwnershipIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
         mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluation").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
+        mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluations").header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.evaluatedSessions").value(0));
 
         for (String path : new String[] { profilePath(account), base(account) + "?date=" + date, commitmentPath(account) + "?date=" + date,
-                commitmentPath(account) + "/" + date + "/evaluation" }) {
+                commitmentPath(account) + "/" + date + "/evaluation", commitmentPath(account) + "/" + date + "/evaluations" }) {
             String body = mockMvc.perform(get(path).header("Authorization", bearer(otherToken))).andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
             org.assertj.core.api.Assertions.assertThat(body).doesNotContain("50000", "48000", "Owner survival account", "maxAttempts", "America/New_York");
         }
@@ -120,6 +122,8 @@ class AccountSurvivalOwnershipIntegrationTest {
         mockMvc.perform(post(commitmentPath(account) + "/not-a-date/evaluate").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
         mockMvc.perform(get(commitmentPath(account) + "/2026-13-40/evaluation").header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
+        mockMvc.perform(get(commitmentPath(account) + "/2026-13-40/evaluations").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
         mockMvc.perform(get(base(account)).param("date", "not-a-date")).andExpect(status().isUnauthorized());
     }

@@ -87,6 +87,7 @@ async function installFixture(page: Page, options: FixtureOptions = {}) {
       }
       if (suffix.endsWith("/accept") && method === "POST") { commitment = { ...commitment, status: "ACCEPTED", acceptedAt: "2026-10-01T16:05:00" }; return fulfill(route, commitment); }
       if (suffix.endsWith("/evaluate") && method === "POST") { evaluation = completedEvaluation; return fulfill(route, completedEvaluation); }
+      if (suffix.endsWith("/evaluations")) return fulfill(route, { evaluations: evaluation && (evaluation as { available?: boolean }).available ? [evaluation] : [], evaluatedSessions: evaluation && (evaluation as { available?: boolean }).available ? 1 : 0, followedSessions: 0, brokenSessions: evaluation && (evaluation as { overallStatus?: string }).overallStatus === "BROKEN" ? 1 : 0, partiallyObservedSessions: 0, notEvaluableSessions: 0 });
       if (suffix.endsWith("/evaluation")) {
         if (options.evaluationError) return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "evaluation unavailable" }) });
         return fulfill(route, evaluation);

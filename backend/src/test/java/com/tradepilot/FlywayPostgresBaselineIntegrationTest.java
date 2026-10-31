@@ -60,7 +60,7 @@ class FlywayPostgresBaselineIntegrationTest {
         }
 
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(30);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(31);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
@@ -183,6 +183,8 @@ class FlywayPostgresBaselineIntegrationTest {
         assertThat(count(connection, "select count(*) from information_schema.table_constraints where table_name = 'next_session_protection_evaluations' and constraint_name = 'uk_protection_evaluation_fingerprint'"))
                 .isEqualTo(1);
         assertThat(count(connection, "select count(*) from information_schema.table_constraints where table_name = 'next_session_protection_rule_results' and constraint_name = 'uk_protection_rule_result'"))
+                .isEqualTo(1);
+        assertThat(count(connection, "select count(*) from pg_indexes where schemaname = 'public' and tablename = 'next_session_protection_evaluations' and indexname = 'uk_protection_evaluation_current_session'"))
                 .isEqualTo(1);
         assertVarcharColumn(connection, "next_session_protection_evaluations", "source_fingerprint", 128, "NO");
         assertThat(scalar(connection, "select data_type from information_schema.columns where table_name = 'next_session_protection_rule_results' and column_name = 'evidence'"))
