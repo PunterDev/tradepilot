@@ -179,7 +179,8 @@ describe("AccountSurvivalReview commitment evaluation", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Unable to load the commitment evaluation.");
     expect(screen.getByText("Remaining buffer")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Edit commitment" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Edit draft commitment" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Accepted protection rules are locked/)).toBeVisible();
     expect(screen.getByText("No evaluation has been recorded yet.")).toBeVisible();
   });
 
