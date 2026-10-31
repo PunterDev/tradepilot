@@ -73,6 +73,18 @@ class AccountSurvivalOwnershipIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACCEPTED"));
         mockMvc.perform(get(commitmentPath(account)).param("date", date.toString()).header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.maxAttempts").value(2));
+        // Once accepted, the commitment must remain immutable and cannot be re-drafted.
+        mockMvc.perform(put(commitmentPath(account)).header("Authorization", bearer(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON).content(commitment))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get(commitmentPath(account)).param("date", date.toString()).header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.acceptedAt").exists())
+                .andExpect(jsonPath("$.maxAttempts").value(2));
+        mockMvc.perform(post(commitmentPath(account) + "/" + date + "/accept").header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"));
         mockMvc.perform(post(commitmentPath(account) + "/" + date + "/evaluate").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
         mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluation").header("Authorization", bearer(ownerToken)))
