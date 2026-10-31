@@ -106,6 +106,11 @@ public class AccountSurvivalService {
         TradingAccount account = accountService.getAccountForImport(user, accountId);
         AccountSurvivalAssessmentResponse assessment = assessment(user, accountId, request.effectiveSessionDate());
         NextSessionProtectionCommitment commitment = commitmentRepository.findByAccount_IdAndUserAndEffectiveSessionDate(accountId, user, request.effectiveSessionDate()).orElseGet(NextSessionProtectionCommitment::new);
+        // A protection rule becomes part of the historical accountability record once accepted.
+        // Changes must be saved as a new commitment for a future session, never backdated.
+        if (commitment.getId() != null && (commitment.getAcceptedAt() != null || commitment.getStatus() != ProtectionCommitmentStatus.DRAFT)) {
+            throw new IllegalArgumentException("Accepted protection commitments are locked. Create a new commitment for a future session.");
+        }
         commitment.setUser(user); commitment.setAccount(account); commitment.setEffectiveSessionDate(request.effectiveSessionDate());
         commitment.setMaxNormalizedExposure(request.maxNormalizedExposure()); commitment.setMaxAttempts(request.maxAttempts());
         commitment.setMaxSessionLoss(request.maxSessionLoss()); commitment.setPostLossPauseMinutes(request.postLossPauseMinutes());
@@ -121,6 +126,11 @@ public class AccountSurvivalService {
     public ProtectionCommitmentResponse acceptCommitment(User user, Long accountId, LocalDate date) {
         accountService.getAccountForImport(user, accountId);
         NextSessionProtectionCommitment commitment = commitmentRepository.findByAccount_IdAndUserAndEffectiveSessionDate(accountId, user, date).orElseThrow(() -> new ResourceNotFoundException("Protection commitment not found"));
+        // Repeated acceptance must not reset the original acceptance time or an existing evaluation.
+        if (commitment.getStatus() != ProtectionCommitmentStatus.DRAFT) {
+            if (commitment.getAcceptedAt() != null) return commitmentResponse(commitment);
+            throw new IllegalArgumentException("Only draft protection commitments can be accepted.");
+        }
         commitment.setStatus(ProtectionCommitmentStatus.ACCEPTED); commitment.setAcceptedAt(LocalDateTime.now());
         return commitmentResponse(commitmentRepository.save(commitment));
     }
