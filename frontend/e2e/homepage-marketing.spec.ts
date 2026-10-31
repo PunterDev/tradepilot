@@ -93,7 +93,7 @@ test("homepage keeps the Trading Memory preview gated behind its feature flag", 
   await expect(page.getByLabel("TradePilot Coach product highlights").getByText("Trading Memory")).toBeVisible();
   await expect(page.getByText("Have you made this trade before?")).toBeVisible();
   await expect(page.getByText("Yes — TradePilot found a recurring pattern.")).toBeVisible();
-  await expect(page.getByText("Most journals tell you what you traded. TradePilot Coach helps you understand how you traded.")).toBeVisible();
+  await expect(page.getByText("TradePilot detects first. AI explains second.")).toBeVisible();
   await expect(page.getByText("AI Trading Memory")).toBeVisible();
   await expect(page.getByText("Trading DNA")).toBeVisible();
   await expect(page.getByText("Performance Journey")).toBeVisible();
@@ -124,9 +124,11 @@ test("homepage navigation anchors and CTAs target valid public destinations", as
 
   await expect(page.getByRole("link", { name: "Sign In" }).first()).toHaveAttribute("href", "/login");
   await expect(page.getByRole("link", { name: "Try Free" }).first()).toHaveAttribute("href", "/register");
-  await expect(page.getByRole("link", { name: "See the Demo" }).first()).toHaveAttribute("href", "/demo");
+  await expect(page.getByRole("link", { name: "Try TradePilot Free" }).first()).toHaveAttribute("href", "/register");
+  await expect(page.getByRole("link", { name: "See Sample Demo" }).first()).toHaveAttribute("href", "/demo");
   await expect(page.getByRole("heading", { name: "See what TradePilot Coach finds in your trading." })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Try Sample Demo" })).toHaveAttribute("href", "/demo");
+  await expect(page.locator(".final-cta").getByRole("link", { name: "Try TradePilot Free" })).toHaveAttribute("href", "/register");
+  await expect(page.locator(".final-cta").getByRole("link", { name: "See Sample Demo" })).toHaveAttribute("href", "/demo");
 });
 
 test("homepage uses the canonical public post-loss sample", async ({ page }) => {
@@ -135,6 +137,8 @@ test("homepage uses the canonical public post-loss sample", async ({ page }) => 
 
   const sampleProof = page.locator(".sample-proof-section");
   await expect(sampleProof.getByText("42 trades analyzed. 9 qualifying occurrences. Weak evidence.")).toBeVisible();
+  await expect(sampleProof.getByText("-0.62R after the trigger versus -0.11R baseline: 0.51R worse on average.")).toBeVisible();
+  await expect(sampleProof.getByText("Illustrative sample data.")).toBeVisible();
   const report = page.getByLabel("AI Leak Detector report preview").first();
   await expect(report.getByText("42", { exact: true })).toBeVisible();
   await expect(report.getByText("Weak evidence")).toBeVisible();
@@ -142,6 +146,17 @@ test("homepage uses the canonical public post-loss sample", async ({ page }) => 
   await expect(page.getByText("8 qualifying occurrences")).toHaveCount(0);
   await expect(page.getByText("89", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Strong evidence")).toHaveCount(0);
+});
+
+test("homepage makes retrospective analysis, supported CSV imports, and evidence limits explicit", async ({ page }) => {
+  await mockFeatureAvailability(page, disabledAvailability);
+  await page.goto("/");
+
+  await expect(page.getByText("Review your completed trades. Understand recurring execution mistakes. Improve your next session. Post-session analysis. No live trade signals or predictions.")).toBeVisible();
+  await expect(page.getByLabel("Supported CSV imports")).toHaveText("CSV imports:Tradovate and Topstep");
+  await expect(page.getByRole("heading", { name: "TradePilot detects first. AI explains second." })).toBeVisible();
+  await expect(page.getByText("How is TradePilot different from uploading a CSV into ChatGPT?")).toBeVisible();
+  await expect(page.getByText("How many trades do I need for useful analysis?")).toBeVisible();
 });
 
 test("homepage keeps the current five-step workflow readable", async ({ page }) => {
@@ -155,7 +170,7 @@ test("homepage keeps the current five-step workflow readable", async ({ page }) 
   }
 });
 
-for (const width of [390, 320]) {
+for (const width of [375, 390, 768, 1440]) {
   test(`homepage remains readable without horizontal overflow at ${width}px`, async ({ page }) => {
     await mockFeatureAvailability(page, disabledAvailability);
     await page.setViewportSize({ width, height: 900 });
@@ -164,7 +179,7 @@ for (const width of [390, 320]) {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
     await expect(page.getByRole("link", { name: "Try Free" }).first()).toBeVisible();
-    await expect(page.getByText("Why traders need more than a journal")).toBeVisible();
+    await expect(page.getByText("TradePilot detects first. AI explains second.")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Built from problems futures traders actually face." })).toBeVisible();
   });
 }

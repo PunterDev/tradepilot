@@ -198,6 +198,33 @@
   font-weight: 750;
 }
 
+.hero-retrospective-copy {
+  max-width: 660px;
+  margin: 16px 0 0;
+  color: #d3e2f2;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.import-compatibility-strip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 16px;
+  padding: 9px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.17);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.44);
+  color: #b7c5d9;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.import-compatibility-strip strong {
+  color: #e5eefc;
+}
+
 .marketing-button.primary {
   border: 0;
   color: #00140c;
@@ -280,7 +307,7 @@
 
 .proof-sequence {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   border-top: 1px solid rgba(45, 212, 191, 0.22);
   border-bottom: 1px solid rgba(45, 212, 191, 0.22);
 }

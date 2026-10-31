@@ -91,6 +91,16 @@ const faqs = [
       "TradePilot Coach shows limited-data states instead of forcing a confident answer. No-trade days and weeks skip AI generation.",
   },
   {
+    question: "How is TradePilot different from uploading a CSV into ChatGPT?",
+    answer:
+      "TradePilot Coach combines structured trade imports, repeatable trading metrics, behavior detection, and account-level historical context. AI helps explain findings and suggest practical review steps. Where evidence is limited, TradePilot Coach should say so rather than present speculation as certainty.",
+  },
+  {
+    question: "How many trades do I need for useful analysis?",
+    answer:
+      "Basic performance statistics can be calculated with relatively few trades. More reliable behavioral findings require sufficient qualifying observations, which vary by pattern. TradePilot Coach distinguishes stronger evidence from limited data rather than promising reliable conclusions from every sample.",
+  },
+  {
     question: "Is my trading data secure?",
     answer:
       "Your imported trade history is scoped to your account. TradePilot Coach does not need your broker password for the supported CSV workflow, does not place trades, and does not sell your trading data.",
@@ -153,8 +163,9 @@ export default function HomePage() {
               Your P&amp;L tells you what happened. <span className="brand-accent">TradePilot Coach tells you why.</span>
             </h1>
             <p className="marketing-subtitle hero-support">
-              Import your futures trades and uncover the behaviors behind your results. TradePilot uses your actual trading history to identify recurring leaks, show the evidence, and give you one clear focus for your next session.
+              Import your futures trading history. Discover recurring execution mistakes, see the evidence behind them, and get one actionable rule for your next session.
             </p>
+            <p className="hero-retrospective-copy">Review your completed trades. Understand recurring execution mistakes. Improve your next session. Post-session analysis. No live trade signals or predictions.</p>
             <div className="marketing-hero-actions">
               <Link
                 className="marketing-button primary"
@@ -166,12 +177,16 @@ export default function HomePage() {
               <Link
                 className="marketing-button ghost"
                 to="/demo"
-                onClick={() => trackSeoCtaClick("/", "See the Demo", "/demo")}
+                onClick={() => trackSeoCtaClick("/", "See Sample Demo", "/demo")}
               >
-                See the Demo
+                See Sample Demo
               </Link>
             </div>
-            <p className="hero-demo-copy">No signup. No CSV. Explore a sample futures trading account.</p>
+            <p className="hero-demo-copy">Explore a sample review — no signup or CSV required.</p>
+            <div className="import-compatibility-strip" aria-label="Supported CSV imports">
+              <strong>CSV imports:</strong>
+              <span>Tradovate and Topstep</span>
+            </div>
             <p className="marketing-trust-copy">
               {showTradingMemory
                 ? <>AI execution intelligence and coaching for futures traders. Import <Link className="marketing-inline-link" to="/topstep-trading-journal">Topstep</Link> and <Link className="marketing-inline-link" to="/tradovate-trading-journal">Tradovate</Link> trade history by CSV.</>
@@ -195,11 +210,12 @@ export default function HomePage() {
             <p className="marketing-section-copy">The sample account is illustrative only. It shows the shape of a review, not a trading recommendation.</p>
           </header>
           <div className="proof-sequence" aria-label="Sample analysis sequence">
-            <article><span>01 — Pattern</span><strong>{sampleAccount.finding.pattern}</strong></article>
-            <article><span>02 — Evidence</span><strong>{sampleAccount.totalTrades} trades analyzed. {sampleAccount.qualifyingOccurrences} qualifying occurrences. Weak evidence.</strong></article>
-            <article><span>03 — Next rule</span><strong>{sampleAccount.finding.coachRule}</strong></article>
+            <article><span>01 — Behavior</span><strong>{sampleAccount.finding.pattern}</strong></article>
+            <article><span>02 — Evidence</span><strong>{sampleAccount.totalTrades} trades analyzed. {sampleAccount.qualifyingOccurrences} qualifying occurrences. {sampleAccount.finding.evidenceLabel}.</strong></article>
+            <article><span>03 — Observed impact</span><strong>{sampleAccount.finding.triggeredAverageR}R after the trigger versus {sampleAccount.finding.baselineAverageR}R baseline: {sampleAccount.finding.deteriorationR}R worse on average.</strong></article>
+            <article><span>04 — Next-session focus</span><strong>{sampleAccount.finding.coachRule}</strong></article>
           </div>
-          <p className="marketing-trust-copy sample-trust-note">TradePilot detects the pattern from your trading data first. AI helps explain it — it does not invent the finding.</p>
+          <p className="marketing-trust-copy sample-trust-note">Illustrative sample data. The R-based comparison comes from the displayed sample; TradePilot detects the pattern first, then AI helps explain it.</p>
         </div>
       </section>
 
@@ -214,13 +230,14 @@ export default function HomePage() {
         <div className="marketing-container">
           <div className="journal-difference-layout">
             <header className="marketing-section-header">
-              <div className="marketing-eyebrow">More than a journal</div>
-              <h2 className="marketing-section-title">Most journals tell you what you traded. TradePilot Coach helps you understand how you traded.</h2>
+              <div className="marketing-eyebrow">Evidence-first review</div>
+              <h2 className="marketing-section-title">TradePilot detects first. AI explains second.</h2>
+              <p className="marketing-section-copy">Structured analysis looks for recurring execution behavior, shows the supporting comparison and its limitations, then turns supported findings into a next-session review focus.</p>
             </header>
             <div className="journal-difference-points" aria-label="TradePilot Coach difference">
-              <p><strong>Detect</strong> the behavior behind the result.</p>
-              <p><strong>Explain</strong> when it appears in your history.</p>
-              <p><strong>Coach</strong> one concrete next-session rule.</p>
+              <p><strong>Detect</strong> recurring execution behavior in completed trades.</p>
+              <p><strong>Show the evidence</strong> with relevant comparisons, counts, and limitations.</p>
+              <p><strong>Coach the next session</strong> with one actionable review rule.</p>
             </div>
           </div>
         </div>
@@ -263,9 +280,9 @@ export default function HomePage() {
             <Link
               className="marketing-button primary flagship-cta"
               to="/register"
-              onClick={() => trackSeoCtaClick("/", "Find My Biggest Leak", "/register")}
+              onClick={() => trackSeoCtaClick("/", "Try TradePilot Free", "/register")}
             >
-              Find My Biggest Leak
+              Try TradePilot Free
             </Link>
           </div>
           <div className="flagship-panel flagship-panel-emphasis">
@@ -293,9 +310,9 @@ export default function HomePage() {
             <Link
               className="marketing-button primary story-cta"
               to="/register"
-              onClick={() => trackSeoCtaClick("/", "Try the AI Coach", "/register")}
+              onClick={() => trackSeoCtaClick("/", "Try TradePilot Free", "/register")}
             >
-              Try the AI Coach
+              Try TradePilot Free
             </Link>
           </article>
           <CoachOutcomeMockup />
@@ -429,10 +446,10 @@ export default function HomePage() {
         <div className="marketing-container">
           <div className="final-cta">
             <h2 className="marketing-section-title">See what TradePilot Coach finds in your trading.</h2>
-            <p className="marketing-section-copy">Start with the sample account or import supported history when you are ready.</p>
+            <p className="marketing-section-copy">Explore the sample review first, or create a free account to import your supported trade history.</p>
             <div className="final-cta-actions">
-              <Link className="marketing-button primary" to="/demo" onClick={() => trackSeoCtaClick("/", "Try Sample Demo", "/demo")}>Try Sample Demo</Link>
-              <Link className="marketing-button ghost" to="/register" onClick={() => trackSeoCtaClick("/", "Start Free", "/register")}>Start Free</Link>
+              <Link className="marketing-button primary" to="/register" onClick={() => trackSeoCtaClick("/", "Try TradePilot Free", "/register")}>Try TradePilot Free</Link>
+              <Link className="marketing-button ghost" to="/demo" onClick={() => trackSeoCtaClick("/", "See Sample Demo", "/demo")}>See Sample Demo</Link>
             </div>
             <p className="final-cta-note">No broker password required.</p>
           </div>
