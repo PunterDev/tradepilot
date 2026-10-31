@@ -307,6 +307,36 @@ class SeoAnalyticsTests {
     }
 
     @Test
+    void databaseTimestampPrecisionRoundsToNearestMicrosecond() {
+        List<LocalDateTime> values = List.of(
+                LocalDateTime.of(2026, 10, 31, 18, 9, 48, 745_736_499),
+                LocalDateTime.of(2026, 10, 31, 18, 9, 48, 745_736_500),
+                LocalDateTime.of(2026, 10, 31, 18, 9, 48, 745_736_999),
+                LocalDateTime.of(2026, 10, 31, 18, 9, 48, 999_999_500),
+                LocalDateTime.of(2026, 10, 31, 18, 9, 59, 999_999_500)
+        );
+
+        List<LocalDateTime> expected = List.of(
+                LocalDateTime.of(2026, 10, 31, 18, 9, 48, 745_736_000),
+                LocalDateTime.of(2026, 10, 31, 18, 9, 48, 745_737_000),
+                LocalDateTime.of(2026, 10, 31, 18, 9, 48, 745_737_000),
+                LocalDateTime.of(2026, 10, 31, 18, 9, 49),
+                LocalDateTime.of(2026, 10, 31, 18, 10)
+        );
+
+        for (int index = 0; index < values.size(); index++) {
+            LocalDateTime value = values.get(index);
+            Timestamp persisted = jdbcTemplate.queryForObject(
+                    "select cast(:value as timestamp(6))",
+                    new MapSqlParameterSource("value", Timestamp.valueOf(value)),
+                    Timestamp.class);
+
+            assertThat(atDatabasePrecision(value)).isEqualTo(expected.get(index));
+            assertThat(persisted.toLocalDateTime()).isEqualTo(expected.get(index));
+        }
+    }
+
+    @Test
     void signupAttributionRejectsClientOwnedMilestoneFields() throws Exception {
         String body = """
                 {
@@ -407,6 +437,6 @@ class SeoAnalyticsTests {
     }
 
     private LocalDateTime atDatabasePrecision(LocalDateTime value) {
-        return value.truncatedTo(ChronoUnit.MICROS);
+        return value.plusNanos(500).truncatedTo(ChronoUnit.MICROS);
     }
 }

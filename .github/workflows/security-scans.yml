@@ -58,7 +58,7 @@ jobs:
             echo "::error::Repository Actions secret NVD_API_KEY must be configured for OWASP Dependency-Check."
             exit 1
           fi
-          mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8 -DnvdApiKey="$NVD_API_KEY"
+          mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8 -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
 
       - name: Frontend dependency audit
         working-directory: frontend
