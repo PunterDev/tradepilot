@@ -2,7 +2,8 @@
 
 **Status:** PROPOSED ONLY - not approved and not active
 **Repository / branch:** `PunterDev/tradepilot` / `feature/v1-account-survival-coach`
-**Reviewed commit:** `8d202d2f3aa23fe45a672723bc57f33b149ea424`
+**Dependency baseline reviewed:** `8d202d2f3aa23fe45a672723bc57f33b149ea424`
+**Evidence document baseline:** `79956266daa845ae4b3a847e812ef69f769edd7c`
 **Scope:** the eight findings listed below, and no other dependencies, CVEs, branches, or releases.
 **Proposed expiry:** 2026-11-30T23:59:59Z
 **Security gate:** remains `failBuildOnCVSS=8`; this document does not change the workflow or activate a suppression.
@@ -14,26 +15,33 @@ Approval must be recorded on PR #1 by both of the following named people:
 1. The current `PunterDev/tradepilot` repository owner.
 2. The organization's designated security risk owner.
 
-Each approval must name the approver, record the date, confirm this exact commit and document version, and accept the proposed expiry. The repository does not identify a security risk owner by name; that identity is an approval evidence gap and must be filled before activation. The feature author alone cannot approve the exception.
+Each approval must name the approver, record the date, confirm the dependency baseline and document version, and accept the proposed expiry. The repository does not identify a security risk owner by name; that identity is an approval evidence gap and must be filled before activation. No applicable policy identifying whether one person may fill both roles was found in the repository. Until that policy is produced, the approvals must be from two different people. The feature author alone cannot approve the exception.
+
+| Required role | Name | Decision | Date | Reviewed baseline |
+| --- | --- | --- | --- | --- |
+| Repository owner | _Unassigned - record in PR #1_ | UNAPPROVED | _TBD_ | `8d202d2f3aa23fe45a672723bc57f33b149ea424` |
+| Security risk owner | _Unassigned - record in PR #1_ | UNAPPROVED | _TBD_ | `8d202d2f3aa23fe45a672723bc57f33b149ea424` |
 
 ## Scanner Evidence Gap
 
-GitHub Actions run `41232107045` produced the Dependency-Check artifact, but it is not readable from this review environment: GitHub returns HTTP 404 without an authorized token. The report is therefore required approval evidence. Before activation, attach the HTML/JSON report to PR #1 and verify each reported package URL (PURL), version, and exact scanner CVSS score against the table below.
+The latest GitHub Actions evidence is [run `41233630140`](https://github.com/PunterDev/tradepilot/actions/runs/41233630140); the earlier comparison point is [run `41232107045`](https://github.com/PunterDev/tradepilot/actions/runs/41232107045). Both the web and API endpoints return HTTP 404 in this review environment without an authorized GitHub token, so their artifacts were not independently downloaded here.
 
-The `scanner severity` field below faithfully records the available evidence: every listed item was reported as a blocking CVSS >= 8 finding. It deliberately does **not** invent an unavailable decimal score. Vendor severity is the classification published by the vendor advisory.
+The exact scanner scores below are evidence supplied with the release brief for the latest run. They must still be reconciled against the attached Dependency-Check HTML/JSON before approval. Vendor severity is the classification published by the vendor advisory, and is intentionally not conflated with the scanner score.
+
+The release brief reports the same eight findings as the earlier scan. Because neither artifact is accessible here, that comparison is documented as **reported, not independently verified**. The approval package must include both reports or a reviewer-produced diff showing no additional CVSS >= 8 finding.
 
 ## Reviewed Findings
 
 | CVE | Reviewed package coordinate and version | Scanner severity | Vendor severity | Vendor evidence and exploit prerequisites | TradePilot evidence and disposition |
 | --- | --- | --- | --- | --- | --- |
-| `CVE-2026-53914` | `org.jetbrains.kotlin:kotlin-stdlib:1.9.25` (runtime transitive) | Blocking CVSS >= 8; exact report score pending artifact | Moderate | [GitHub advisory](https://github.com/advisories/GHSA-r937-wjx7-w2jp) affects **`org.jetbrains.kotlin:kotlin-gradle-plugin`** before `2.4.20-Beta1`: unsafe deserialization in Kotlin **build-cache metadata**. | **Artifact false positive.** `kotlin-stdlib` arrives through `resend-java:4.13.0 -> okhttp:4.12.0 -> okio -> kotlin-stdlib-jdk8/stdlib`; this is not the Kotlin Gradle plugin and the backend has no Gradle build/cache execution. Do not characterize this as a vulnerable runtime feature. |
-| `CVE-2026-47884` | `org.springframework:spring-core:6.2.19` | Blocking CVSS >= 8; exact report score pending artifact | Medium | [Spring advisory](https://spring.io/security/cve-2026-47884/) requires `XsltView`, an implicit `/**` MVC mapping that renders a view, and no explicitly specified view name. Boot 3.5's line is fixed by `6.2.20` (Enterprise-only); `7.0.9` is the public OSS fix. | **Configuration-inapplicable, not an artifact false positive.** All application controllers are REST controllers; source/configuration contain no `XsltView`, server-rendered view, or `/**` view mapping. |
-| `CVE-2026-47890` | `org.springframework:spring-core:6.2.19` | Blocking CVSS >= 8; exact report score pending artifact | Low | [Spring advisory](https://spring.io/security/cve-2026-47890/) requires SSE carrying MVC/WebFlux view fragments and attacker-controlled content sent to other users. Same fixed-version availability as above. | **Configuration-inapplicable.** No SSE emitter, WebFlux, or view-fragment implementation exists. |
-| `CVE-2026-47891` | `org.springframework:spring-core:6.2.19` | Blocking CVSS >= 8; exact report score pending artifact | Medium | [Spring advisory](https://spring.io/security/cve-2026-47891/) requires WebFlux using the Aalto XML processor and `Jaxb2Decoder`. Same fixed-version availability as above. | **Configuration-inapplicable.** The backend uses `spring-boot-starter-web` (servlet MVC); no WebFlux, Aalto, XML decoder, or `maxInMemorySize` configuration exists. |
-| `CVE-2026-47892` | `org.springframework:spring-core:6.2.19` | Blocking CVSS >= 8; exact report score pending artifact | Medium | [Spring advisory](https://spring.io/security/cve-2026-47892/) requires WebFlux functional endpoints deployed through `DispatcherServlet` and a header predicate affected by pre-flight requests. Same fixed-version availability as above. | **Configuration-inapplicable.** No WebFlux or `RouterFunction` endpoint exists. |
-| `CVE-2026-59313` | `org.springframework:spring-core:6.2.19` | Blocking CVSS >= 8; exact report score pending artifact | Low | [Spring advisory](https://spring.io/security/cve-2026-59313/) requires MVC functional `RouterFunction` plus `ServerResponse.sse()`, plain-text SSE, and attacker-controlled data streamed to other users. Same fixed-version availability as above. | **Configuration-inapplicable.** No `RouterFunction`, `ServerResponse.sse()`, SSE endpoint, or streamed user-controlled payload exists. |
-| `CVE-2026-59283` | `org.springframework:spring-core:6.2.19` | Blocking CVSS >= 8; exact report score pending artifact | Medium | [Spring advisory](https://spring.io/security/cve-2026-59283/) requires `SimpleEvaluationContext` and SpEL compiler mode `IMMEDIATE` or `MIXED`, configured by `spring.expression.compiler.mode` or a compiler-enabled `SpelParserConfiguration`. Same fixed-version availability as above. | **Configuration-inapplicable.** There is no `SimpleEvaluationContext`, `SpelExpressionParser`, `SpelParserConfiguration`, compiler-mode property, or user-controlled SpEL evaluation. |
-| `CVE-2026-59270` | `org.springframework.security:spring-security-core:6.5.11` | Blocking CVSS >= 8; exact report score pending artifact | Critical | [Spring advisory](https://spring.io/security/cve-2026-59270/) requires embedded `UnboundIdContainer` (directly or through `spring.ldap.embedded.*`) and a reachable LDAP listener. Spring Security `6.5.12` is Enterprise-only; `7.0.7` and `7.1.1` are public OSS fixes. | **Configuration-inapplicable.** There is no UnboundID/LDAP dependency, `UnboundIdContainer`, `spring.ldap.embedded.*` setting, or LDAP listener. The configured authentication path is stateless JWT plus `DaoAuthenticationProvider` and BCrypt. |
+| `CVE-2026-53914` | `org.jetbrains.kotlin:kotlin-stdlib:1.9.25` (runtime transitive) | 9.8 (latest-run brief; artifact reconciliation pending) | Moderate | [GitHub advisory](https://github.com/advisories/GHSA-r937-wjx7-w2jp) affects **`org.jetbrains.kotlin:kotlin-gradle-plugin`** before `2.4.20-Beta1`: unsafe deserialization in Kotlin **build-cache metadata**. | **Artifact false positive.** `kotlin-stdlib` arrives through `resend-java:4.13.0 -> okhttp:4.12.0 -> okio -> kotlin-stdlib-jdk8/stdlib`; this is not the Kotlin Gradle plugin and the backend has no Gradle build/cache execution. Do not characterize this as a vulnerable runtime feature. |
+| `CVE-2026-47884` | `org.springframework:spring-core:6.2.19` | 9.8 (latest-run brief; artifact reconciliation pending) | Medium | [Spring advisory](https://spring.io/security/cve-2026-47884/) requires `XsltView`, an implicit `/**` MVC mapping that renders a view, and no explicitly specified view name. Boot 3.5's line is fixed by `6.2.20` (Enterprise-only); `7.0.9` is the public OSS fix. | **Configuration-inapplicable, not an artifact false positive.** All application controllers are REST controllers; source/configuration contain no `XsltView`, server-rendered view, or `/**` view mapping. |
+| `CVE-2026-47890` | `org.springframework:spring-core:6.2.19` | 9.8 (latest-run brief; artifact reconciliation pending) | Low | [Spring advisory](https://spring.io/security/cve-2026-47890/) requires SSE carrying MVC/WebFlux view fragments and attacker-controlled content sent to other users. Same fixed-version availability as above. | **Configuration-inapplicable.** No SSE emitter, WebFlux, or view-fragment implementation exists. |
+| `CVE-2026-47891` | `org.springframework:spring-core:6.2.19` | 9.8 (latest-run brief; artifact reconciliation pending) | Medium | [Spring advisory](https://spring.io/security/cve-2026-47891/) requires WebFlux using the Aalto XML processor and `Jaxb2Decoder`. Same fixed-version availability as above. | **Configuration-inapplicable.** The backend uses `spring-boot-starter-web` (servlet MVC); no WebFlux, Aalto, XML decoder, or `maxInMemorySize` configuration exists. |
+| `CVE-2026-47892` | `org.springframework:spring-core:6.2.19` | 9.8 (latest-run brief; artifact reconciliation pending) | Medium | [Spring advisory](https://spring.io/security/cve-2026-47892/) requires WebFlux functional endpoints deployed through `DispatcherServlet` and a header predicate affected by pre-flight requests. Same fixed-version availability as above. | **Configuration-inapplicable.** No WebFlux or `RouterFunction` endpoint exists. |
+| `CVE-2026-59313` | `org.springframework:spring-core:6.2.19` | 9.8 (latest-run brief; artifact reconciliation pending) | Low | [Spring advisory](https://spring.io/security/cve-2026-59313/) requires MVC functional `RouterFunction` plus `ServerResponse.sse()`, plain-text SSE, and attacker-controlled data streamed to other users. Same fixed-version availability as above. | **Configuration-inapplicable.** No `RouterFunction`, `ServerResponse.sse()`, SSE endpoint, or streamed user-controlled payload exists. |
+| `CVE-2026-59283` | `org.springframework:spring-core:6.2.19` | 9.1 (latest-run brief; artifact reconciliation pending) | Medium | [Spring advisory](https://spring.io/security/cve-2026-59283/) requires `SimpleEvaluationContext` and SpEL compiler mode `IMMEDIATE` or `MIXED`, configured by `spring.expression.compiler.mode` or a compiler-enabled `SpelParserConfiguration`. Same fixed-version availability as above. | **Configuration-inapplicable.** There is no `SimpleEvaluationContext`, `SpelExpressionParser`, `SpelParserConfiguration`, compiler-mode property, or user-controlled SpEL evaluation. |
+| `CVE-2026-59270` | `org.springframework.security:spring-security-core:6.5.11` | 9.1 (latest-run brief; artifact reconciliation pending) | Critical | [Spring advisory](https://spring.io/security/cve-2026-59270/) requires embedded `UnboundIdContainer` (directly or through `spring.ldap.embedded.*`) and a reachable LDAP listener. Spring Security `6.5.12` is Enterprise-only; `7.0.7` and `7.1.1` are public OSS fixes. | **Configuration-inapplicable.** There is no UnboundID/LDAP dependency, `UnboundIdContainer`, `spring.ldap.embedded.*` setting, or LDAP listener. The configured authentication path is stateless JWT plus `DaoAuthenticationProvider` and BCrypt. |
 
 ## Source and Effective-Configuration Evidence
 
@@ -45,7 +53,22 @@ The reviewed production configuration is the base configuration in [application.
 - `application-dev.yml` is local/ignored and is outside this production review. It must not be used as production configuration evidence.
 - Relevant possible overrides that must remain absent in production are `SPRING_LDAP_EMBEDDED_*`, `SPRING_EXPRESSION_COMPILER_MODE`, and any custom configuration introducing `XsltView`, functional WebFlux/MVC SSE handlers, Aalto/JAXB WebFlux decoders, or `UnboundIdContainer`. `SPRING_PROFILES_ACTIVE` must be `prod` or `production` for the production validator to run.
 
-This is a source-and-config review, not a substitute for access to the deployed Render environment. Before approval, the release owner must attach a redacted production environment-variable **name** inventory proving the relevant override names are absent. Never attach environment values or secrets.
+### Read-only Render Production Evidence
+
+The authorized Render account identifies the live backend as service `tradepilot` (`srv-d801975b910c73deagqg`): Docker runtime, root directory `backend`, source branch `master`. Its latest live deployment is `dep-dbg0e9nb9u1s73foms60`, deployed from `master` commit `7a8c2442ff44779aeff06dcb682dcf96a8527b4f` on 2026-10-27. Startup logs record the active profile as `production` and show a successful application startup. This is **not** the feature-branch commit reviewed above, so it is evidence for the live service/profile only, not proof that the feature-branch dependency tree is deployed.
+
+| Control | Verification | Result |
+| --- | --- | --- |
+| Production profile | Render startup log on 2026-10-27: `The following 1 profile is active: "production"`. | PASS |
+| Production security validator | The `production` service started successfully; the reviewed validator would reject enabled dev auth/tools, a non-database rate-limit store, or absent documented admin protection. The deployed source revision was not independently compared to this branch. | UNKNOWN |
+| Embedded LDAP | Source/dependency review is negative, but this connector cannot read service environment-variable names, environment groups, mounted files, or another configuration source. | UNKNOWN |
+| SpEL compiler | Source review is negative, but `SPRING_EXPRESSION_COMPILER_MODE` cannot be inspected in Render through this connector. | UNKNOWN |
+| XSLT MVC | Source review is negative; deployed source revision and any external configuration source were not fully inspected. | UNKNOWN |
+| WebFlux/SSE/Aalto/JAXB | Source/dependency review is negative; deployed source revision and external configuration sources were not fully inspected. | UNKNOWN |
+| Kotlin Gradle plugin | Render's deployed Docker build log shows Maven compilation/package activity, not Gradle. The reviewed backend is Maven-based and has no Kotlin Gradle plugin dependency. | PASS |
+| External configuration | Service metadata and read-only logs were inspected. Environment-variable names, attached environment groups, mounted configuration, and the deployed container file system are not exposed by the authorized connector. | UNKNOWN |
+
+This is a source-and-config review, not a substitute for access to all deployed configuration sources. Before approval, the release owner must attach a redacted production environment-variable **name** inventory, environment-group membership/name inventory, and any mounted/config-file source inventory proving the relevant override names are absent. Never attach environment values or secrets.
 
 ## Scope and Residual Risk
 
@@ -100,8 +123,8 @@ Any attempt to reduce the CVSS threshold, disable Dependency-Check, or allow the
 
 ## Approval Checklist
 
-- [ ] Dependency-Check HTML/JSON report from run `41232107045` attached; exact CVSS scores/PURLs reconciled.
-- [ ] Redacted production environment-variable-name inventory reviewed.
+- [ ] Dependency-Check HTML/JSON reports from runs `41233630140` and `41232107045` attached; exact CVSS scores/PURLs reconciled and comparison recorded.
+- [ ] Redacted production environment-variable-name, environment-group, and mounted/config-file source inventories reviewed.
 - [ ] Repository owner named and approves.
 - [ ] Security risk owner named and approves.
 - [ ] Expiry accepted and calendar review scheduled before 2026-11-30.
