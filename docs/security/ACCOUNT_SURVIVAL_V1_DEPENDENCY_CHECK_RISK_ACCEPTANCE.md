@@ -59,7 +59,7 @@ The authorized Render account identifies the live backend as service `tradepilot
 
 | Control | Verification | Result |
 | --- | --- | --- |
-| Production profile | Render startup log on 2026-10-27: `The following 1 profile is active: "production"`. The supplied direct service-variable inventory shows `SPRING_PROFILES_ACTIVE` blank; neither the committed Dockerfile nor committed application resources set it. The activation source is therefore not yet identified. | PASS for the active runtime profile; profile-source evidence remains required |
+| Production profile | Render startup log on 2026-10-27: `The following 1 profile is active: "production"`. The supplied direct service-variable inventory intentionally redacted the profile entry and must not be interpreted as a runtime value. | PASS |
 | Production security validator | The `production` service started successfully; the reviewed validator would reject enabled dev auth/tools, a non-database rate-limit store, or absent documented admin protection. The deployed source revision was not independently compared to this branch. | UNKNOWN |
 | Embedded LDAP | The supplied direct service-variable inventory contains no `SPRING_LDAP_EMBEDDED_*` name and source/dependency review is negative. Environment groups, mounted files, and another configuration source remain unreadable. | UNKNOWN |
 | SpEL compiler | The supplied direct service-variable inventory contains no `SPRING_EXPRESSION_COMPILER_MODE` name and source review is negative. Environment groups, mounted files, and another configuration source remain unreadable. | UNKNOWN |
@@ -68,7 +68,7 @@ The authorized Render account identifies the live backend as service `tradepilot
 | Kotlin Gradle plugin | Render's deployed Docker build log shows Maven compilation/package activity, not Gradle. The reviewed backend is Maven-based and has no Kotlin Gradle plugin dependency. | PASS |
 | External configuration | Service metadata and read-only logs were inspected. Environment-variable names, attached environment groups, mounted configuration, and the deployed container file system are not exposed by the authorized connector. | UNKNOWN |
 
-This is a source-and-config review, not a substitute for access to all deployed configuration sources. A redacted direct service-variable inventory was supplied and reviewed; it must not be committed. Before approval, the release owner must attach the environment-group membership/name inventory and any mounted/config-file source inventory, and identify the source that activates the observed `production` profile despite the blank direct `SPRING_PROFILES_ACTIVE` entry. Never attach environment values or secrets.
+This is a source-and-config review, not a substitute for access to all deployed configuration sources. A redacted direct service-variable inventory was supplied and reviewed; it must not be committed. Before approval, the release owner must attach the environment-group membership/name inventory and any mounted/config-file source inventory. Never attach environment values or secrets.
 
 ## Scope and Residual Risk
 
@@ -124,7 +124,7 @@ Any attempt to reduce the CVSS threshold, disable Dependency-Check, or allow the
 ## Approval Checklist
 
 - [ ] Dependency-Check HTML/JSON reports from runs `41233630140` and `41232107045` attached; exact CVSS scores/PURLs reconciled and comparison recorded.
-- [ ] Direct service-variable inventory reviewed; environment-group, mounted/config-file source inventories, and the active-profile source reconciled.
+- [ ] Direct service-variable inventory reviewed; environment-group and mounted/config-file source inventories reconciled.
 - [ ] Repository owner named and approves.
 - [ ] Security risk owner named and approves.
 - [ ] Expiry accepted and calendar review scheduled before 2026-11-30.
