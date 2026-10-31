@@ -33,9 +33,7 @@ public class ProtectionCommitmentEvaluator {
                     "Maximum normalized exposure across completed attempts."));
         }
         if (commitment.getMaxSessionLoss() != null) {
-            BigDecimal pnl = attempts.stream().map(Attempt::pnl).reduce(BigDecimal.ZERO, BigDecimal::add);
-            rules.add(rule("MAX_SESSION_LOSS", commitment.getMaxSessionLoss().toPlainString(), pnl.toPlainString(),
-                    pnl.compareTo(commitment.getMaxSessionLoss().negate()) >= 0, "Realized P&L across the eligible session."));
+            rules.add(sessionLossRule(commitment.getMaxSessionLoss(), trades, attempts));
         }
         if (commitment.getPostLossPauseMinutes() != null) rules.add(pauseRule(commitment.getPostLossPauseMinutes(), attempts));
         if (commitment.getAllowedWindowStart() != null && commitment.getAllowedWindowEnd() != null) {
@@ -53,6 +51,51 @@ public class ProtectionCommitmentEvaluator {
                 .sorted(Comparator.comparing(Trade::getEntryTime).thenComparing(Trade::getId, Comparator.nullsLast(Long::compareTo)))
                 .map(t -> new Attempt(t.getId(), t.getEntryTime(), t.getExitTime(), pnl(t), normalizedExposure(t)))
                 .toList();
+    }
+
+    private CommitmentEvaluationResponse.RuleResult sessionLossRule(BigDecimal configuredLoss, List<Trade> trades,
+            List<Attempt> attempts) {
+        if (attempts.size() != trades.size()) {
+            return notEvaluable("MAX_SESSION_LOSS", configuredLoss.toPlainString(),
+                    "At least one imported trade is missing an entry or exit timestamp, so chronological realized P&L cannot be established.");
+        }
+
+        List<Attempt> closed = attempts.stream()
+                .sorted(Comparator.comparing(Attempt::closedAt).thenComparing(Attempt::tradeId, Comparator.nullsLast(Long::compareTo)))
+                .toList();
+        for (int index = 1; index < closed.size(); index++) {
+            Attempt prior = closed.get(index - 1);
+            Attempt current = closed.get(index);
+            if (current.openedAt().isBefore(prior.closedAt()) || current.closedAt().equals(prior.closedAt())) {
+                return notEvaluable("MAX_SESSION_LOSS", configuredLoss.toPlainString(),
+                        "Completed trade timestamps overlap or share a close timestamp, so a reliable realized-P&L sequence cannot be established.");
+            }
+        }
+
+        BigDecimal cumulative = BigDecimal.ZERO;
+        BigDecimal worst = BigDecimal.ZERO;
+        Attempt firstCrossing = null;
+        int laterTrades = 0;
+        BigDecimal boundary = configuredLoss.negate();
+        for (Attempt attempt : closed) {
+            cumulative = cumulative.add(attempt.pnl());
+            if (cumulative.compareTo(worst) < 0) worst = cumulative;
+            // Equality means the trader reached the configured stop boundary and is therefore a breach.
+            if (firstCrossing == null && cumulative.compareTo(boundary) <= 0) {
+                firstCrossing = attempt;
+            } else if (firstCrossing != null) {
+                laterTrades++;
+            }
+        }
+        if (firstCrossing == null) {
+            return rule("MAX_SESSION_LOSS", configuredLoss.toPlainString(), worst.toPlainString(), true,
+                    "Worst cumulative realized P&L was " + worst.toPlainString() + "; the " + configuredLoss.toPlainString()
+                            + " loss boundary was not reached.");
+        }
+        return rule("MAX_SESSION_LOSS", configuredLoss.toPlainString(), worst.toPlainString(), false,
+                "Cumulative realized P&L first reached the " + configuredLoss.toPlainString() + " loss boundary after trade "
+                        + firstCrossing.tradeId() + " closed at " + firstCrossing.closedAt() + ". "
+                        + laterTrades + " completed trade(s) followed that stop condition. Equality counts as reaching the boundary.");
     }
 
     private CommitmentEvaluationResponse.RuleResult pauseRule(int configuredMinutes, List<Attempt> attempts) {

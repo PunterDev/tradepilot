@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AccountSurvivalReview from "./AccountSurvivalReview";
-import type { CommitmentEvaluation, CommitmentRuleResult, ProtectionCommitment, RiskProfile, SurvivalAssessment } from "../api/accountSurvivalApi";
+import type { CommitmentEvaluation, CommitmentEvaluationHistory, CommitmentRuleResult, ProtectionCommitment, RiskProfile, SurvivalAssessment } from "../api/accountSurvivalApi";
 import * as survivalApi from "../api/accountSurvivalApi";
 
 vi.mock("../api/accountSurvivalApi", async importOriginal => {
@@ -13,6 +13,7 @@ vi.mock("../api/accountSurvivalApi", async importOriginal => {
     getRiskProfile: vi.fn(),
     getProtectionCommitment: vi.fn(),
     getCommitmentEvaluation: vi.fn(),
+    getCommitmentEvaluationHistory: vi.fn(),
     saveRiskProfile: vi.fn(),
     saveProtectionCommitment: vi.fn(),
     acceptProtectionCommitment: vi.fn(),
@@ -78,6 +79,7 @@ const completedEvaluation: CommitmentEvaluation = {
   evaluationVersion: "account-survival-v1",
   rules,
 };
+const evaluationHistory: CommitmentEvaluationHistory = { evaluations: [completedEvaluation], evaluatedSessions: 1, followedSessions: 1, brokenSessions: 0, partiallyObservedSessions: 0, notEvaluableSessions: 0 };
 
 function mockLoad(evaluation: CommitmentEvaluation | Error = completedEvaluation) {
   vi.mocked(survivalApi.getSurvivalAssessment).mockResolvedValue(assessment);
@@ -88,6 +90,7 @@ function mockLoad(evaluation: CommitmentEvaluation | Error = completedEvaluation
   } else {
     vi.mocked(survivalApi.getCommitmentEvaluation).mockResolvedValue(evaluation);
   }
+  vi.mocked(survivalApi.getCommitmentEvaluationHistory).mockResolvedValue(evaluationHistory);
 }
 
 async function renderLoaded(evaluation: CommitmentEvaluation | Error = completedEvaluation) {
@@ -105,6 +108,7 @@ describe("AccountSurvivalReview commitment evaluation", () => {
     vi.mocked(survivalApi.getRiskProfile).mockResolvedValue(profile);
     vi.mocked(survivalApi.getProtectionCommitment).mockResolvedValue(commitment);
     vi.mocked(survivalApi.getCommitmentEvaluation).mockResolvedValue(completedEvaluation);
+    vi.mocked(survivalApi.getCommitmentEvaluationHistory).mockResolvedValue(evaluationHistory);
 
     render(<AccountSurvivalReview accountId={7} date="2026-04-06" />);
 
@@ -134,6 +138,7 @@ describe("AccountSurvivalReview commitment evaluation", () => {
     expect(screen.getByText("Configured: 20 min · Observed: 26 min")).toBeVisible();
     expect(screen.getByText("Configured: Enabled · Observed: —")).toBeVisible();
     expect(screen.getByText("Remaining buffer").parentElement).toHaveTextContent("$2,000.50");
+    expect(screen.getByRole("region", { name: "Commitment evaluation history" })).toHaveTextContent("Adherence history");
   });
 
   it("renders broken rules as measurable violations while preserving followed rules", async () => {
@@ -160,7 +165,7 @@ describe("AccountSurvivalReview commitment evaluation", () => {
     expect(screen.getAllByText("Partially Observed").length).toBeGreaterThan(0);
     expect(screen.getByText("Max Attempts — Followed")).toBeVisible();
     expect(screen.getByText("Fresh Confirmation — Not Evaluable")).toBeVisible();
-    expect(screen.queryByText("Broken")).not.toBeInTheDocument();
+    expect(screen.queryByText(/— Broken$/)).not.toBeInTheDocument();
 
   });
 
@@ -171,7 +176,7 @@ describe("AccountSurvivalReview commitment evaluation", () => {
     const evidenceButton = screen.getByRole("button", { name: "Show evidence" });
     await userEvent.setup().click(evidenceButton);
     expect(screen.getByText("Completed-trade data does not prove contemporaneous confirmation.")).toBeVisible();
-    expect(screen.queryByText("Broken")).not.toBeInTheDocument();
+    expect(screen.queryByText(/— Broken$/)).not.toBeInTheDocument();
   });
 
   it("keeps rendered profile and commitment data usable when evaluation loading fails", async () => {
@@ -235,6 +240,7 @@ describe("AccountSurvivalReview cross-account turning point", () => {
     vi.mocked(survivalApi.getRiskProfile).mockResolvedValue(profile);
     vi.mocked(survivalApi.getProtectionCommitment).mockResolvedValue(commitment);
     vi.mocked(survivalApi.getCommitmentEvaluation).mockResolvedValue(completedEvaluation);
+    vi.mocked(survivalApi.getCommitmentEvaluationHistory).mockResolvedValue(evaluationHistory);
     render(<AccountSurvivalReview accountId={7} date="2026-04-06" />);
     await screen.findByRole("heading", { name: "Cross-account continuation" });
 
@@ -263,6 +269,7 @@ describe("AccountSurvivalReview cross-account turning point", () => {
     vi.mocked(survivalApi.getRiskProfile).mockResolvedValue(profile);
     vi.mocked(survivalApi.getProtectionCommitment).mockResolvedValue(commitment);
     vi.mocked(survivalApi.getCommitmentEvaluation).mockResolvedValue(completedEvaluation);
+    vi.mocked(survivalApi.getCommitmentEvaluationHistory).mockResolvedValue(evaluationHistory);
     render(<AccountSurvivalReview accountId={7} date="2026-04-06" />);
     await screen.findByText("A realized loss was followed by a same-family entry.");
     expect(screen.queryByText("Cross-account evidence")).not.toBeInTheDocument();

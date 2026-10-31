@@ -139,26 +139,50 @@ public class AccountSurvivalService {
         accountService.getAccountForImport(user, accountId);
         NextSessionProtectionCommitment c = commitmentRepository.findForEvaluation(accountId, user, date)
                 .orElseThrow(() -> new ResourceNotFoundException("Protection commitment not found"));
-        if (c.getStatus() == ProtectionCommitmentStatus.DRAFT) throw new IllegalArgumentException("Accept the commitment before evaluating it");
+        if (c.getStatus() == ProtectionCommitmentStatus.DRAFT || c.getAcceptedAt() == null) throw new IllegalArgumentException("Accept the commitment before evaluating it");
         List<Trade> all = tradeRepository.findByUserAndAccount_IdOrderByTradeDateAscEntryTimeAscIdAsc(user, accountId);
-        LocalDate eligible = all.stream().map(Trade::getTradeDate).filter(d -> d.isAfter(c.getEffectiveSessionDate())).findFirst().orElse(null);
-        if (eligible == null) return new CommitmentEvaluationResponse(false, null, ProtectionCommitmentStatus.ACCEPTED, CALCULATION_VERSION, List.of(), "No later eligible imported session exists yet.");
-        List<Trade> trades = all.stream().filter(t -> eligible.equals(t.getTradeDate())).toList();
-        String fingerprint = fingerprint(c, eligible, trades);
-        Optional<NextSessionProtectionEvaluation> existing = evaluationRepository.findByCommitment_IdAndSourceFingerprint(c.getId(), fingerprint);
-        if (existing.isPresent()) return evaluationResponse(existing.get());
-        ZoneId zone = evaluationZone(user, accountId);
-        ProtectionCommitmentEvaluator.Evaluation evaluation = commitmentEvaluator.evaluate(c, trades, zone);
-        evaluationRepository.findByCommitment_IdAndIsCurrentTrue(c.getId()).forEach(previous -> previous.setIsCurrent(false));
+        LocalDate eligibilityStart = c.getEffectiveSessionDate().isAfter(c.getAcceptedAt().toLocalDate())
+                ? c.getEffectiveSessionDate() : c.getAcceptedAt().toLocalDate();
+        List<LocalDate> eligibleSessions = all.stream().map(Trade::getTradeDate).filter(Objects::nonNull)
+                .filter(sessionDate -> sessionDate.isAfter(eligibilityStart)).distinct().sorted().toList();
+        if (eligibleSessions.isEmpty()) return new CommitmentEvaluationResponse(false, null, ProtectionCommitmentStatus.ACCEPTED, CALCULATION_VERSION, List.of(), "No later eligible imported session exists yet.");
+        CommitmentEvaluationResponse latest = null;
+        for (LocalDate eligible : eligibleSessions) {
+            latest = evaluateSession(user, c, eligible, all.stream().filter(t -> eligible.equals(t.getTradeDate())).toList());
+        }
+        return latest;
+    }
+
+    private CommitmentEvaluationResponse evaluateSession(User user, NextSessionProtectionCommitment commitment, LocalDate eligible,
+            List<Trade> trades) {
+        String fingerprint = fingerprint(commitment, eligible, trades);
+        Optional<NextSessionProtectionEvaluation> existing = evaluationRepository.findByCommitment_IdAndSourceFingerprint(commitment.getId(), fingerprint);
+        if (existing.isPresent()) {
+            NextSessionProtectionEvaluation stored = existing.get();
+            if (!Boolean.TRUE.equals(stored.getIsCurrent())) {
+                evaluationRepository.findByCommitment_IdAndEvaluatedSessionDateAndIsCurrentTrue(commitment.getId(), eligible)
+                        .forEach(previous -> previous.setIsCurrent(false));
+                evaluationRepository.flush();
+                stored.setIsCurrent(true);
+                evaluationRepository.saveAndFlush(stored);
+            }
+            return evaluationResponse(stored);
+        }
+        ZoneId zone = evaluationZone(user, commitment.getAccount().getId());
+        ProtectionCommitmentEvaluator.Evaluation evaluation = commitmentEvaluator.evaluate(commitment, trades, zone);
+        evaluationRepository.findByCommitment_IdAndEvaluatedSessionDateAndIsCurrentTrue(commitment.getId(), eligible)
+                .forEach(previous -> previous.setIsCurrent(false));
+        // PostgreSQL enforces one current version for this commitment/session. Flush the retiring version
+        // before inserting its replacement so the partial unique index also protects corrected imports.
+        evaluationRepository.flush();
         NextSessionProtectionEvaluation stored = new NextSessionProtectionEvaluation();
-        stored.setUser(user); stored.setAccount(c.getAccount()); stored.setCommitment(c); stored.setEvaluatedSessionDate(eligible);
+        stored.setUser(user); stored.setAccount(commitment.getAccount()); stored.setCommitment(commitment); stored.setEvaluatedSessionDate(eligible);
         stored.setOverallStatus(evaluation.overallStatus()); stored.setSourceFingerprint(fingerprint); stored.setEvaluationVersion(CALCULATION_VERSION);
         stored.setEvidenceCoverage(evaluation.rules().size()); stored.setIsCurrent(true); stored = evaluationRepository.saveAndFlush(stored);
         for (CommitmentEvaluationResponse.RuleResult result : evaluation.rules()) {
             NextSessionProtectionRuleResult row = new NextSessionProtectionRuleResult(); row.setEvaluation(stored); row.setRuleType(result.rule()); row.setResult(result.status());
             row.setConfiguredValue(result.configuredValue()); row.setObservedValue(result.observedValue()); row.setEvidence(result.message()); row.setEvidenceCount(trades.size()); row.setCalculationVersion(CALCULATION_VERSION); ruleResultRepository.save(row);
         }
-        c.setStatus(evaluation.overallStatus()); commitmentRepository.save(c);
         return evaluationResponse(stored);
     }
     @Transactional(readOnly = true)
@@ -166,9 +190,23 @@ public class AccountSurvivalService {
         accountService.getAccountForImport(user, accountId);
         NextSessionProtectionCommitment commitment = commitmentRepository.findByAccount_IdAndUserAndEffectiveSessionDate(accountId, user, date)
                 .orElseThrow(() -> new ResourceNotFoundException("Protection commitment not found"));
-        return evaluationRepository.findTopByCommitment_IdAndIsCurrentTrueOrderByIdDesc(commitment.getId())
+        return evaluationRepository.findTopByCommitment_IdAndIsCurrentTrueOrderByEvaluatedSessionDateDescIdDesc(commitment.getId())
                 .map(this::evaluationResponse)
                 .orElseGet(() -> new CommitmentEvaluationResponse(false, null, commitment.getStatus(), CALCULATION_VERSION, List.of(), "No durable evaluation exists yet."));
+    }
+    @Transactional(readOnly = true)
+    public CommitmentEvaluationHistoryResponse evaluationHistory(User user, Long accountId, LocalDate date) {
+        accountService.getAccountForImport(user, accountId);
+        NextSessionProtectionCommitment commitment = commitmentRepository.findByAccount_IdAndUserAndEffectiveSessionDate(accountId, user, date)
+                .orElseThrow(() -> new ResourceNotFoundException("Protection commitment not found"));
+        List<CommitmentEvaluationResponse> evaluations = evaluationRepository
+                .findByCommitment_IdAndIsCurrentTrueOrderByEvaluatedSessionDateDescIdDesc(commitment.getId()).stream()
+                .limit(30).map(this::evaluationResponse).toList();
+        int followed = (int) evaluations.stream().filter(e -> e.overallStatus() == ProtectionCommitmentStatus.COMPLETED).count();
+        int broken = (int) evaluations.stream().filter(e -> e.overallStatus() == ProtectionCommitmentStatus.BROKEN).count();
+        int partial = (int) evaluations.stream().filter(e -> e.overallStatus() == ProtectionCommitmentStatus.PARTIALLY_OBSERVED).count();
+        int unavailable = (int) evaluations.stream().filter(e -> e.overallStatus() == ProtectionCommitmentStatus.NOT_EVALUABLE).count();
+        return new CommitmentEvaluationHistoryResponse(evaluations, evaluations.size(), followed, broken, partial, unavailable);
     }
     @Transactional
     public void evaluateEligibleAfterImport(User user, Long accountId) {

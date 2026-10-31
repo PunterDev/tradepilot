@@ -177,6 +177,51 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
                 .isEqualTo(responses.get(0).rules().size());
     }
 
+    @Test
+    void evaluatesEveryLaterSessionAndVersionsOnlyTheCorrectedSession() {
+        Fixture fixture = committedFixture("history");
+        LocalDate secondSession = fixture.eligibleDate().plusDays(1);
+        transactions.executeWithoutResult(status -> trades.save(trade(
+                users.getReferenceById(fixture.userId()), accounts.getReferenceById(fixture.accountId()), secondSession,
+                "09:30", "09:45", "20.00", 1)));
+
+        CommitmentEvaluationResponse latest = evaluate(fixture);
+        assertThat(latest.evaluatedSessionDate()).isEqualTo(secondSession);
+        assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ? and is_current", Long.class, fixture.commitmentId()))
+                .isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ? and evaluated_session_date = ? and is_current", Long.class, fixture.commitmentId(), fixture.eligibleDate()))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("select status from next_session_protection_commitments where id = ?", String.class, fixture.commitmentId()))
+                .isEqualTo("ACCEPTED");
+
+        transactions.executeWithoutResult(status -> trades.save(trade(
+                users.getReferenceById(fixture.userId()), accounts.getReferenceById(fixture.accountId()), fixture.eligibleDate(),
+                "13:00", "13:15", "-75.25", 1)));
+        evaluate(fixture);
+
+        assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ?", Long.class, fixture.commitmentId()))
+                .isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ? and is_current", Long.class, fixture.commitmentId()))
+                .isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ? and evaluated_session_date = ? and is_current", Long.class, fixture.commitmentId(), fixture.eligibleDate()))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ? and evaluated_session_date = ? and is_current", Long.class, fixture.commitmentId(), secondSession))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void doesNotRepresentHistoricalImportsAsComplianceWhenAcceptanceWasRecordedLater() {
+        Fixture fixture = committedFixture("backdated");
+        jdbc.update("update next_session_protection_commitments set accepted_at = ? where id = ?",
+                LocalDateTime.of(2026, 4, 9, 9, 0), fixture.commitmentId());
+
+        CommitmentEvaluationResponse response = evaluate(fixture);
+
+        assertThat(response.available()).isFalse();
+        assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ?", Long.class, fixture.commitmentId()))
+                .isZero();
+    }
+
     private static List<CommitmentEvaluationResponse> evaluateConcurrently(Fixture fixture, boolean includePostImport) throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2);

@@ -30,6 +30,41 @@ class ProtectionCommitmentEvaluatorTests {
         assertThat(result.rules()).extracting(r -> r.rule() + ":" + r.status()).contains("MAX_ATTEMPTS:BROKEN", "MAX_NORMALIZED_EXPOSURE:BROKEN", "MAX_SESSION_LOSS:BROKEN");
     }
 
+    @Test void breaksWhenCumulativeRealizedLossReachesBoundaryEvenWhenSessionFinishesPositive() {
+        NextSessionProtectionCommitment commitment = commitment(); commitment.setMaxSessionLoss(new BigDecimal("200"));
+        var result = evaluator.evaluate(commitment, List.of(
+                trade("09:30", "09:35", "-150", 1),
+                trade("09:40", "09:45", "-100", 1),
+                trade("10:00", "10:05", "300", 1)), ZoneId.of("America/New_York"));
+        var loss = result.rules().stream().filter(rule -> "MAX_SESSION_LOSS".equals(rule.rule())).findFirst().orElseThrow();
+        assertThat(loss.status()).isEqualTo("BROKEN");
+        assertThat(loss.observedValue()).isEqualTo("-250");
+        assertThat(loss.message()).contains("trade", "1 completed trade(s) followed", "Equality counts as reaching the boundary");
+    }
+
+    @Test void treatsAnExactLossBoundaryAsBroken() {
+        NextSessionProtectionCommitment commitment = commitment(); commitment.setMaxSessionLoss(new BigDecimal("200"));
+        var result = evaluator.evaluate(commitment, List.of(trade("09:30", "09:35", "-200", 1)), ZoneId.of("America/New_York"));
+        assertThat(result.rules()).anySatisfy(rule -> {
+            assertThat(rule.rule()).isEqualTo("MAX_SESSION_LOSS");
+            assertThat(rule.status()).isEqualTo("BROKEN");
+        });
+    }
+
+    @Test void doesNotInventAChronologicalLossResultWhenTimestampsAreIncompleteOrOverlapping() {
+        NextSessionProtectionCommitment commitment = commitment(); commitment.setMaxSessionLoss(new BigDecimal("200"));
+        Trade missingExit = trade("09:30", "09:35", "-250", 1); missingExit.setExitTime(null);
+        var incomplete = evaluator.evaluate(commitment, List.of(missingExit), ZoneId.of("America/New_York"));
+        assertThat(incomplete.rules()).anySatisfy(rule -> {
+            assertThat(rule.rule()).isEqualTo("MAX_SESSION_LOSS"); assertThat(rule.status()).isEqualTo("NOT_EVALUABLE");
+        });
+        var overlapping = evaluator.evaluate(commitment, List.of(
+                trade("09:30", "09:45", "-150", 1), trade("09:40", "09:50", "-100", 1)), ZoneId.of("America/New_York"));
+        assertThat(overlapping.rules()).anySatisfy(rule -> {
+            assertThat(rule.rule()).isEqualTo("MAX_SESSION_LOSS"); assertThat(rule.status()).isEqualTo("NOT_EVALUABLE");
+        });
+    }
+
     @Test void evaluatesPostLossPauseAndDoesNotTreatNoReentryAsSuccess() {
         NextSessionProtectionCommitment commitment = commitment(); commitment.setPostLossPauseMinutes(20);
         var broken = evaluator.evaluate(commitment, List.of(trade("09:30", "09:35", "-20", 1), trade("09:41", "09:50", "10", 1)), ZoneId.of("America/New_York"));
