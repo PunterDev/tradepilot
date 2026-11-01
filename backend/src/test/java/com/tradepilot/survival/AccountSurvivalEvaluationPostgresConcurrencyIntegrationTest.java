@@ -20,6 +20,7 @@ import com.tradepilot.repository.TradingAccountRepository;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.survival.dto.CommitmentEvaluationResponse;
 import com.tradepilot.survival.dto.CommitmentEvaluationHistoryResponse;
+import com.tradepilot.survival.dto.ProtectionCommitmentResponse;
 import com.tradepilot.survival.dto.ProtectionCommitmentRequest;
 import com.tradepilot.survival.entity.NextSessionProtectionCommitment;
 import com.tradepilot.survival.repository.NextSessionProtectionCommitmentRepository;
@@ -254,11 +255,71 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
     }
 
     @Test
+    void futureDatedCommitmentNeverEvaluatesImportedFutureSessionData() {
+        LocalDate futureCommitmentDate = LocalDate.now(com.tradepilot.importing.TradingSessionPolicy.MARKET_ZONE).plusDays(2);
+        Fixture fixture = committedFixture("future", futureCommitmentDate, LocalDateTime.now().minusMinutes(5));
+
+        CommitmentEvaluationResponse response = evaluate(fixture);
+
+        assertThat(response.available()).isFalse();
+        assertThat(response.evaluatedSessionDate()).isNull();
+        assertThat(response.limitation()).isEqualTo("This commitment's effective session has not started yet.");
+        assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ?", Long.class, fixture.commitmentId()))
+                .isZero();
+    }
+
+    @Test
+    void concurrentInitialDraftSavesSerializeOnTheOwnedAccount() throws Exception {
+        Fixture fixture = committedFixture("initial-save");
+        jdbc.update("delete from next_session_protection_commitments where id = ?", fixture.commitmentId());
+        ProtectionCommitmentRequest first = request(fixture.commitmentDate(), 1);
+        ProtectionCommitmentRequest second = request(fixture.commitmentDate(), 2);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<?> firstSave = executor.submit(() -> { saveAfterStart(fixture, first, ready, start); return null; });
+            Future<?> secondSave = executor.submit(() -> { saveAfterStart(fixture, second, ready, start); return null; });
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            firstSave.get(30, TimeUnit.SECONDS);
+            secondSave.get(30, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdown();
+            assertThat(executor.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+        }
+
+        assertThat(jdbc.queryForObject("select count(*) from next_session_protection_commitments where account_id = ? and effective_session_date = ?", Long.class,
+                fixture.accountId(), fixture.commitmentDate())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select status from next_session_protection_commitments where account_id = ? and effective_session_date = ?", String.class,
+                fixture.accountId(), fixture.commitmentDate())).isEqualTo("DRAFT");
+    }
+
+    @Test
+    void repeatedAcceptanceIsIdempotentAndPreservesItsOriginalTimestamp() {
+        Fixture fixture = committedFixture("repeat-accept");
+        jdbc.update("update next_session_protection_commitments set status = 'DRAFT', accepted_at = null where id = ?", fixture.commitmentId());
+
+        ProtectionCommitmentResponse first = transactions.execute(status -> service.acceptCommitment(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate()));
+        LocalDateTime acceptedAt = jdbc.queryForObject("select accepted_at from next_session_protection_commitments where id = ?", LocalDateTime.class,
+                fixture.commitmentId());
+        ProtectionCommitmentResponse repeated = transactions.execute(status -> service.acceptCommitment(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate()));
+
+        assertThat(first.status()).isEqualTo(ProtectionCommitmentStatus.ACCEPTED);
+        assertThat(repeated.status()).isEqualTo(ProtectionCommitmentStatus.ACCEPTED);
+        assertThat(repeated.acceptedAt()).isNotNull();
+        assertThat(jdbc.queryForObject("select accepted_at from next_session_protection_commitments where id = ?", LocalDateTime.class, fixture.commitmentId()))
+                .isEqualTo(acceptedAt);
+    }
+
+    @Test
     void concurrentDraftSaveCannotOverwriteAnAcceptedCommitment() throws Exception {
         Fixture fixture = committedFixture("save-accept");
         jdbc.update("update next_session_protection_commitments set status = 'DRAFT', accepted_at = null where id = ?", fixture.commitmentId());
-        ProtectionCommitmentRequest staleDraftUpdate = new ProtectionCommitmentRequest(fixture.commitmentDate(),
-                new BigDecimal("20.00"), 1, new BigDecimal("200.00"), 20, LocalTime.of(9, 30), LocalTime.of(16, 0), false);
+        ProtectionCommitmentRequest staleDraftUpdate = request(fixture.commitmentDate(), 1);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2);
@@ -269,7 +330,7 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
                 try {
                     transactions.execute(status -> service.saveCommitment(users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), staleDraftUpdate));
                     return true;
-                } catch (IllegalArgumentException expectedAfterAcceptance) {
+                } catch (ProtectionCommitmentLifecycleException expectedAfterAcceptance) {
                     return false;
                 }
             });
@@ -292,9 +353,8 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
         Integer acceptedMaxAttempts = jdbc.queryForObject("select max_attempts from next_session_protection_commitments where id = ?", Integer.class, fixture.commitmentId());
         assertThat(acceptedMaxAttempts).isIn(1, 3);
         assertThatThrownBy(() -> transactions.execute(status -> service.saveCommitment(users.findById(fixture.userId()).orElseThrow(),
-                fixture.accountId(), new ProtectionCommitmentRequest(fixture.commitmentDate(), new BigDecimal("20.00"), 99,
-                        new BigDecimal("200.00"), 20, LocalTime.of(9, 30), LocalTime.of(16, 0), false))))
-                .isInstanceOf(IllegalArgumentException.class);
+                fixture.accountId(), request(fixture.commitmentDate(), 99))))
+                .isInstanceOf(ProtectionCommitmentLifecycleException.class);
         assertThat(jdbc.queryForObject("select max_attempts from next_session_protection_commitments where id = ?", Integer.class, fixture.commitmentId()))
                 .isEqualTo(acceptedMaxAttempts);
     }
@@ -339,6 +399,18 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
                 users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate()));
     }
 
+    private static void saveAfterStart(Fixture fixture, ProtectionCommitmentRequest request, CountDownLatch ready, CountDownLatch start) throws Exception {
+        ready.countDown();
+        await(start);
+        transactions.executeWithoutResult(status -> service.saveCommitment(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), request));
+    }
+
+    private static ProtectionCommitmentRequest request(LocalDate date, int attempts) {
+        return new ProtectionCommitmentRequest(date, new BigDecimal("20.00"), attempts, new BigDecimal("200.00"),
+                20, LocalTime.of(9, 30), LocalTime.of(16, 0), false);
+    }
+
     private static long singleEvaluationId(long commitmentId) {
         List<Long> ids = jdbc.queryForList("select id from next_session_protection_evaluations where commitment_id = ?", Long.class, commitmentId);
         assertThat(ids).hasSize(1);
@@ -346,6 +418,10 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
     }
 
     private static Fixture committedFixture(String suffix) {
+        return committedFixture(suffix, LocalDate.of(2026, 4, 6), LocalDateTime.of(2026, 4, 6, 16, 5));
+    }
+
+    private static Fixture committedFixture(String suffix, LocalDate commitmentDate, LocalDateTime acceptedAt) {
         return transactions.execute(status -> {
             String token = suffix + "-" + UUID.randomUUID();
             User user = users.save(User.builder()
@@ -365,7 +441,6 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
                     .startingBalance(new BigDecimal("50000.00"))
                     .status(TradingAccountStatus.ACTIVE)
                     .build());
-            LocalDate commitmentDate = LocalDate.of(2026, 4, 6);
             LocalDate eligibleDate = commitmentDate.plusDays(1);
             NextSessionProtectionCommitment commitment = new NextSessionProtectionCommitment();
             commitment.setUser(user);
@@ -380,7 +455,7 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
             commitment.setRequireFreshSetupConfirmation(true);
             commitment.setSource(ProtectionCommitmentSource.SYSTEM_RECOMMENDED);
             commitment.setStatus(ProtectionCommitmentStatus.ACCEPTED);
-            commitment.setAcceptedAt(LocalDateTime.of(2026, 4, 6, 16, 5));
+            commitment.setAcceptedAt(acceptedAt);
             commitment = commitments.save(commitment);
             trades.saveAll(List.of(
                     trade(user, account, eligibleDate, "09:30", "09:40", "-50.25", 1),
