@@ -61,6 +61,25 @@ jobs:
           path: backend/target/dependency-check-report.*
           if-no-files-found: warn
 
+  dependency-negative-control:
+    name: dependency-negative-control
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Prove unrelated severe vulnerability remains blocking
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: bash .github/scripts/verify-owasp-negative-control.sh
+
   frontend-dependency-audit:
     name: frontend-dependency-audit
     runs-on: ubuntu-latest
