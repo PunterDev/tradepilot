@@ -11,24 +11,30 @@ def load(path):
         value = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise SystemExit(f"invalid Dependency-Check report {path}: {error}")
-    if not isinstance(value.get("dependencies"), list):
-        raise SystemExit(f"incomplete Dependency-Check report {path}: dependencies is missing")
+    if not isinstance(value, dict) or not isinstance(value.get("dependencies"), list) or not value["dependencies"]:
+        raise SystemExit(f"incomplete Dependency-Check report {path}: nonempty dependencies list is required")
     return value
 
 
 def score(vulnerability):
-    for key in ("cvssv4", "cvssv3", "cvssv2"):
-        value = vulnerability.get(key, {}).get("baseScore")
-        if isinstance(value, (float, int)):
-            return float(value)
-    return None
+    values = [
+        value.get("baseScore")
+        for key in ("cvssv4", "cvssv3", "cvssv2")
+        if isinstance((value := vulnerability.get(key) or {}), dict)
+    ]
+    scores = [float(value) for value in values if isinstance(value, (float, int))]
+    return max(scores) if scores else None
 
 
 def dependency_purls(dependency):
+    # Bundled relatedDependencies store Maven PURLs in packageIds,
+    # whereas top-level Dependency-Check records use packages.
+    packages = (dependency.get("packages") or []) + (dependency.get("packageIds") or [])
     return {
-        package.get("id")
-        for package in dependency.get("packages") or []
-        if package.get("id", "").startswith("pkg:maven/")
+        item["id"]
+        for item in packages
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+        and item["id"].startswith("pkg:maven/")
     }
 
 
@@ -57,6 +63,15 @@ def main(bundled_path, unbundled_path, output_path):
     missing = bundled[0] - unbundled[0]
     if missing:
         raise SystemExit("unbundled scan lost Maven artifacts: " + ", ".join(sorted(missing)))
+    # CVEs are attached to whichever dependency is the bundle representative.
+    # Compare CVE identity, not PURL/CVE tuples, when checking detection loss.
+    bundled_cves = {cve for _, cve, _ in bundled[1]}
+    unbundled_cves = {cve for _, cve, _ in unbundled[1]}
+    lost_cves = bundled_cves - unbundled_cves
+    if lost_cves:
+        raise SystemExit("unbundled scan lost severe CVE detection: " + ", ".join(sorted(lost_cves)))
+    if bundled[3] and unbundled[3] >= bundled[3]:
+        raise SystemExit("bundling-disabled setting not demonstrated: related dependency count did not decrease")
 
     lines = [
         "# Dependency-Check Bundling Comparison",
@@ -70,10 +85,13 @@ def main(bundled_path, unbundled_path, output_path):
         f"| Related dependency records | {bundled[3]} | {unbundled[3]} |",
         f"| Represented Maven PURLs | {len(bundled[0])} | {len(unbundled[0])} |",
         f"| CVSS >= 8 PURL/CVE/score tuples | {len(bundled[1])} | {len(unbundled[1])} |",
+        f"| Distinct high-severity CVEs | {len(bundled_cves)} | {len(unbundled_cves)} |",
         "",
         "## Review Requirements",
         "",
-        "- All bundled Maven PURLs were represented with bundling disabled.",
+        "- All bundled Maven PURLs (including relatedDependencies.packageIds) were represented with bundling disabled.",
+        "- All CVSS >= 8 CVE identities observed with bundling enabled were retained when disabled.",
+        "- Bundling-disabled mode demonstrably reduced the number of related dependency records.",
         "- Compare the tuple sets before changing the required workflow: added tuples need remediation or explicit approval; removed tuples need vendor and scanner evidence review.",
         "- A successful comparison does not make either scan pass; the scanner's own `failBuildOnCVSS=8` status remains authoritative.",
     ]
