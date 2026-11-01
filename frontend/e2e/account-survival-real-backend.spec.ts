@@ -11,6 +11,11 @@ type Fixture = {
   sessionDate: string;
 };
 
+const subsequentSessionCsv = `symbol,qty,buyPrice,sellPrice,pnl,boughtTimestamp,soldTimestamp
+NQZ6,1,20000.00,19990.00,-200.00,10/2/2026 10:00:00 AM,10/2/2026 10:05:00 AM
+NQZ6,1,20000.00,20005.00,100.00,10/2/2026 10:30:00 AM,10/2/2026 10:35:00 AM
+`;
+
 test("Account Survival uses the real backend for profile, evidence, commitment, evaluation, and ownership", async ({ page, request }) => {
   test.setTimeout(90_000);
   const devTokenResponse = await request.get(`${apiBaseUrl}/dev/token`, { failOnStatusCode: false });
@@ -88,7 +93,7 @@ test("Account Survival uses the real backend for profile, evidence, commitment, 
 
   const commitmentResponse = page.waitForResponse((response) => response.request().method() === "PUT"
     && response.url().endsWith(`/accounts/${fixture.sourceAccountId}/survival/commitment`));
-  await page.getByRole("button", { name: "Edit commitment" }).click();
+  await page.getByRole("button", { name: "Edit draft commitment" }).click();
   await page.getByLabel("Maximum attempts").fill("3");
   await page.getByRole("button", { name: "Save commitment" }).click();
   expect((await commitmentResponse).ok()).toBeTruthy();
@@ -97,18 +102,45 @@ test("Account Survival uses the real backend for profile, evidence, commitment, 
   await page.getByRole("button", { name: "Accept commitment" }).click();
   expect((await acceptedResponse).ok()).toBeTruthy();
   await expect(page.getByText("Accepted").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit draft commitment" })).toHaveCount(0);
+
+  const advancedClock = await request.post(`${apiBaseUrl}/dev/e2e/account-survival/advance-date?date=2026-10-03`, {
+    headers: { Authorization: `Bearer ${devToken}` },
+    failOnStatusCode: false,
+  });
+  expect(advancedClock.ok(), await advancedClock.text()).toBeTruthy();
+
+  const importedSession = await request.post(`${apiBaseUrl}/trades/import/csv?accountId=${fixture.sourceAccountId}`, {
+    headers: { Authorization: `Bearer ${fixture.ownerToken}` },
+    multipart: {
+      file: {
+        name: "account-survival-subsequent-session.csv",
+        mimeType: "text/csv",
+        buffer: Buffer.from(subsequentSessionCsv),
+      },
+    },
+    failOnStatusCode: false,
+  });
+  expect(importedSession.ok(), await importedSession.text()).toBeTruthy();
+  expect((await importedSession.json() as { savedCount: number }).savedCount).toBe(2);
 
   await page.reload();
   await page.getByLabel("Trading Date").fill(fixture.sessionDate);
   await expect(page.getByText("Accepted").first()).toBeVisible();
-  const evaluationResponse = page.waitForResponse((response) => response.request().method() === "POST"
-    && response.url().endsWith(`/accounts/${fixture.sourceAccountId}/survival/commitment/${fixture.sessionDate}/evaluate`));
-  await page.getByRole("button", { name: "Evaluate commitment" }).click();
-  expect((await evaluationResponse).ok()).toBeTruthy();
-  await expect(page.getByLabel("Commitment evaluation")).toContainText("Broken");
+  await expect(page.getByRole("region", { name: "Commitment evaluation", exact: true })).toContainText("Broken");
   await expect(page.getByText("Max Session Loss — Broken")).toBeVisible();
+
+  for (const viewport of [
+    { width: 375, height: 844 },
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 1024 },
+  ]) {
+    await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy();
+  }
   await expect(page.getByText("Fresh Setup Confirmation — Not Evaluable")).toBeVisible();
-  await expect(page.getByText("Configured: $200.00 · Observed: -$250.00")).toBeVisible();
+  await expect(page.getByText("Configured: $200.00 · Observed: -$200.00")).toBeVisible();
   await page.getByRole("button", { name: "Show evidence" }).last().click();
   await expect(page.getByText(/Completed-trade imports do not provide contemporaneous confirmation evidence/)).toBeVisible();
 
@@ -139,6 +171,9 @@ test("Account Survival uses the real backend for profile, evidence, commitment, 
   expect(unauthorizedBody).not.toContain("Topstep 50K A");
   expect(unauthorizedBody).not.toContain("Apex 50K B");
   expect(unauthorizedBody).not.toContain("2000");
+
+  await page.selectOption("select", String(fixture.laterAccountId));
+  await expect(page.getByRole("heading", { name: "Insufficient data" })).toBeVisible();
 
   expect(survivalResponses.filter((response) => response.status >= 400)).toEqual([]);
   expect(pageErrors).toEqual([]);
