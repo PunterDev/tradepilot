@@ -4,7 +4,7 @@
 **Repository / branch:** `PunterDev/tradepilot` / `feature/v1-account-survival-coach`
 **Dependency baseline reviewed:** `8d202d2f3aa23fe45a672723bc57f33b149ea424`
 **Evidence document baseline:** `79956266daa845ae4b3a847e812ef69f769edd7c`
-**Scope:** the eight findings listed below, and no other dependencies, CVEs, branches, or releases.
+**Scope:** the original eight exact combinations plus eight additional exact artifact combinations approved by the sole owner; no other dependencies, CVEs, branches, or releases.
 **Owner-approved latest expiry:** 2026-11-30T23:59:59Z
 **Applied scanner expiry (XSD date):** `2026-11-30Z` (becomes inactive at 2026-11-30T00:00:00Z UTC, earlier than approved).
 **Reason for earlier cutoff:** OWASP Dependency-Check 13.0.0 requires an `xs:date` for the suppression `until` attribute. A timestamp was rejected in GitHub Actions run `41259471064`; do not move the expiry later than the owner's approval without reauthorization.
@@ -143,11 +143,11 @@ This is a source-and-config review, not a substitute for access to all deployed 
 
 ## Scope and Residual Risk
 
-## Additional Artifact Associations from Run 41260116739 — PROPOSED, NOT APPROVED
+## Additional Artifact Associations from Run 41260116739 — OWNER-APPROVED TEMPORARILY
 
-**Status:** These eight rows are not part of the owner-approved scope, are not present in `backend/config/dependency-check-suppressions.xml`, and must continue to fail the CVSS >= 8 gate. They require a separate owner decision after the report is retained for authorized review.
+**Decision:** The sole owner explicitly **ACCEPTED TEMPORARILY** the additional eight exact CVE/PURL/version combinations in [PR #1 comment 6559383184](https://github.com/PunterDev/tradepilot/pull/1#issuecomment-6559383184). The owner reviewed the candidate false-positive assessments and acknowledged they are not conclusive. The approval authorizes only these exact additional suppressions; it does not attest that vulnerabilities have been patched or authorize merging/deployment. The scanner-compatible `until="2026-11-30Z"` deadline is earlier than the approved latest expiry of `2026-11-30T23:59:59Z`.
 
-The task brief reports the following additional Dependency-Check associations from [run `41260116739`](https://github.com/PunterDev/tradepilot/actions/runs/41260116739). This environment received HTTP 404 from GitHub's unauthenticated API for that private run, and the supplied local evidence ZIP predates it. Therefore the exact scanner rows below are **task-brief reported, not independently artifact-verified here**. The Maven tree, installed JARs, and vendor advisories were independently reviewed.
+**Independent scanner evidence:** Original private GitHub Actions `dependency-check-report` artifact from [run `41260116739`](https://github.com/PunterDev/tradepilot/actions/runs/41260116739), artifact ID `13064971618` (GitHub retention through `2027-01-30T01:12:44Z`), has been retrieved and its eight additional CVE/PURL associations confirmed in [PR evidence verification comment 6559352354](https://github.com/PunterDev/tradepilot/pull/1#issuecomment-6559352354). Artifact ZIP SHA-256: `bb3e25dcaee64c107cecc85cf66cb44c3e94f093cef1aabdd30463142be6b92d`. This evidence verifies scanner attribution, not application exploitability. Maven tree, installed JARs, and vendor advisories were independently reviewed as described below.
 
 | CVE | Reported PURL / score | Root dependency path and JAR evidence | Vendor-identified affected component and application exposure | Proposed disposition |
 | --- | --- | --- | --- | --- |
@@ -162,12 +162,14 @@ The task brief reports the following additional Dependency-Check associations fr
 
 ### Remediation Options and Decision Gate
 
-1. **Do not suppress these associations now.** The original eight approved tuples use exact PURLs; broadening any rule would violate that approval and defeat the scope guard.
-2. **Obtain and retain the run `41260116739` HTML/JSON report.** Confirm its exact evidence fields, especially whether Dependency-Check associated the CVEs by a shared Spring/Kotlin CPE rather than module-specific vulnerable code.
+1. **Only the eight newly signed exact tuples may be suppressed.** The owner has now signed a separate temporary acceptance for these matches. The original eight exact rules remain unchanged. No wider artifact, CVE, version, or future release is approved.
+2. **Evidence retained.** Run `41260116739` has a private, access-controlled GitHub Actions HTML artifact, identified above. Continue to distinguish shared CPE associations from module-specific exploitability.
 3. **Prefer an aligned platform upgrade when a publicly available, compatible Spring Boot 3.x BOM selects vendor-fixed Framework and Security modules.** Spring lists `6.2.20` and Security `6.5.12` as Enterprise-only fixes, while public OSS fixes are on the Spring 7 / Security 7 lines. Direct module overrides would break BOM alignment and are not approved for V1.
 4. **Keep Spring Boot 4 migration isolated.** It is the public OSS remediation route but changes the platform line and must not be folded into this release branch without a separately approved compatibility plan.
 
 No action in this addendum changes the earlier approved scope, expiry, CVSS threshold, scanner behavior, or production configuration.
+
+The additional eight matches are now accepted as *temporary risk exceptions*, not labeled conclusively benign. Revoke them if the documented prerequisites, packages, or risk evidence change. The XML and scope tests must keep all 16 exact combinations, and the unrelated-CVSS-8 negative-control CI must stay effective.
 
 The Kotlin entry is a scanner artifact/PURL mismatch: the vendor advisory names `kotlin-gradle-plugin`, while the reviewed dependency is runtime `kotlin-stdlib`. The Spring entries are different: `spring-core:6.2.19` and `spring-security-core:6.5.11` are genuinely within the vendor's affected version ranges, but the application does not expose each advisory's required optional feature/configuration.
 
