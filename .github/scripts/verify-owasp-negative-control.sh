@@ -37,9 +37,14 @@ mvn -B -f "$fixture_dir/pom.xml" org.owasp:dependency-check-maven:check \
   -DfailBuildOnUnusedSuppressionRule=false \
   -DsuppressionFile="$GITHUB_WORKSPACE/backend/config/dependency-check-suppressions.xml" \
   -DnvdApiKeyEnvironmentVariable=NVD_API_KEY \
-  -Dformat=JSON
+  -Dformat=JSON > "$fixture_dir/scan.log" 2>&1
 scan_exit=$?
 set -e
+tail -n 75 "$fixture_dir/scan.log"
+if grep -Eiq 'Unable to parse suppression xml|SuppressionParseException|Exception occurred initializing CPE Analyzer' "$fixture_dir/scan.log"; then
+  echo "::error::OWASP scanner failed to parse or initialize the configured suppression file."
+  exit 1
+fi
 
 if [[ "$scan_exit" -eq 0 ]]; then
   echo "::error::Dependency-Check unexpectedly passed with an unrelated CVSS 10 vulnerability."
