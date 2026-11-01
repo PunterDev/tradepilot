@@ -44,11 +44,12 @@ jobs:
             local mode="$1"
             local output_directory="$RUNNER_TEMP/dependency-check-$mode"
             local log="$RUNNER_TEMP/dependency-check-$mode.log"
+            mkdir -p "$output_directory"
 
             set +e
             mvn -B org.owasp:dependency-check-maven:13.0.0:check \
               -Dformat=JSON \
-              -DoutputDirectory="$output_directory" \
+              -Dodc.outputDirectory="$output_directory" \
               -DfailBuildOnCVSS=8 \
               -DfailOnError=true \
               -DfailBuildOnUnusedSuppressionRule=true \
