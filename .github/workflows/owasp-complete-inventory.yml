@@ -1,0 +1,81 @@
+name: owasp-complete-inventory
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unsuppressed-dependency-inventory:
+    name: unsuppressed-dependency-inventory
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run unsuppressed Dependency-Check inventory
+        working-directory: backend
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::Repository Actions secret NVD_API_KEY must be configured for the OWASP inventory."
+            exit 1
+          fi
+
+          empty_suppressions="$RUNNER_TEMP/empty-dependency-check-suppressions.xml"
+          cat > "$empty_suppressions" <<'XML'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd"/>
+          XML
+
+          set +e
+          mvn -B org.owasp:dependency-check-maven:13.0.0:check \
+            -Dformat=JSON \
+            -DfailBuildOnCVSS=8 \
+            -DfailOnError=true \
+            -DfailBuildOnUnusedSuppressionRule=true \
+            -DsuppressionFile="$empty_suppressions" \
+            -DnvdApiKeyEnvironmentVariable=NVD_API_KEY \
+            > "$RUNNER_TEMP/dependency-check-inventory.log" 2>&1
+          scanner_status=$?
+          set -e
+
+          report=target/dependency-check-report.json
+          if [ ! -s "$report" ]; then
+            echo "::error::Dependency-Check did not produce a JSON report."
+            cat "$RUNNER_TEMP/dependency-check-inventory.log"
+            exit 1
+          fi
+          if grep -Eiq 'Unable to parse suppression xml|SuppressionParseException|Exception occurred initializing|Fatal exception' "$RUNNER_TEMP/dependency-check-inventory.log"; then
+            echo "::error::Dependency-Check failed to initialize; do not treat this as a vulnerability-only diagnostic result."
+            cat "$RUNNER_TEMP/dependency-check-inventory.log"
+            exit 1
+          fi
+
+          python3 ../.github/scripts/generate-owasp-complete-matrix.py \
+            "$report" \
+            ../docs/security/ACCOUNT_SURVIVAL_OWASP_COMPLETE_MATRIX.md
+
+          echo "Dependency-Check exit status: $scanner_status"
+          exit "$scanner_status"
+
+      - name: Upload unsuppressed Dependency-Check inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owasp-complete-inventory
+          path: |
+            backend/target/dependency-check-report.json
+            backend/target/dependency-check-report.html
+            docs/security/ACCOUNT_SURVIVAL_OWASP_COMPLETE_MATRIX.md
+          if-no-files-found: warn
