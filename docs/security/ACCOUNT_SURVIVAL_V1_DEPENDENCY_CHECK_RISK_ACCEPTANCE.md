@@ -1,5 +1,18 @@
 # Account Survival V1 Dependency-Check Risk Acceptance Proposal
 
+## Additional 64-Tuple Owner Approval and Activation — 2026-11-01
+
+The sole repository owner explicitly approved temporary residual risk for the **64 additional exact CVE/PURL/version combinations** in [the full proposal](ACCOUNT_SURVIVAL_OWASP_64_TUPLE_OWNER_PROPOSAL.md) at `9a6ddabca62e93d618e30f4898d8ea5488901d7a`. The owner decision is recorded in [PR #1 comment 6562291838](https://github.com/PunterDev/tradepilot/pull/1#issuecomment-6562291838), in addition to the original 16 independently documented exact owner-approved combinations. This is a **self-review** risk acceptance, not independent security assurance.
+
+The bounded 64-rule implementation was committed at `9f1b483961af3728aba5020900f75d88ccc5eb47`; mandatory unbundled scanning (preserving CVSS 8 and strict unused-suppression rules) at `552f6855467d00d92bb7b9f2ad0152adbe5f35de`; strict 80-tuple Java scope testing at `8e5d87177b44d43a3f05ba169d241aaf73fa5025`. Every exception remains individually anchored to one Maven package, version and CVE and uses the XSD-compatible `until="2026-11-30Z"` (expires `2026-11-30T00:00:00Z`). No wildcard CPE/family suppression is authorized.
+
+[Hosted bundled/unbundled evidence](https://github.com/PunterDev/tradepilot/actions/runs/41336529191) established 115 preserved Maven PURLs and eight preserved high-severity CVE identities; the unbundled report identified the precise 80 associations. Conditional absence of vendor exploit prerequisites and all baseline/configuration drift revocation triggers in the proposal remain material to this risk decision. Any new high-severity CVE, runtime dependency change, activation of a reviewed vulnerable feature, or change in relevant production configuration requires fresh assessment and, where appropriate, immediate revocation.
+
+**Activation on this feature branch does not authorize merge or production deployment.** Security CI, unrelated critical-CVE negative control, regression tests and required release approval must pass before reconsidering NO-GO status.
+
+---
+
+
 **Status:** OWNER-APPROVED FOR EXACT-SCOPE IMPLEMENTATION - not merged, deployed, or active in production
 **Repository / branch:** `PunterDev/tradepilot` / `feature/v1-account-survival-coach`
 **Dependency baseline reviewed:** `8d202d2f3aa23fe45a672723bc57f33b149ea424`
