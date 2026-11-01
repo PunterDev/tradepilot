@@ -65,6 +65,34 @@ class ProtectionCommitmentEvaluatorTests {
         });
     }
 
+    @Test void refusesToCallSessionLossFollowedWhenRealizedPnlIsMissing() {
+        NextSessionProtectionCommitment commitment = commitment();
+        commitment.setMaxSessionLoss(new BigDecimal("200"));
+        Trade missingPnl = trade("09:30", "09:35", "-250", 1);
+        missingPnl.setPnlAmount(null);
+        var result = evaluator.evaluate(commitment, List.of(missingPnl), ZoneId.of("America/New_York"));
+        var loss = result.rules().stream().filter(rule -> "MAX_SESSION_LOSS".equals(rule.rule())).findFirst().orElseThrow();
+        assertThat(loss.status()).isEqualTo("NOT_EVALUABLE");
+        assertThat(loss.message()).contains("missing realized P&L");
+        assertThat(result.overallStatus()).isEqualTo(ProtectionCommitmentStatus.NOT_EVALUABLE);
+    }
+
+    @Test void refusesToCallSessionLossFollowedOnInvalidOrAbsentCompletedTrades() {
+        NextSessionProtectionCommitment commitment = commitment();
+        commitment.setMaxSessionLoss(new BigDecimal("200"));
+        var empty = evaluator.evaluate(commitment, List.of(), ZoneId.of("America/New_York"));
+        assertThat(empty.rules()).anySatisfy(rule -> {
+            assertThat(rule.rule()).isEqualTo("MAX_SESSION_LOSS");
+            assertThat(rule.status()).isEqualTo("NOT_EVALUABLE");
+        });
+        Trade reversed = trade("09:40", "09:35", "-250", 1);
+        var invalid = evaluator.evaluate(commitment, List.of(reversed), ZoneId.of("America/New_York"));
+        assertThat(invalid.rules()).anySatisfy(rule -> {
+            assertThat(rule.rule()).isEqualTo("MAX_SESSION_LOSS");
+            assertThat(rule.status()).isEqualTo("NOT_EVALUABLE");
+        });
+    }
+
     @Test void postLossPauseChecksEveryRealizedLossAndDoesNotTreatOneUntestedLossAsSuccess() {
         NextSessionProtectionCommitment commitment = commitment(); commitment.setPostLossPauseMinutes(20);
         var untested = evaluator.evaluate(commitment, List.of(trade("09:30", "09:35", "-20", 1)), ZoneId.of("America/New_York"));
