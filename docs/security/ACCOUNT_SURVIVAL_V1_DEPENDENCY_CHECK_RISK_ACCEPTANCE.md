@@ -171,6 +171,41 @@ No action in this addendum changes the earlier approved scope, expiry, CVSS thre
 
 The additional eight matches are now accepted as *temporary risk exceptions*, not labeled conclusively benign. Revoke them if the documented prerequisites, packages, or risk evidence change. The XML and scope tests must keep all 16 exact combinations, and the unrelated-CVSS-8 negative-control CI must stay effective.
 
+## Repeated CPE-to-Artifact Attribution Investigation — PROPOSED, NOT APPROVED
+
+**Purpose:** explain why Dependency-Check continues to identify the same eight CVEs on different Maven modules without treating that explanation as approval for another exception. This investigation adds no suppression and changes no existing rule.
+
+### Evidence Boundary
+
+The complete HTML/JSON report from [run `41317447207`](https://github.com/PunterDev/tradepilot/actions/runs/41317447207) remains private. This environment received HTTP 404 from the unauthenticated GitHub API, and no local copy was supplied. Consequently, the scanner-reported `evidenceCollected` CPE strings, complete dependency list, and suppressed/unsuppressed flags are **UNKNOWN pending authorized report inspection**. The run summary supplied for this investigation reports the eight associations below; Maven resolution, current JAR contents, source/configuration, and vendor advisories were inspected independently.
+
+### Resolved Dependency Inventory and Association Matrix
+
+| CVE family | Vendor-identified implementation | Resolved relevant modules | Reported/approved association history | Exact CPE binding in run `41317447207` | Application assessment |
+| --- | --- | --- | --- | --- | --- |
+| `CVE-2026-53914` | `org.jetbrains.kotlin:kotlin-gradle-plugin` build-cache metadata, not the standard library. | `kotlin-stdlib`, `kotlin-stdlib-jdk7`, `kotlin-stdlib-jdk8`, and `kotlin-stdlib-common` at `1.9.25`, all from `resend-java -> okhttp`. | Approved: `kotlin-stdlib`; separately approved: `kotlin-stdlib-jdk7`; newly reported: `kotlin-stdlib-jdk8`. | **UNKNOWN.** Obtain the report's CPE/evidence block. | No Gradle/Kotlin plugin or build-cache execution exists. This is a module-attribution mismatch candidate, but `jdk8` is not approved. |
+| `CVE-2026-59270` | Spring Security embedded `UnboundIdContainer` LDAP server. | `spring-security-config`, `spring-security-core`, `spring-security-crypto`, `spring-security-web`, and test support at `6.5.11`. | Approved: `spring-security-core`, `spring-security-web`; newly reported: `spring-security-config`. | **UNKNOWN.** | `spring-security-config` contains LDAP configuration helpers but no `UnboundIdContainer`; no `spring-security-ldap`/UnboundID dependency, LDAP listener, or `spring.ldap.embedded.*` configuration was found. The only vendor path is absent. |
+| `CVE-2026-47884`, `CVE-2026-47890`, `CVE-2026-59313` | `XsltView`, MVC SSE/view fragments, or MVC functional SSE are implemented in `spring-webmvc`. | Framework `6.2.19`: `spring-aop`, `spring-aspects`, `spring-beans`, `spring-context`, `spring-core`, `spring-expression`, `spring-jcl`, `spring-jdbc`, `spring-orm`, `spring-test`, `spring-tx`, `spring-web`, `spring-webmvc`. | Approved: `spring-core`, `spring-tx`; newly reported: `spring-aop`. | **UNKNOWN.** The cross-module pattern is consistent with shared product-CPE attribution, but only the report can prove it. | `spring-webmvc` is present, so the vulnerable feature classes exist in the application distribution. Source/configuration remain negative for `XsltView`, functional routing, SSE, view fragments, plain-text streaming, and attacker-controlled cross-user streams. |
+| `CVE-2026-47891`, `CVE-2026-47892` | WebFlux Aalto/JAXB decoding or WebFlux functional endpoints. | Same Framework inventory; `spring-webflux` is not resolved. | Approved: `spring-core`, `spring-tx`; newly reported: `spring-aop`. | **UNKNOWN.** | Servlet MVC is used. No WebFlux dependency, Aalto XML processor, `Jaxb2Decoder`, or `RouterFunction` implementation is resolved or configured. |
+| `CVE-2026-59283` | `SimpleEvaluationContext` plus active SpEL compilation. | `spring-expression:6.2.19` is resolved; `spring-aop`, `spring-core`, and `spring-tx` are also present. | Approved: `spring-core`, `spring-tx`; newly reported: `spring-aop`. | **UNKNOWN.** | The SpEL classes exist in `spring-expression`, but no evaluated `SimpleEvaluationContext`, compiler-enabled parser, or `IMMEDIATE`/`MIXED` compiler setting exists in reviewed code or production variable-name inventory. |
+
+### Root-Cause Assessment
+
+The reported progression from `spring-core` to `spring-tx` to `spring-aop`, from `spring-security-core` to `spring-security-web` to `spring-security-config`, and from Kotlin stdlib to JDK facades is **consistent with Dependency-Check assigning a product-level CPE to multiple modules of the same version family**. It is not proof that the implementation is absent from the complete application: `spring-webmvc` and `spring-expression` are resolved and contain some advisory-relevant APIs. It does show why exact PURL suppression has a recurring maintenance cost: it preserves scope but does not suppress sibling-module CPE associations.
+
+Do not replace exact PURL rules with a Spring/Kotlin CPE suppression or a CVE-wide suppression. Either would hide future CVEs on the same product family, violate the existing approval boundary, and reduce the negative-control value of Dependency-Check.
+
+### Sustainable Remediation Strategy
+
+1. **Preferred long term: an isolated, BOM-aligned Spring Boot 4 migration.** Spring's public OSS fixes for the Framework and Security findings are on the Spring 7/Security 7 lines. This must remain a separately reviewed migration because it changes platform, Jakarta/Hibernate/Jackson compatibility, and release risk.
+2. **Near term: retain only report-proven, owner-approved exact PURL/version tuples.** Before any future approval, attach the full HTML/JSON report and extract CPE evidence for every association. Do not pre-approve every currently resolved sibling module.
+3. **Do not add direct Spring module overrides.** `6.2.20` and `6.5.12` are listed by Spring as Enterprise-only; overriding individual modules breaks Boot BOM alignment and is not a V1 remediation.
+4. **Kotlin/Resend:** keep the runtime chain unless an upstream Resend/OkHttp release removes it compatibly. The reported advisory targets the Gradle plugin, so removing Kotlin facades solely to silence Dependency-Check is not justified.
+
+### Required Next Evidence and Decision
+
+The minimal next owner decision, if the scan reports another sibling module, is a newly signed tuple-level decision for that exact `(CVE, PURL, version)` only, accompanied by the run's HTML/JSON CPE evidence. No currently unresolved module is approved by this section. Immediate review is required on any Spring/Kotlin/Resend version change, addition of WebFlux, SSE, XSLT views, functional routing, SpEL compilation, LDAP/UnboundID, or a new CVE on an approved dependency.
+
 The Kotlin entry is a scanner artifact/PURL mismatch: the vendor advisory names `kotlin-gradle-plugin`, while the reviewed dependency is runtime `kotlin-stdlib`. The Spring entries are different: `spring-core:6.2.19` and `spring-security-core:6.5.11` are genuinely within the vendor's affected version ranges, but the application does not expose each advisory's required optional feature/configuration.
 
 Residual risk remains if a future code or configuration change introduces any prerequisite above before upgrading the framework. The exception must be revoked immediately if any of these occur:
