@@ -16,6 +16,7 @@ import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -33,11 +34,12 @@ public class AccountSurvivalService {
     private final NextSessionProtectionRuleResultRepository ruleResultRepository;
     private final ProtectionCommitmentEvaluator commitmentEvaluator;
     private final CrossAccountContinuationDetector crossAccountContinuationDetector;
+    private final AccountSurvivalTimeSource timeSource;
 
     public AccountSurvivalService(TradingAccountService accountService, TradingAccountRepository tradingAccountRepository, TradeRepository tradeRepository,
-            AccountRiskProfileRepository profileRepository, NextSessionProtectionCommitmentRepository commitmentRepository, NextSessionProtectionEvaluationRepository evaluationRepository, NextSessionProtectionRuleResultRepository ruleResultRepository, ProtectionCommitmentEvaluator commitmentEvaluator, CrossAccountContinuationDetector crossAccountContinuationDetector) {
+            AccountRiskProfileRepository profileRepository, NextSessionProtectionCommitmentRepository commitmentRepository, NextSessionProtectionEvaluationRepository evaluationRepository, NextSessionProtectionRuleResultRepository ruleResultRepository, ProtectionCommitmentEvaluator commitmentEvaluator, CrossAccountContinuationDetector crossAccountContinuationDetector, AccountSurvivalTimeSource timeSource) {
         this.accountService = accountService; this.tradingAccountRepository = tradingAccountRepository; this.tradeRepository = tradeRepository;
-        this.profileRepository = profileRepository; this.commitmentRepository = commitmentRepository; this.evaluationRepository=evaluationRepository; this.ruleResultRepository=ruleResultRepository; this.commitmentEvaluator=commitmentEvaluator; this.crossAccountContinuationDetector=crossAccountContinuationDetector;
+        this.profileRepository = profileRepository; this.commitmentRepository = commitmentRepository; this.evaluationRepository=evaluationRepository; this.ruleResultRepository=ruleResultRepository; this.commitmentEvaluator=commitmentEvaluator; this.crossAccountContinuationDetector=crossAccountContinuationDetector; this.timeSource=timeSource;
     }
 
     @Transactional(readOnly = true)
@@ -136,7 +138,7 @@ public class AccountSurvivalService {
             if (commitment.getAcceptedAt() != null) return commitmentResponse(commitment);
             throw new ProtectionCommitmentLifecycleException("Only draft protection commitments can be accepted.");
         }
-        commitment.setStatus(ProtectionCommitmentStatus.ACCEPTED); commitment.setAcceptedAt(LocalDateTime.now());
+        commitment.setStatus(ProtectionCommitmentStatus.ACCEPTED); commitment.setAcceptedAt(timeSource.now());
         return commitmentResponse(commitmentRepository.save(commitment));
     }
     @Transactional
@@ -147,7 +149,7 @@ public class AccountSurvivalService {
         if (c.getStatus() == ProtectionCommitmentStatus.DRAFT || c.getAcceptedAt() == null) {
             throw new ProtectionCommitmentLifecycleException("Accept the commitment before evaluating it.");
         }
-        LocalDate today = LocalDate.now(evaluationZone(user, accountId));
+        LocalDate today = timeSource.today(evaluationZone(user, accountId));
         if (c.getEffectiveSessionDate().isAfter(today)) {
             return new CommitmentEvaluationResponse(false, null, c.getStatus(), CALCULATION_VERSION, List.of(),
                     "This commitment's effective session has not started yet.");
@@ -224,7 +226,7 @@ public class AccountSurvivalService {
         return new CommitmentEvaluationHistoryResponse(evaluations, HISTORY_WINDOW_SESSIONS, evaluations.size(), followed,
                 broken, partial, unavailable, fullyEvaluable, adherencePercent);
     }
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void evaluateEligibleAfterImport(User user, Long accountId) {
         // Import callers run this after commit. We deliberately evaluate only commitments owned by this account/user.
         commitmentRepository.findByAccount_IdAndUserAndStatusNot(accountId, user, ProtectionCommitmentStatus.DRAFT).forEach(c -> {
