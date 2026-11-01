@@ -51,7 +51,7 @@ jobs:
             echo "::error::Repository Actions secret NVD_API_KEY must be configured for OWASP Dependency-Check."
             exit 1
           fi
-          mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8 -DfailBuildOnUnusedSuppressionRule=true -DsuppressionFile=config/dependency-check-suppressions.xml -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
+          mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8 -DfailBuildOnUnusedSuppressionRule=true -Danalyzer.dependencybundling.enabled=false -DsuppressionFile=config/dependency-check-suppressions.xml -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
 
       - name: Upload dependency-check report
         if: always()
