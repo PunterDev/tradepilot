@@ -6,10 +6,14 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 import javax.xml.XMLConstants;
+import javax.xml.datatype.DatatypeConstants;
+import javax.xml.datatype.DatatypeFactory;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +23,8 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DependencyCheckSuppressionScopeTests {
-    private static final Instant EXPIRY = Instant.parse("2026-11-30T23:59:59Z");
+    private static final Instant EXPIRY = Instant.parse("2026-11-30T00:00:00Z");
+    private static final Instant APPROVED_LATEST_EXPIRY = Instant.parse("2026-11-30T23:59:59Z");
     private static final Set<ApprovedFinding> APPROVED_FINDINGS = Set.of(
             finding("pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.25", "CVE-2026-53914"),
             finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-47884"),
@@ -46,6 +51,7 @@ class DependencyCheckSuppressionScopeTests {
         List<Suppression> suppressions = readSuppressions();
 
         assertThat(suppressions).hasSize(8);
+        assertThat(EXPIRY).isBeforeOrEqualTo(APPROVED_LATEST_EXPIRY);
         assertThat(suppressions).allSatisfy(suppression -> {
             assertThat(suppression.until()).isEqualTo(EXPIRY);
             assertThat(suppression.regexEnabled()).isTrue();
@@ -130,7 +136,15 @@ class DependencyCheckSuppressionScopeTests {
             Element packageUrl = (Element) element.getElementsByTagNameNS(element.getNamespaceURI(), "packageUrl").item(0);
             String packageUrlRegex = packageUrl.getTextContent();
             String cve = element.getElementsByTagNameNS(element.getNamespaceURI(), "cve").item(0).getTextContent();
-            suppressions.add(new Suppression(Instant.parse(element.getAttribute("until")), cve, packageUrlRegex, Pattern.compile(packageUrlRegex), Boolean.parseBoolean(packageUrl.getAttribute("regex"))));
+            String untilLiteral = element.getAttribute("until");
+            assertThat(untilLiteral).as("Dependency-Check until must be an XSD date in UTC, not an xs:dateTime")
+                    .matches("\\d{4}-\\d{2}-\\d{2}Z");
+            assertThat(DatatypeFactory.newInstance().newXMLGregorianCalendar(untilLiteral).getXMLSchemaType())
+                    .as("Schema type of until attribute").isEqualTo(DatatypeConstants.DATE);
+            Instant untilInstant = LocalDate.parse(untilLiteral.substring(0, 10))
+                    .atStartOfDay(ZoneOffset.UTC).toInstant();
+            suppressions.add(new Suppression(untilInstant, cve, packageUrlRegex,
+                    Pattern.compile(packageUrlRegex), Boolean.parseBoolean(packageUrl.getAttribute("regex"))));
         }
         return suppressions;
     }
