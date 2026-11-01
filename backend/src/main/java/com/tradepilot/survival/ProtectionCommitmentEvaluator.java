@@ -21,23 +21,40 @@ public class ProtectionCommitmentEvaluator {
     public Evaluation evaluate(NextSessionProtectionCommitment commitment, List<Trade> trades, ZoneId zone) {
         List<Attempt> attempts = attempts(trades);
         List<CommitmentEvaluationResponse.RuleResult> rules = new ArrayList<>();
+        boolean incompleteAttempts = attempts.size() != trades.size()
+                || trades.stream().anyMatch(t -> t.getEntryTime() == null || t.getExitTime() == null
+                        || !t.getExitTime().isAfter(t.getEntryTime()));
+        boolean incompleteExposure = incompleteAttempts
+                || trades.stream().anyMatch(t -> t.getQuantity() == null || t.getQuantity() <= 0
+                        || t.getSymbol() == null || t.getSymbol().isBlank());
+        boolean incompletePnl = incompleteAttempts || trades.stream().anyMatch(t -> t.getPnlAmount() == null);
         if (commitment.getMaxAttempts() != null) {
-            rules.add(rule("MAX_ATTEMPTS", String.valueOf(commitment.getMaxAttempts()), String.valueOf(attempts.size()),
+            rules.add(incompleteAttempts ? notEvaluable("MAX_ATTEMPTS", String.valueOf(commitment.getMaxAttempts()),
+                    "An imported round trip has incomplete or invalid timestamps; attempts cannot be counted reliably.")
+                    : rule("MAX_ATTEMPTS", String.valueOf(commitment.getMaxAttempts()), String.valueOf(attempts.size()),
                     attempts.size() <= commitment.getMaxAttempts(),
                     "Completed round-trip imports are counted once per flat-to-position attempt; scale-ins and partial exits are already grouped during import."));
         }
         if (commitment.getMaxNormalizedExposure() != null) {
             BigDecimal observed = attempts.stream().map(Attempt::normalizedExposure).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-            rules.add(rule("MAX_NORMALIZED_EXPOSURE", commitment.getMaxNormalizedExposure().toPlainString(), observed.toPlainString(),
+            rules.add(incompleteExposure ? notEvaluable("MAX_NORMALIZED_EXPOSURE", commitment.getMaxNormalizedExposure().toPlainString(),
+                    "An imported trade has incomplete timestamps, quantity, or symbol; maximum exposure cannot be established.")
+                    : rule("MAX_NORMALIZED_EXPOSURE", commitment.getMaxNormalizedExposure().toPlainString(), observed.toPlainString(),
                     observed.compareTo(commitment.getMaxNormalizedExposure()) <= 0,
                     "Maximum normalized exposure across completed attempts."));
         }
         if (commitment.getMaxSessionLoss() != null) {
             rules.add(sessionLossRule(commitment.getMaxSessionLoss(), trades, attempts));
         }
-        if (commitment.getPostLossPauseMinutes() != null) rules.add(pauseRule(commitment.getPostLossPauseMinutes(), attempts));
+        if (commitment.getPostLossPauseMinutes() != null) rules.add(incompletePnl
+                ? notEvaluable("POST_LOSS_PAUSE", commitment.getPostLossPauseMinutes() + " minutes",
+                        "An imported trade has missing realized P&L or invalid timestamps; post-loss pauses cannot be verified.")
+                : pauseRule(commitment.getPostLossPauseMinutes(), attempts));
         if (commitment.getAllowedWindowStart() != null && commitment.getAllowedWindowEnd() != null) {
-            rules.add(windowRule(commitment.getAllowedWindowStart(), commitment.getAllowedWindowEnd(), attempts, zone));
+            rules.add(incompleteAttempts ? notEvaluable("TRADING_WINDOW",
+                    formatWindow(commitment.getAllowedWindowStart(), commitment.getAllowedWindowEnd()),
+                    "An imported trade has incomplete or invalid timestamps; its entry window cannot be verified.")
+                    : windowRule(commitment.getAllowedWindowStart(), commitment.getAllowedWindowEnd(), attempts, zone));
         }
         if (Boolean.TRUE.equals(commitment.getRequireFreshSetupConfirmation())) {
             rules.add(notEvaluable("FRESH_SETUP_CONFIRMATION", "Enabled", "Completed-trade imports do not provide contemporaneous confirmation evidence."));
