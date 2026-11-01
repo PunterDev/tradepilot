@@ -1,12 +1,27 @@
 # Account Survival V1 Dependency-Check Risk Acceptance Proposal
 
-**Status:** PROPOSED ONLY - not approved and not active
+**Status:** OWNER-APPROVED FOR EXACT-SCOPE IMPLEMENTATION - not merged, deployed, or active in production
 **Repository / branch:** `PunterDev/tradepilot` / `feature/v1-account-survival-coach`
 **Dependency baseline reviewed:** `8d202d2f3aa23fe45a672723bc57f33b149ea424`
 **Evidence document baseline:** `79956266daa845ae4b3a847e812ef69f769edd7c`
 **Scope:** the eight findings listed below, and no other dependencies, CVEs, branches, or releases.
 **Proposed expiry:** 2026-11-30T23:59:59Z
-**Security gate:** remains `failBuildOnCVSS=8`; this document does not change the workflow or activate a suppression.
+**Security gate:** remains `failBuildOnCVSS=8`; the implementation below may suppress only the approved exact scope and does not disable the workflow.
+
+## Owner Decision and Evidence Retention
+
+The sole repository owner recorded a solo-owner governance adoption and temporary acceptance decision on [PR #1 comment 6551147842](https://github.com/PunterDev/tradepilot/pull/1#issuecomment-6551147842). Per the owner attestation, the decision accepts only this document's eight exact CVE/PURL/version tuples through `2026-11-30T23:59:59Z`, identifies no applicable independent-approval requirement, and acknowledges that the review is self-review rather than independent assurance.
+
+The original reports remain in private GitHub Actions artifacts for authorized reviewers:
+
+| GitHub Actions run | Artifact ID | Retention expiry | Verification source |
+| --- | --- | --- | --- |
+| `41232107045` | `13053903962` | 2027-01-29 | Owner attestation; original artifact ZIP supplied to this review |
+| `41233630140` | `13054407734` | 2027-01-29 | Owner attestation; original artifact ZIP supplied to this review |
+
+The artifact retention expiry is after the approved exception expiry. This environment could not use authenticated GitHub API access to retrieve the private PR comment or artifacts directly; the decision and reviewer access are therefore recorded as **owner-verified**, while the supplied original artifact ZIP and both HTML report hashes were independently revalidated locally. No artifact report is committed to the repository.
+
+The exact-scope suppression implementation is present only on this feature branch and remains subject to the scope tests, Dependency-Check run, and full CI below. It does not authorize merging or deployment.
 
 ## Governance Assessment and Proposed Solo-Owner Amendment
 
@@ -52,7 +67,7 @@ Codex verified the archive integrity, extracted it only to a temporary directory
 
 Those hashes exactly match the hashes claimed by the included `TRADEPILOT_V1_OWASP_ARTIFACT_RECONCILIATION.md`. A programmatic comparison of `(CVE, PURL, CVSS)` for every finding with CVSS >= 8 found eight tuples in each report, with zero additions, removals, or changes. The reports contain lower-scored findings outside this proposal's scope.
 
-This review did not access GitHub's private artifact API or download the reports from GitHub. Vendor severity is the classification published by the vendor advisory, and is intentionally not conflated with the scanner score. Before approval, attach the owner-supplied evidence package or an access-controlled retention link to PR #1; do not commit raw report files to the repository.
+This review did not access GitHub's private artifact API or download the reports from GitHub. Vendor severity is the classification published by the vendor advisory, and is intentionally not conflated with the scanner score. The owner attests that the private GitHub artifacts above are retained for authorized reviewers; do not commit raw report files to the repository.
 
 ## Reviewed Findings
 
