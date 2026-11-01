@@ -5,7 +5,9 @@
 **Dependency baseline reviewed:** `8d202d2f3aa23fe45a672723bc57f33b149ea424`
 **Evidence document baseline:** `79956266daa845ae4b3a847e812ef69f769edd7c`
 **Scope:** the eight findings listed below, and no other dependencies, CVEs, branches, or releases.
-**Proposed expiry:** 2026-11-30T23:59:59Z
+**Owner-approved latest expiry:** 2026-11-30T23:59:59Z
+**Applied scanner expiry (XSD date):** `2026-11-30Z` (becomes inactive at 2026-11-30T00:00:00Z UTC, earlier than approved).
+**Reason for earlier cutoff:** OWASP Dependency-Check 13.0.0 requires an `xs:date` for the suppression `until` attribute. A timestamp was rejected in GitHub Actions run `41259471064`; do not move the expiry later than the owner's approval without reauthorization.
 **Security gate:** remains `failBuildOnCVSS=8`; the implementation below may suppress only the approved exact scope and does not disable the workflow.
 
 ## Owner Decision and Evidence Retention
@@ -161,17 +163,17 @@ The preferred remediation is a separately planned Spring Boot 4 migration, after
 <?xml version="1.0" encoding="UTF-8"?>
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
   <!-- Proposed only. Each entry is exact-CVE, exact-PURL, and expires 2026-11-30. -->
-  <suppress until="2026-11-30T23:59:59Z">
+  <suppress until="2026-11-30Z">
     <packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/kotlin-stdlib@1\.9\.25$</packageUrl>
     <cve>CVE-2026-53914</cve>
   </suppress>
-  <suppress until="2026-11-30T23:59:59Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-47884</cve></suppress>
-  <suppress until="2026-11-30T23:59:59Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-47890</cve></suppress>
-  <suppress until="2026-11-30T23:59:59Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-47891</cve></suppress>
-  <suppress until="2026-11-30T23:59:59Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-47892</cve></suppress>
-  <suppress until="2026-11-30T23:59:59Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-59313</cve></suppress>
-  <suppress until="2026-11-30T23:59:59Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-59283</cve></suppress>
-  <suppress until="2026-11-30T23:59:59Z"><packageUrl regex="true">^pkg:maven/org\.springframework\.security/spring-security-core@6\.5\.11$</packageUrl><cve>CVE-2026-59270</cve></suppress>
+  <suppress until="2026-11-30Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-47884</cve></suppress>
+  <suppress until="2026-11-30Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-47890</cve></suppress>
+  <suppress until="2026-11-30Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-47891</cve></suppress>
+  <suppress until="2026-11-30Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-47892</cve></suppress>
+  <suppress until="2026-11-30Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-59313</cve></suppress>
+  <suppress until="2026-11-30Z"><packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl><cve>CVE-2026-59283</cve></suppress>
+  <suppress until="2026-11-30Z"><packageUrl regex="true">^pkg:maven/org\.springframework\.security/spring-security-core@6\.5\.11$</packageUrl><cve>CVE-2026-59270</cve></suppress>
 </suppressions>
 ```
 
