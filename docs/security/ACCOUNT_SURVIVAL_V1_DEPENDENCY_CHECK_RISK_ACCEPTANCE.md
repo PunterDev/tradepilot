@@ -8,19 +8,36 @@
 **Proposed expiry:** 2026-11-30T23:59:59Z
 **Security gate:** remains `failBuildOnCVSS=8`; this document does not change the workflow or activate a suppression.
 
-## Approval Required Before Any Exception Is Activated
+## Governance Assessment and Proposed Solo-Owner Amendment
 
-Approval must be recorded on PR #1 by both of the following named people:
+### What the repository currently requires
 
-1. The current `PunterDev/tradepilot` repository owner.
-2. The organization's designated security risk owner.
+The drafted [Risk Management Policy](../compliance/policies/11_RISK_MANAGEMENT_POLICY.md) and [Risk Assessment Procedure](../compliance/procedures/RISK_ASSESSMENT_PROCEDURE.md) require **documented management approval** and residual-risk documentation for accepted risks. They assign risk acceptance to TradePilot Management. Neither document requires a second approver, independent security reviewer, or separation between repository owner and risk owner. Both documents remain pending management approval, so they are project governance drafts rather than evidence of an already-operated external certification control.
 
-Each approval must name the approver, record the date, confirm the dependency baseline and document version, and accept the proposed expiry. The repository does not identify a security risk owner by name; that identity is an approval evidence gap and must be filled before activation. No applicable policy identifying whether one person may fill both roles was found in the repository. Until that policy is produced, the approvals must be from two different people. The feature author alone cannot approve the exception.
+No repository documentation identifies a contractual, regulatory, customer, or certification obligation that independently requires two people to approve this exception. This is a repository-only conclusion: legal, customer-contract, insurer, or future certification obligations have not been independently reviewed here and remain **UNKNOWN**.
 
-| Required role | Name | Decision | Date | Reviewed baseline |
+### Existing two-person proposal
+
+Earlier revisions of this document proposed separate approval by the repository owner and a designated security risk owner. That remains the preferred option when an independent qualified reviewer is available, but it is a self-imposed proposal in this document, not a binding requirement found in the repository. It must not be silently treated as satisfied by one person.
+
+### Proposed solo-owner approval path
+
+Because TradePilot is currently solo-owned and solo-operated, the repository owner may be the accountable management risk decision-maker **only if the owner explicitly adopts this amendment on PR #1** and confirms that no outside obligation requires independent approval. This is self-review, not independent assurance.
+
+The solo-owner path is limited to the exact eight CVE/PURL/version tuples in this document and requires all of the following before any later suppression activation change:
+
+1. The owner records their name, UTC decision time, the reviewed dependency baseline, the document revision, scope, and expiry on PR #1.
+2. The owner attaches or links the retained scan evidence and Render configuration attestation without including environment values or credentials.
+3. The owner explicitly acknowledges the absence of independent security approval and accepts the residual risk only through `2026-11-30T23:59:59Z`.
+4. The owner confirms that no listed revocation trigger is present and that no binding external approval requirement applies.
+5. A separate, reviewed implementation change later activates only the exact suppression scope and passes every activation gate below.
+
+This proposed amendment records no approval, does not activate an exception, and does not remove the option to obtain independent review.
+
+| Proposed role | Name | Decision | Date | Reviewed baseline |
 | --- | --- | --- | --- | --- |
-| Repository owner | _Unassigned - record in PR #1_ | UNAPPROVED | _TBD_ | `8d202d2f3aa23fe45a672723bc57f33b149ea424` |
-| Security risk owner | _Unassigned - record in PR #1_ | UNAPPROVED | _TBD_ | `8d202d2f3aa23fe45a672723bc57f33b149ea424` |
+| Repository owner / accountable management risk decision-maker | _Unassigned - record in PR #1_ | UNAPPROVED | _TBD_ | `8d202d2f3aa23fe45a672723bc57f33b149ea424` |
+| Independent reviewer (recommended, not assigned) | _Unassigned_ | NOT REQUIRED BY REPOSITORY / NOT APPROVED | _TBD_ | `8d202d2f3aa23fe45a672723bc57f33b149ea424` |
 
 ## Scanner Evidence and Reconciliation
 
@@ -49,6 +66,21 @@ This review did not access GitHub's private artifact API or download the reports
 | `CVE-2026-59313` | `pkg:maven/org.springframework/spring-core@6.2.19` | 9.8 (owner-reconciled reports) | Low | [Spring advisory](https://spring.io/security/cve-2026-59313/) requires MVC functional `RouterFunction` plus `ServerResponse.sse()`, plain-text SSE, and attacker-controlled data streamed to other users. Same fixed-version availability as above. | **Configuration-inapplicable.** No `RouterFunction`, `ServerResponse.sse()`, SSE endpoint, or streamed user-controlled payload exists. |
 | `CVE-2026-59283` | `pkg:maven/org.springframework/spring-core@6.2.19` | 9.1 (owner-reconciled reports) | Medium | [Spring advisory](https://spring.io/security/cve-2026-59283/) requires `SimpleEvaluationContext` and SpEL compiler mode `IMMEDIATE` or `MIXED`, configured by `spring.expression.compiler.mode` or a compiler-enabled `SpelParserConfiguration`. Same fixed-version availability as above. | **Configuration-inapplicable.** There is no `SimpleEvaluationContext`, `SpelExpressionParser`, `SpelParserConfiguration`, compiler-mode property, or user-controlled SpEL evaluation. |
 | `CVE-2026-59270` | `pkg:maven/org.springframework.security/spring-security-core@6.5.11` | 9.1 (owner-reconciled reports) | Critical | [Spring advisory](https://spring.io/security/cve-2026-59270/) requires embedded `UnboundIdContainer` (directly or through `spring.ldap.embedded.*`) and a reachable LDAP listener. Spring Security `6.5.12` is Enterprise-only; `7.0.7` and `7.1.1` are public OSS fixes. | **Configuration-inapplicable.** There is no UnboundID/LDAP dependency, `UnboundIdContainer`, `spring.ldap.embedded.*` setting, or LDAP listener. The configured authentication path is stateless JWT plus `DaoAuthenticationProvider` and BCrypt. |
+
+## Solo-Owner Decision Worksheet
+
+This worksheet is a review aid only. Leave every owner-decision cell unsigned until the owner explicitly decides on PR #1. "Accept temporarily" means accepting residual risk for the exact reviewed baseline only; it does not activate a Dependency-Check suppression.
+
+| CVE | Reviewed artifact | Applicability evidence | Residual risk | Recommended decision | Owner decision |
+| --- | --- | --- | --- | --- | --- |
+| `CVE-2026-53914` | `kotlin-stdlib:1.9.25` | The advisory targets `kotlin-gradle-plugin` build-cache metadata; the report PURL is runtime `kotlin-stdlib`, and this Maven backend has no Gradle build/cache use. | Scanner matching could change if a Kotlin build plugin or another affected module is introduced. | ACCEPT TEMPORARILY as an artifact mismatch; re-review on Kotlin/Resend dependency changes. | _UNSIGNED_ |
+| `CVE-2026-47884` | `spring-core:6.2.19` | Requires XSLT MVC view rendering and an implicit view mapping. Reviewed source has REST controllers only and no XSLT/view configuration. | A later MVC view/XSLT addition could make the affected artifact exploitable. | ACCEPT TEMPORARILY only if the owner confirms no external configuration adds these prerequisites. | _UNSIGNED_ |
+| `CVE-2026-47890` | `spring-core:6.2.19` | Requires SSE with attacker-controlled MVC/WebFlux view fragments sent to other users. No SSE, WebFlux, or view fragments were found. | A later SSE/view-fragment feature could introduce the prerequisite. | ACCEPT TEMPORARILY with immediate revocation on SSE/WebFlux/view changes. | _UNSIGNED_ |
+| `CVE-2026-47891` | `spring-core:6.2.19` | Requires WebFlux, Aalto XML, and `Jaxb2Decoder`. The application is servlet MVC and source/dependencies are negative for those components. | A WebFlux/XML decoder dependency or configuration change could introduce the prerequisite. | ACCEPT TEMPORARILY with immediate revocation on WebFlux/XML changes. | _UNSIGNED_ |
+| `CVE-2026-47892` | `spring-core:6.2.19` | Requires a WebFlux functional endpoint deployed through `DispatcherServlet`. No WebFlux or `RouterFunction` endpoint was found. | A functional WebFlux routing change could introduce the prerequisite. | ACCEPT TEMPORARILY with immediate revocation on routing-stack changes. | _UNSIGNED_ |
+| `CVE-2026-59313` | `spring-core:6.2.19` | Requires MVC `RouterFunction`, `ServerResponse.sse()`, and plain-text SSE with user-controlled content. None were found. | A future functional MVC/SSE feature could introduce the prerequisite. | ACCEPT TEMPORARILY with immediate revocation on functional routing/SSE changes. | _UNSIGNED_ |
+| `CVE-2026-59283` | `spring-core:6.2.19` | Requires `SimpleEvaluationContext` and SpEL compiler mode `IMMEDIATE` or `MIXED`. No matching source/property was found; owner attestation reports no direct compiler-mode override. | A host-level override or new compiler-enabled SpEL code could introduce the prerequisite. | NEEDS REVIEW if any external configuration source cannot be accounted for; otherwise ACCEPT TEMPORARILY. | _UNSIGNED_ |
+| `CVE-2026-59270` | `spring-security-core:6.5.11` | Requires reachable embedded UnboundID LDAP. No LDAP/UnboundID dependency or configuration was found; owner attestation reports no embedded-LDAP override. | A dependency or host configuration introducing embedded LDAP could introduce the prerequisite. | NEEDS REVIEW if external configuration cannot be accounted for; otherwise ACCEPT TEMPORARILY. | _UNSIGNED_ |
 
 ## Source and Effective-Configuration Evidence
 
@@ -148,8 +180,10 @@ Any attempt to reduce the CVSS threshold, disable Dependency-Check, or allow the
 - [x] Original HTML reports for runs `41233630140` and `41232107045` independently verified from the owner-supplied evidence package; hashes and exact CVSS/PURL comparison recorded above.
 - [ ] Evidence package or access-controlled retention link added to PR #1 for authorized reviewers.
 - [ ] Repository-owner Render attestation (no Environment Groups, no Secret Files, and no reviewed override names) attached to the PR/release record.
-- [ ] Repository owner named and approves.
-- [ ] Security risk owner named and approves.
+- [ ] Repository owner explicitly adopts or rejects the proposed solo-owner governance amendment.
+- [ ] Repository owner records a decision using the solo-owner statement below.
+- [ ] Owner confirms that no external or contractual requirement for independent approval applies, or records that requirement as a blocker.
+- [ ] Independent reviewer decision recorded, if one becomes available (recommended but not required by the reviewed repository policy).
 - [ ] Expiry accepted and calendar review scheduled before 2026-11-30.
 - [ ] Proposed suppression scope and activation tests reviewed.
 - [ ] Release owner confirms no prerequisite feature/configuration has been introduced.
@@ -173,7 +207,9 @@ Evidence location for authorized reviewers: <private PR attachment or approved r
 This verifies scan evidence only. It does not approve a risk exception, activate a suppression, or change the CVSS >= 8 gate.
 ```
 
-## PR #1 Approval Comment Template
+## Historical Two-Person Approval Template
+
+The original two-person proposal remains available when an independent reviewer is assigned. It is not silently removed by the proposed solo-owner amendment.
 
 Approvers must post their own comments. Do not post this template on their behalf.
 
@@ -193,4 +229,29 @@ I reviewed:
 - production configuration attestation: no Environment Groups, no Secret Files, and no reviewed direct override names
 
 I accept the documented residual risk only until 2026-11-30T23:59:59Z. I understand the exception is revoked immediately by any listed dependency, framework, configuration, or prerequisite-feature change. I confirm that the CVSS >= 8 gate remains unchanged and that no exception is active until the approved, exact-scope activation change and its required regression checks are reviewed.
+```
+
+## Proposed Solo-Owner Decision Statement
+
+The repository owner must post and sign their own statement after deciding whether to adopt the proposed governance amendment. This template does not assign a security risk owner, claim independent review, approve an exception, or activate a suppression by itself.
+
+```text
+Solo-owner security risk decision for Account Survival V1
+
+Name: <repository owner name>
+Role: Repository owner and accountable TradePilot Management risk decision-maker
+Decision on proposed solo-owner governance amendment: ADOPT | REJECT
+Risk decision: ACCEPT TEMPORARILY | REMEDIATE | NEEDS REVIEW
+Date (UTC): <timestamp>
+
+I reviewed:
+- dependency baseline: 8d202d2f3aa23fe45a672723bc57f33b149ea424
+- risk-acceptance document revision: <commit SHA containing this document>
+- scope: only the eight exact CVE/PURL/version tuples in docs/security/ACCOUNT_SURVIVAL_V1_DEPENDENCY_CHECK_RISK_ACCEPTANCE.md
+- Dependency-Check evidence: GitHub Actions runs 41233630140 and 41232107045, attached or linked for authorized review
+- production configuration attestation: no Environment Groups, no Secret Files, and no reviewed direct override names
+
+I confirm that TradePilot is currently solo-owned and solo-operated, that no independent security reviewer is assigned, and that this is self-review rather than independent assurance. To my knowledge, no contractual, regulatory, insurer, or certification requirement requires a separate approver for this decision. If that is not true, this decision is void and the exception remains inactive.
+
+If I select ACCEPT TEMPORARILY, I accept the documented residual risk only through 2026-11-30T23:59:59Z. I acknowledge every listed dependency, framework, configuration, prerequisite-feature, scan-scope, and expiry revocation trigger. I confirm the CVSS >= 8 gate remains unchanged. No security exception is active until a separate exact-scope implementation change and its required regression checks are reviewed and merged.
 ```
