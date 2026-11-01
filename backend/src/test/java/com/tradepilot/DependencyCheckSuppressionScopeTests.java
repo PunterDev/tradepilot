@@ -33,24 +33,40 @@ class DependencyCheckSuppressionScopeTests {
             finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-47892"),
             finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-59313"),
             finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-59283"),
-            finding("pkg:maven/org.springframework.security/spring-security-core@6.5.11", "CVE-2026-59270")
+            finding("pkg:maven/org.springframework.security/spring-security-core@6.5.11", "CVE-2026-59270"),
+            finding("pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk7@1.9.25", "CVE-2026-53914"),
+            finding("pkg:maven/org.springframework.security/spring-security-web@6.5.11", "CVE-2026-59270"),
+            finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-47884"),
+            finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-47890"),
+            finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-47891"),
+            finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-47892"),
+            finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-59313"),
+            finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-59283")
     );
-    private static final Map<ApprovedFinding, String> APPROVED_PACKAGE_URL_REGEXES = Map.of(
-            finding("pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.25", "CVE-2026-53914"), "^pkg:maven/org\\.jetbrains\\.kotlin/kotlin-stdlib@1\\.9\\.25$",
-            finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-47884"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$",
-            finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-47890"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$",
-            finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-47891"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$",
-            finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-47892"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$",
-            finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-59313"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$",
-            finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-59283"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$",
-            finding("pkg:maven/org.springframework.security/spring-security-core@6.5.11", "CVE-2026-59270"), "^pkg:maven/org\\.springframework\\.security/spring-security-core@6\\.5\\.11$"
+    private static final Map<ApprovedFinding, String> APPROVED_PACKAGE_URL_REGEXES = Map.ofEntries(
+Map.entry(finding("pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.25", "CVE-2026-53914"), "^pkg:maven/org\\.jetbrains\\.kotlin/kotlin-stdlib@1\\.9\\.25$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-47884"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-47890"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-47891"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-47892"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-59313"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2026-59283"), "^pkg:maven/org\\.springframework/spring-core@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework.security/spring-security-core@6.5.11", "CVE-2026-59270"), "^pkg:maven/org\\.springframework\\.security/spring-security-core@6\\.5\\.11$"),
+            Map.entry(finding("pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk7@1.9.25", "CVE-2026-53914"), "^pkg:maven/org\\.jetbrains\\.kotlin/kotlin-stdlib-jdk7@1\\.9\\.25$"),
+            Map.entry(finding("pkg:maven/org.springframework.security/spring-security-web@6.5.11", "CVE-2026-59270"), "^pkg:maven/org\\.springframework\\.security/spring-security-web@6\\.5\\.11$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-47884"), "^pkg:maven/org\\.springframework/spring-tx@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-47890"), "^pkg:maven/org\\.springframework/spring-tx@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-47891"), "^pkg:maven/org\\.springframework/spring-tx@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-47892"), "^pkg:maven/org\\.springframework/spring-tx@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-59313"), "^pkg:maven/org\\.springframework/spring-tx@6\\.2\\.19$"),
+            Map.entry(finding("pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-59283"), "^pkg:maven/org\\.springframework/spring-tx@6\\.2\\.19$")
     );
 
     @Test
-    void suppressionsAreLimitedToTheEightApprovedFindingsAndExpire() throws Exception {
+    void suppressionsAreLimitedToTheSixteenApprovedFindingsAndExpire() throws Exception {
         List<Suppression> suppressions = readSuppressions();
 
-        assertThat(suppressions).hasSize(8);
+        assertThat(suppressions).hasSize(16);
         assertThat(EXPIRY).isBeforeOrEqualTo(APPROVED_LATEST_EXPIRY);
         assertThat(suppressions).allSatisfy(suppression -> {
             assertThat(suppression.until()).isEqualTo(EXPIRY);
@@ -97,6 +113,13 @@ class DependencyCheckSuppressionScopeTests {
         assertThat(isSuppressed(suppressions, "pkg:maven/org.springframework/spring-context@6.2.19", "CVE-2026-47884", beforeExpiry)).isFalse();
         assertThat(isSuppressed(suppressions, "pkg:maven/org.springframework/spring-core@6.2.19", "CVE-2099-00001", beforeExpiry)).isFalse();
         assertThat(isSuppressed(suppressions, "pkg:maven/com.example/unrelated-library@1.0.0", "CVE-2099-00002", beforeExpiry)).isFalse();
+        // Different releases and sibling artifacts must never inherit a reviewed CVE match.
+        assertThat(isSuppressed(suppressions, "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk7@1.9.26", "CVE-2026-53914", beforeExpiry)).isFalse();
+        assertThat(isSuppressed(suppressions, "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk8@1.9.25", "CVE-2026-53914", beforeExpiry)).isFalse();
+        assertThat(isSuppressed(suppressions, "pkg:maven/org.springframework.security/spring-security-web@6.5.12", "CVE-2026-59270", beforeExpiry)).isFalse();
+        assertThat(isSuppressed(suppressions, "pkg:maven/org.springframework/spring-tx@6.2.20", "CVE-2026-47884", beforeExpiry)).isFalse();
+        assertThat(isSuppressed(suppressions, "pkg:maven/org.springframework/spring-tx@6.2.19", "CVE-2026-47885", beforeExpiry)).isFalse();
+        assertThat(isSuppressed(suppressions, "pkg:maven/org.springframework/spring-web@6.2.19", "CVE-2026-59313", beforeExpiry)).isFalse();
     }
 
     @Test
