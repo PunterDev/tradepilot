@@ -2,6 +2,8 @@ name: owasp-complete-inventory
 
 on:
   workflow_dispatch:
+  # Temporary feature-branch PR trigger to collect one diagnostic report before workflow registration on master.
+  pull_request:
 
 permissions:
   contents: read
