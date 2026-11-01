@@ -93,6 +93,37 @@ class ProtectionCommitmentEvaluatorTests {
         });
     }
 
+    @Test void incompleteImportCannotBeReportedAsFollowedForAttemptExposurePauseOrWindow() {
+        NextSessionProtectionCommitment commitment = commitment();
+        commitment.setMaxAttempts(2);
+        commitment.setMaxNormalizedExposure(new BigDecimal("20"));
+        commitment.setPostLossPauseMinutes(15);
+        commitment.setAllowedWindowStart(LocalTime.of(9, 30));
+        commitment.setAllowedWindowEnd(LocalTime.of(11, 0));
+
+        Trade incomplete = trade("09:30", "09:35", "-50", 1);
+        incomplete.setExitTime(null);
+        var evaluated = evaluator.evaluate(commitment, List.of(incomplete), ZoneId.of("America/New_York"));
+        assertThat(evaluated.rules()).extracting(r -> r.rule() + ":" + r.status())
+                .contains("MAX_ATTEMPTS:NOT_EVALUABLE", "MAX_NORMALIZED_EXPOSURE:NOT_EVALUABLE",
+                        "POST_LOSS_PAUSE:NOT_EVALUABLE", "TRADING_WINDOW:NOT_EVALUABLE");
+        assertThat(evaluated.overallStatus()).isEqualTo(ProtectionCommitmentStatus.NOT_EVALUABLE);
+    }
+
+    @Test void missingQuantityOrPnlCannotBeReportedAsPassingExposureOrPostLossPause() {
+        NextSessionProtectionCommitment commitment = commitment();
+        commitment.setMaxNormalizedExposure(new BigDecimal("20"));
+        commitment.setPostLossPauseMinutes(10);
+        Trade missing = trade("09:30", "09:35", "-50", 1);
+        missing.setQuantity(null);
+        missing.setPnlAmount(null);
+        Trade later = trade("10:00", "10:05", "30", 1);
+        var evaluated = evaluator.evaluate(commitment, List.of(missing, later), ZoneId.of("America/New_York"));
+        assertThat(evaluated.rules()).extracting(r -> r.rule() + ":" + r.status())
+                .contains("MAX_NORMALIZED_EXPOSURE:NOT_EVALUABLE", "POST_LOSS_PAUSE:NOT_EVALUABLE");
+        assertThat(evaluated.overallStatus()).isEqualTo(ProtectionCommitmentStatus.NOT_EVALUABLE);
+    }
+
     @Test void postLossPauseChecksEveryRealizedLossAndDoesNotTreatOneUntestedLossAsSuccess() {
         NextSessionProtectionCommitment commitment = commitment(); commitment.setPostLossPauseMinutes(20);
         var untested = evaluator.evaluate(commitment, List.of(trade("09:30", "09:35", "-20", 1)), ZoneId.of("America/New_York"));
