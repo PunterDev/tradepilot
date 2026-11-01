@@ -55,9 +55,19 @@ public class ProtectionCommitmentEvaluator {
 
     private CommitmentEvaluationResponse.RuleResult sessionLossRule(BigDecimal configuredLoss, List<Trade> trades,
             List<Attempt> attempts) {
-        if (attempts.size() != trades.size()) {
+        // A zero-filled null P&L or an invalid completed-trade interval can falsely make
+        // an exceeded loss boundary appear FOLLOWED. Decline to evaluate until import data
+        // establishes an auditable realized P&L sequence for every round trip.
+        if (trades.isEmpty()) {
             return notEvaluable("MAX_SESSION_LOSS", configuredLoss.toPlainString(),
-                    "At least one imported trade is missing an entry or exit timestamp, so chronological realized P&L cannot be established.");
+                    "No completed trades are available to establish realized session P&L.");
+        }
+        if (attempts.size() != trades.size() || trades.stream().anyMatch(t ->
+                t.getPnlAmount() == null
+                        || t.getEntryTime() == null || t.getExitTime() == null
+                        || !t.getExitTime().isAfter(t.getEntryTime()))) {
+            return notEvaluable("MAX_SESSION_LOSS", configuredLoss.toPlainString(),
+                    "An imported trade has missing realized P&L, incomplete timestamps, or an invalid entry/exit sequence.");
         }
 
         List<Attempt> closed = attempts.stream()
