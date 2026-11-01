@@ -1,35 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
-  <!-- Owner-approved Account Survival V1 exception scope. Expires 2026-11-30T23:59:59Z. -->
-  <suppress until="2026-11-30T23:59:59Z">
+  <!-- Exact owner-approved scope. XSD date expiry: 2026-11-30T00:00:00Z (earlier than the 2026-11-30T23:59:59Z approval limit). -->
+  <suppress until="2026-11-30Z">
     <packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/kotlin-stdlib@1\.9\.25$</packageUrl>
     <cve>CVE-2026-53914</cve>
   </suppress>
-  <suppress until="2026-11-30T23:59:59Z">
+  <suppress until="2026-11-30Z">
     <packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl>
     <cve>CVE-2026-47884</cve>
   </suppress>
-  <suppress until="2026-11-30T23:59:59Z">
+  <suppress until="2026-11-30Z">
     <packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl>
     <cve>CVE-2026-47890</cve>
   </suppress>
-  <suppress until="2026-11-30T23:59:59Z">
+  <suppress until="2026-11-30Z">
     <packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl>
     <cve>CVE-2026-47891</cve>
   </suppress>
-  <suppress until="2026-11-30T23:59:59Z">
+  <suppress until="2026-11-30Z">
     <packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl>
     <cve>CVE-2026-47892</cve>
   </suppress>
-  <suppress until="2026-11-30T23:59:59Z">
+  <suppress until="2026-11-30Z">
     <packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl>
     <cve>CVE-2026-59313</cve>
   </suppress>
-  <suppress until="2026-11-30T23:59:59Z">
+  <suppress until="2026-11-30Z">
     <packageUrl regex="true">^pkg:maven/org\.springframework/spring-core@6\.2\.19$</packageUrl>
     <cve>CVE-2026-59283</cve>
   </suppress>
-  <suppress until="2026-11-30T23:59:59Z">
+  <suppress until="2026-11-30Z">
     <packageUrl regex="true">^pkg:maven/org\.springframework\.security/spring-security-core@6\.5\.11$</packageUrl>
     <cve>CVE-2026-59270</cve>
   </suppress>
