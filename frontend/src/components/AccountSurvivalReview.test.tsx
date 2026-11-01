@@ -205,6 +205,31 @@ describe("AccountSurvivalReview commitment evaluation", () => {
     expect(screen.getByText("No evaluation has been recorded yet.")).toBeVisible();
   });
 
+  it("replaces a stale draft with the authoritative locked commitment after a lifecycle conflict", async () => {
+    const draft = { ...commitment, status: "DRAFT", acceptedAt: null };
+    vi.mocked(survivalApi.getSurvivalAssessment).mockResolvedValue(assessment);
+    vi.mocked(survivalApi.getRiskProfile).mockResolvedValue(profile);
+    vi.mocked(survivalApi.getProtectionCommitment).mockResolvedValueOnce(draft).mockResolvedValue(commitment);
+    vi.mocked(survivalApi.getCommitmentEvaluation).mockResolvedValue(completedEvaluation);
+    vi.mocked(survivalApi.getCommitmentEvaluationHistory).mockResolvedValue(evaluationHistory);
+    vi.mocked(survivalApi.saveProtectionCommitment).mockRejectedValue({
+      response: { data: { message: "Accepted protection commitments are locked. Create a new commitment for a future session." } },
+    });
+    const user = userEvent.setup();
+
+    render(<AccountSurvivalReview accountId={7} date="2026-04-06" />);
+    await screen.findByRole("heading", { name: "Stable" });
+    await user.click(screen.getByRole("button", { name: "Edit draft commitment" }));
+    await user.clear(screen.getByLabelText("Maximum attempts"));
+    await user.type(screen.getByLabelText("Maximum attempts"), "99");
+    await user.click(screen.getByRole("button", { name: "Save commitment" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Accepted protection commitments are locked");
+    await waitFor(() => expect(screen.getByText(/Accepted protection rules are locked/)).toBeVisible());
+    expect(screen.queryByRole("button", { name: "Edit draft commitment" })).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("99")).not.toBeInTheDocument();
+  });
+
   it("expands and collapses rule evidence with mouse and keyboard", async () => {
     const user = userEvent.setup();
     await renderLoaded();
