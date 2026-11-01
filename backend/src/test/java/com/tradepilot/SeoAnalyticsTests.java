@@ -141,8 +141,10 @@ class SeoAnalyticsTests {
         postEvent(UUID.randomUUID().toString(), "signup_started_from_seo", anonymousId, "/tools/revenge-trading-calculator", "revenge_trading");
 
         assertThat(eventRepository.findAll().stream().filter(event -> anonymousId.equals(event.getAnonymousId())).count()).isEqualTo(5);
-        LocalDate startDate = LocalDate.now().minusDays(1);
-        LocalDate endDate = LocalDate.now();
+        seoAnalyticsService.recordSignup(normal, attribution(anonymousId, "/tools/revenge-trading-calculator", "google", "organic", "revenge"));
+        LocalDateTime signupAt = attributionRepository.findByUserId(normal.getId()).orElseThrow().getSignupCompletedAt();
+        LocalDate startDate = signupAt.toLocalDate().minusDays(1);
+        LocalDate endDate = signupAt.plusMinutes(40).toLocalDate();
         eventRepository.findAll().stream()
                 .filter(event -> anonymousId.equals(event.getAnonymousId()))
                 .forEach(event -> assertThat(event.getOccurredAt()).isBetween(startDate.atStartOfDay(), endDate.plusDays(1).atStartOfDay()));
@@ -175,8 +177,6 @@ class SeoAnalyticsTests {
                 .as("raw occurred_at values %s should be between %s and %s", rawOccurredAt, startDate.atStartOfDay(), endDate.plusDays(1).atStartOfDay())
                 .isEqualTo(5);
 
-        seoAnalyticsService.recordSignup(normal, attribution(anonymousId, "/tools/revenge-trading-calculator", "google", "organic", "revenge"));
-        LocalDateTime signupAt = LocalDateTime.now();
         saveFeature(normal, FeatureUsageAction.FIRST_IMPORT_COMPLETED, signupAt.plusMinutes(8));
         seoAnalyticsService.markFirstImportCompleted(normal, signupAt.plusMinutes(8));
         saveFeature(normal, FeatureUsageAction.FIRST_INSIGHT_GENERATED, signupAt.plusMinutes(20));
@@ -204,6 +204,28 @@ class SeoAnalyticsTests {
         assertThat(json.get("latency").get("medianSignupToFirstInsightMinutes").asDouble()).isGreaterThanOrEqualTo(20);
         assertThat(response).doesNotContain("pnlAmount").doesNotContain("setupType");
         assertThat(eventStart).isBefore(LocalDateTime.now());
+    }
+
+    @Test
+    void seoAnalyticsDashboardIncludesMilestonesThatCrossMidnightWhenTheDateRangeIncludesBothDays() throws Exception {
+        String unique = UUID.randomUUID().toString();
+        String landingPage = "/seo-midnight-" + unique;
+        User admin = createUser("seo-midnight-admin-" + unique + "@tradepilot.local", UserRole.ADMIN, PlanType.PRO);
+        User normal = createUser("seo-midnight-user-" + unique + "@tradepilot.local", UserRole.USER, PlanType.FREE);
+        LocalDate fixtureDate = LocalDate.of(2030, 1, 15);
+        LocalDateTime signupAt = fixtureDate.atTime(23, 50);
+
+        seoAnalyticsService.recordSignup(normal, attribution("seo-midnight-" + unique, landingPage, "google", "organic", "seo-midnight"));
+        seoAnalyticsService.markFirstImportCompleted(normal, signupAt.plusMinutes(5));
+        seoAnalyticsService.markFirstInsightGenerated(normal, signupAt.plusMinutes(20));
+        normal.setPlan(PlanType.PRO);
+        normal.setSubscriptionStatus(SubscriptionStatus.ACTIVE);
+        seoAnalyticsService.markProConverted(normal, signupAt.plusMinutes(40));
+
+        JsonNode landing = findLandingPage(dashboardJson(admin, fixtureDate, fixtureDate.plusDays(1)), landingPage);
+        assertThat(landing.get("firstImports").asLong()).isEqualTo(1);
+        assertThat(landing.get("firstInsights").asLong()).isEqualTo(1);
+        assertThat(landing.get("proConversions").asLong()).isEqualTo(1);
     }
 
     @Test

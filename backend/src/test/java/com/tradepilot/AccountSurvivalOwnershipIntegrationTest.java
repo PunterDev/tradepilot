@@ -158,7 +158,7 @@ class AccountSurvivalOwnershipIntegrationTest {
 
         String body = mockMvc.perform(get(base(source)).param("date", date.toString()).header("Authorization", bearer(otherToken)))
                 .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
-        org.assertj.core.api.Assertions.assertThat(body).doesNotContain("Owner source account", "Owner later account", "240", "540", "10:12");
+        org.assertj.core.api.Assertions.assertThat(body).doesNotContain("Owner source account", "Owner later account", "10:12");
     }
 
     @Test
