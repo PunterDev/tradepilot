@@ -22,6 +22,8 @@ Cross-account continuation is an observation across the authenticated trader's o
 
 Maximum session loss is evaluated from cumulative **realized** P&L in chronological completed-trade order, not the final session P&L. The worst cumulative P&L and the first trade that reaches the configured stop boundary are retained as evidence. Reaching the boundary exactly counts as a breach. Later completed trades are reported as continued trading after the stop condition.
 
+When imported trade rows lack essential timestamps, realized P&L, quantity, or symbol, the affected rules return `NOT_EVALUABLE` instead of assuming zero losses or compliant exposure. Absent evidence never counts toward fully evaluated adherence.
+
 This is not an unrealized-equity, trailing-drawdown, or prop-firm-rule calculation. If a completed-trade CSV has missing timestamps, overlapping completed positions, or tied close timestamps that prevent a reliable realized-P&L sequence, this rule is `NOT_EVALUABLE`.
 
 ## Privacy and limits
@@ -33,3 +35,10 @@ Every survival resource is scoped to its owner and account. Evaluations use only
 The review shows the latest 30 current evaluation sessions for an accepted commitment. All displayed history counts refer only to that window. Adherence is `FOLLOWED / (FOLLOWED + BROKEN)` and is shown only when at least one session is fully evaluable; `PARTIALLY_OBSERVED` and `NOT_EVALUABLE` are excluded from that denominator. Corrected imports retain prior evaluation versions while exactly one current version exists per commitment and evaluated session.
 
 Migration `V031__account_survival_evaluation_history.sql` enforces that current-version invariant with a partial unique index on `(commitment_id, evaluated_session_date)` where `is_current` is true. It is forward-only and compatible with existing rows because prior releases maintained at most one current evaluation per commitment; it does not delete historical versions.
+
+## V1 release acceptance status
+
+- **Implemented and reviewed in source:** immutable accepted commitments; account-owned serialized save/accept; idempotent acceptance; future-session eligibility; worst cumulative realized session-loss with ambiguous-sequence safeguards; durable per-session evaluation history/versioning; and evidence-limited same-user cross-account continuation.
+- **Release gate:** require green hosted backend, PostgreSQL/Flyway, mandatory OWASP, Log4j negative control, Gitleaks, Semgrep, and frontend audit; independently execute and verify Account Survival Playwright tests against the latest branch head and review the user-visible flow. Hosted backend/security gates alone do **not** establish full release GO.
+- **Security expiry:** the temporary exact-scope OWASP risk acceptance expires at `2026-11-30T00:00:00Z`. Future patches or configuration changes require reassessment before release.
+- **Deployment:** PR #1 is not authorized to merge or deploy based solely on this document.
