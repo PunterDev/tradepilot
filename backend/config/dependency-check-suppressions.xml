@@ -33,4 +33,37 @@
     <packageUrl regex="true">^pkg:maven/org\.springframework\.security/spring-security-core@6\.5\.11$</packageUrl>
     <cve>CVE-2026-59270</cve>
   </suppress>
+  <!-- Additional eight exact matches approved by sole owner in PR #1 comment 6559383184. -->
+  <suppress until="2026-11-30Z">
+    <packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/kotlin-stdlib-jdk7@1\.9\.25$</packageUrl>
+    <cve>CVE-2026-53914</cve>
+  </suppress>
+  <suppress until="2026-11-30Z">
+    <packageUrl regex="true">^pkg:maven/org\.springframework\.security/spring-security-web@6\.5\.11$</packageUrl>
+    <cve>CVE-2026-59270</cve>
+  </suppress>
+  <suppress until="2026-11-30Z">
+    <packageUrl regex="true">^pkg:maven/org\.springframework/spring-tx@6\.2\.19$</packageUrl>
+    <cve>CVE-2026-47884</cve>
+  </suppress>
+  <suppress until="2026-11-30Z">
+    <packageUrl regex="true">^pkg:maven/org\.springframework/spring-tx@6\.2\.19$</packageUrl>
+    <cve>CVE-2026-47890</cve>
+  </suppress>
+  <suppress until="2026-11-30Z">
+    <packageUrl regex="true">^pkg:maven/org\.springframework/spring-tx@6\.2\.19$</packageUrl>
+    <cve>CVE-2026-47891</cve>
+  </suppress>
+  <suppress until="2026-11-30Z">
+    <packageUrl regex="true">^pkg:maven/org\.springframework/spring-tx@6\.2\.19$</packageUrl>
+    <cve>CVE-2026-47892</cve>
+  </suppress>
+  <suppress until="2026-11-30Z">
+    <packageUrl regex="true">^pkg:maven/org\.springframework/spring-tx@6\.2\.19$</packageUrl>
+    <cve>CVE-2026-59313</cve>
+  </suppress>
+  <suppress until="2026-11-30Z">
+    <packageUrl regex="true">^pkg:maven/org\.springframework/spring-tx@6\.2\.19$</packageUrl>
+    <cve>CVE-2026-59283</cve>
+  </suppress>
 </suppressions>
