@@ -90,6 +90,17 @@ transaction pooling for `pg_dump`. The workflow requires `verify-full` TLS and
 an approved CA root certificate; it does not accept `sslmode=require` as a
 substitute for certificate/hostname verification.
 
+Before activation, run the separately approval-gated
+`scripts/backup/production-connectivity-preflight.sh` exactly once against the
+configured endpoint. It requires
+`TRADEPILOT_PRODUCTION_CONNECTIVITY_PREFLIGHT_APPROVED=yes`, PostgreSQL 17,
+`verify-full` TLS, a read-only `SELECT 1`, and a temporary schema-only custom
+archive validated by `pg_restore --list`; it deletes that archive on exit. The
+default connection timeout is 15 seconds. Supabase currently recommends a
+direct connection for `pg_dump`; its session pooler is the IPv4 fallback, while
+transaction pooling is unsuitable. The approved preflight is the evidence that
+the configured endpoint works for this workflow.
+
 ## Encryption and key custody
 
 The workflow receives only an `age` **public recipient**. It cannot decrypt

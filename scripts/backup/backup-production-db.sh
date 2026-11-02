@@ -26,6 +26,8 @@ done
 
 sslmode="${TRADEPILOT_BACKUP_PGSSLMODE:-verify-full}"
 synthetic_mode="${TRADEPILOT_BACKUP_SYNTHETIC_TEST_MODE:-false}"
+connect_timeout="${TRADEPILOT_BACKUP_PGCONNECT_TIMEOUT:-15}"
+[[ "$connect_timeout" =~ ^[1-9][0-9]*$ ]] || backup_die "TRADEPILOT_BACKUP_PGCONNECT_TIMEOUT must be a positive integer"
 if [[ "$sslmode" != "verify-full" ]]; then
   [[ "$synthetic_mode" == "true" && "$sslmode" == "disable" ]] || backup_die "TRADEPILOT_BACKUP_PGSSLMODE must be verify-full"
   case "$TRADEPILOT_BACKUP_PGHOST" in
@@ -52,6 +54,7 @@ export PGDATABASE="$TRADEPILOT_BACKUP_PGDATABASE"
 export PGUSER="$TRADEPILOT_BACKUP_PGUSER"
 export PGPASSWORD="$TRADEPILOT_BACKUP_PGPASSWORD"
 export PGSSLMODE="$sslmode"
+export PGCONNECT_TIMEOUT="$connect_timeout"
 
 if [[ "$sslmode" == "verify-full" && -n "${TRADEPILOT_BACKUP_PGSSLROOTCERT_BASE64:-}" ]]; then
   export PGSSLROOTCERT="$work_dir/root.crt"
