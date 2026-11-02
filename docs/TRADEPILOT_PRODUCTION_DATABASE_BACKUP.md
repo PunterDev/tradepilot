@@ -100,6 +100,12 @@ path before enabling production automation. Rotate the storage credential and
 age recipient through a controlled change; retain the former private key until
 all backups encrypted to it expire.
 
+Manual custody action: save a second protected copy of
+`~/.config/tradepilot-backup/age-identity.txt` as an encrypted password-manager
+attachment or on encrypted offline media. Do not paste its contents into chat,
+issue trackers, repositories, GitHub secrets, or shell history. An authorized
+recovery operator must verify access to that second copy before activation.
+
 Cloudflare R2 is a compatible low-cost option because it supports S3 APIs and
 does not charge egress in its standard model; a private existing S3 bucket is
 also acceptable. No provider, bucket, account, subscription, or billable
@@ -119,7 +125,8 @@ and approved production dump: approximately compressed logical-dump size times
 4. Set `TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes` and the target connection
    variables. Run `scripts/backup/restore-verify.sh`.
 5. The script verifies encrypted SHA-256, decrypts into temporary storage,
-   validates the archive, refuses a non-empty target database, restores with
+   validates the archive, refuses a target containing any user-managed schema
+   or object, restores with
    `pg_restore --exit-on-error`, validates required application tables and
    Flyway history, and checks all foreign keys are validated.
 6. Capture the restore result in the recovery record. Measure RTO only from an

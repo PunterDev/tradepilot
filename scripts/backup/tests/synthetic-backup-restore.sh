@@ -21,9 +21,10 @@ temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/tradepilot-backup-synthetic.XXXXXX")"
 suffix="${RANDOM}${RANDOM}"
 source_name="tradepilot-backup-source-$suffix"
 restore_name="tradepilot-backup-restore-$suffix"
+blocked_name="tradepilot-backup-blocked-$suffix"
 
 cleanup() {
-  docker rm -f "$source_name" "$restore_name" >/dev/null 2>&1 || true
+  docker rm -f "$source_name" "$restore_name" "$blocked_name" >/dev/null 2>&1 || true
   rm -rf "$temp_dir"
 }
 trap cleanup EXIT HUP INT TERM
@@ -203,4 +204,30 @@ TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" \
 
 restored_users="$(PGPASSWORD=synthetic-test-password psql -X -A -t -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$restore_port" -U postgres -d tradepilot -c 'select count(*) from users')"
 [[ "$restored_users" == "1" ]]
+
+# A target with an object outside public must also be refused before restore.
+blocked_port="$(start_postgres "$blocked_name")"
+PGPASSWORD=synthetic-test-password psql -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$blocked_port" -U postgres -d tradepilot <<'SQL'
+create schema unmanaged;
+create table unmanaged.marker (id integer primary key);
+SQL
+set +e
+TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \
+TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes \
+TRADEPILOT_RESTORE_PGHOST=127.0.0.1 \
+TRADEPILOT_RESTORE_PGPORT="$blocked_port" \
+TRADEPILOT_RESTORE_PGDATABASE=tradepilot \
+TRADEPILOT_RESTORE_PGUSER=postgres \
+TRADEPILOT_RESTORE_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_RESTORE_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" \
+  bash "$RESTORE_SCRIPT" >/dev/null 2>&1
+blocked_status=$?
+set -e
+(( blocked_status != 0 )) || {
+  printf 'Restore unexpectedly accepted a target with user-managed schema objects.\n' >&2
+  exit 1
+}
+marker_exists="$(PGPASSWORD=synthetic-test-password psql -X -A -t -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$blocked_port" -U postgres -d tradepilot -c "select to_regclass('unmanaged.marker') is not null")"
+[[ "$marker_exists" == "t" ]]
 printf 'Synthetic PostgreSQL 17 backup/encrypt/decrypt/restore verification passed.\n'

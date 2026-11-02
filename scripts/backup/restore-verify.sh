@@ -73,8 +73,23 @@ export PGUSER="$TRADEPILOT_RESTORE_PGUSER"
 export PGPASSWORD="$TRADEPILOT_RESTORE_PGPASSWORD"
 export PGSSLMODE="${TRADEPILOT_RESTORE_PGSSLMODE:-disable}"
 
-existing_tables="$(psql -X -A -t -v ON_ERROR_STOP=1 -c "select count(*) from pg_catalog.pg_tables where schemaname = 'public'")"
-[[ "$existing_tables" == "0" ]] || backup_die "restore target is not empty; refusing to overwrite a non-disposable database"
+existing_user_managed_state="$(psql -X -A -t -v ON_ERROR_STOP=1 -c "
+  select count(*)
+  from (
+    select namespace.oid
+    from pg_catalog.pg_namespace namespace
+    where namespace.nspname not in ('pg_catalog', 'information_schema', 'public')
+      and namespace.nspname not like 'pg_toast%'
+      and namespace.nspname not like 'pg_temp_%'
+    union
+    select relation.oid
+    from pg_catalog.pg_class relation
+    join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'public'
+      and relation.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
+  ) existing_state
+")"
+[[ "$existing_user_managed_state" == "0" ]] || backup_die "restore target has user-managed schemas or objects; refusing to overwrite a non-disposable database"
 pg_restore --exit-on-error --no-owner --no-privileges --dbname="$PGDATABASE" "$archive_path"
 
 python3 - <<'PY'
