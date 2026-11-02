@@ -1,0 +1,427 @@
+#!/usr/bin/env bash
+# Exercises the production backup and restore scripts against disposable PostgreSQL 17 containers.
+
+set -Eeuo pipefail
+umask 077
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+BACKUP_SCRIPT="$ROOT_DIR/scripts/backup/backup-production-db.sh"
+RESTORE_SCRIPT="$ROOT_DIR/scripts/backup/restore-verify.sh"
+UPLOAD_SCRIPT="$ROOT_DIR/scripts/backup/upload-s3-backup.sh"
+VERIFY_UPLOAD_SCRIPT="$ROOT_DIR/scripts/backup/verify-uploaded-encrypted-backup.sh"
+FRESHNESS_SCRIPT="$ROOT_DIR/scripts/backup/check-backup-freshness.sh"
+
+for command in docker pg_dump pg_restore psql pg_isready age age-keygen python3; do
+  command -v "$command" >/dev/null || {
+    printf 'Missing required command: %s\n' "$command" >&2
+    exit 1
+  }
+done
+
+temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/tradepilot-backup-synthetic.XXXXXX")"
+suffix="${RANDOM}${RANDOM}"
+source_name="tradepilot-backup-source-$suffix"
+restore_name="tradepilot-backup-restore-$suffix"
+blocked_name="tradepilot-backup-blocked-$suffix"
+function_blocked_name="tradepilot-backup-function-blocked-$suffix"
+docker_blocked_name="tradepilot-backup-docker-blocked-$suffix"
+dependency_blocked_name="tradepilot-backup-dependency-blocked-$suffix"
+
+cleanup() {
+  docker rm -f "$source_name" "$restore_name" "$blocked_name" "$function_blocked_name" "$docker_blocked_name" "$dependency_blocked_name" >/dev/null 2>&1 || true
+  rm -rf "$temp_dir"
+}
+trap cleanup EXIT HUP INT TERM
+
+make_fake_aws() {
+  local fake_bin="$temp_dir/fake-bin"
+  mkdir -p "$fake_bin"
+  cat >"$fake_bin/aws" <<'FAKE_AWS'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+while [[ "${1:-}" == --region || "${1:-}" == --endpoint-url ]]; do shift 2; done
+service="$1"
+operation="$2"
+shift 2
+object_path() {
+  local uri="$1"
+  printf '%s/%s\n' "$FAKE_S3_ROOT" "${uri#s3://}"
+}
+case "$service:$operation" in
+  s3:cp)
+    source="$1"
+    destination="$2"
+    shift 2
+    metadata=""
+    while (($#)); do
+      if [[ "$1" == --metadata ]]; then metadata="$2"; shift 2; else shift; fi
+    done
+    if [[ "$source" == s3://* ]]; then
+      cp "$(object_path "$source")" "$destination"
+    else
+      target="$(object_path "$destination")"
+      mkdir -p "$(dirname "$target")"
+      cp "$source" "$target"
+      if [[ -n "$metadata" ]]; then printf '%s\n' "${metadata#sha256=}" >"$target.sha256"; fi
+    fi
+    ;;
+  s3api:head-object)
+    bucket=""; key=""; query=""
+    while (($#)); do
+      case "$1" in
+        --bucket) bucket="$2"; shift 2 ;;
+        --key) key="$2"; shift 2 ;;
+        --query) query="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    target="$FAKE_S3_ROOT/$bucket/$key"
+    [[ -f "$target" ]]
+    if [[ "$query" == "Metadata.sha256" ]]; then cat "$target.sha256"; else wc -c <"$target" | tr -d '[:space:]'; fi
+    ;;
+  s3api:list-objects-v2)
+    bucket=""; prefix=""
+    while (($#)); do
+      case "$1" in
+        --bucket) bucket="$2"; shift 2 ;;
+        --prefix) prefix="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    python3 - "$FAKE_S3_ROOT/$bucket" "$prefix" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+root, prefix = Path(sys.argv[1]), sys.argv[2]
+items = []
+for path in root.rglob('*') if root.exists() else []:
+    if path.is_file() and not path.name.endswith('.sha256'):
+        key = path.relative_to(root).as_posix()
+        if key.startswith(prefix):
+            items.append({"Key": key, "LastModified": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat().replace('+00:00', 'Z')})
+print(json.dumps({"Contents": items}))
+PY
+    ;;
+  s3api:delete-object)
+    bucket=""; key=""
+    while (($#)); do
+      case "$1" in
+        --bucket) bucket="$2"; shift 2 ;;
+        --key) key="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    rm -f "$FAKE_S3_ROOT/$bucket/$key" "$FAKE_S3_ROOT/$bucket/$key.sha256"
+    ;;
+  *) printf 'Unsupported fake AWS command: %s %s\n' "$service" "$operation" >&2; exit 2 ;;
+esac
+FAKE_AWS
+  chmod 700 "$fake_bin/aws"
+  printf '%s\n' "$fake_bin"
+}
+
+start_postgres() {
+  local name="$1"
+  docker run --detach --rm --name "$name" \
+    -e POSTGRES_PASSWORD=synthetic-test-password \
+    -e POSTGRES_DB=tradepilot \
+    -p 127.0.0.1::5432 postgres:17-alpine >/dev/null
+  local port
+  port="$(docker port "$name" 5432/tcp | awk -F: '{print $NF}')"
+  until PGPASSWORD=synthetic-test-password pg_isready -h 127.0.0.1 -p "$port" -U postgres -d tradepilot >/dev/null 2>&1; do
+    sleep 1
+  done
+  printf '%s\n' "$port"
+}
+
+start_isolated_postgres() {
+  local name="$1"
+  docker run --detach --rm --name "$name" --network none \
+    -e POSTGRES_PASSWORD=synthetic-test-password \
+    -e POSTGRES_DB=tradepilot postgres:17-alpine >/dev/null
+  [[ "$(docker inspect "$name" --format '{{.HostConfig.NetworkMode}} {{json .NetworkSettings.Ports}}')" == "none {}" ]] || {
+    printf 'Synthetic isolated restore target has networking or published ports.\n' >&2
+    exit 1
+  }
+  until PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$name" \
+    pg_isready -U postgres -d tradepilot >/dev/null 2>&1; do
+    sleep 1
+  done
+}
+
+source_port="$(start_postgres "$source_name")"
+PGPASSWORD=synthetic-test-password psql -X -v ON_ERROR_STOP=1 \
+  -h 127.0.0.1 -p "$source_port" -U postgres -d tradepilot <<'SQL'
+create table users (id bigint primary key, email text not null);
+create table trading_accounts (id bigint primary key, user_id bigint not null references users(id));
+create table import_batches (id bigint primary key, user_id bigint not null references users(id));
+create table trades (id bigint primary key, account_id bigint not null references trading_accounts(id));
+create table journal_entries (id bigint primary key, user_id bigint not null references users(id));
+create table flyway_schema_history (installed_rank integer primary key, version varchar(50), description varchar(200));
+create table serial_ledger (id serial primary key, note text not null);
+create table identity_default_ledger (id bigint generated by default as identity primary key, note text not null);
+create table identity_always_ledger (id bigint generated always as identity primary key, note text not null);
+insert into users values (1, 'synthetic-user@example.test');
+insert into trading_accounts values (1, 1);
+insert into import_batches values (1, 1);
+insert into trades values (1, 1);
+insert into journal_entries values (1, 1);
+insert into flyway_schema_history values (1, '001', 'synthetic baseline');
+insert into serial_ledger (note) values ('serial');
+insert into identity_default_ledger (note) values ('identity default');
+insert into identity_always_ledger (note) values ('identity always');
+SQL
+
+identity_file="$temp_dir/age-identity.txt"
+age-keygen -o "$identity_file" >/dev/null 2>&1
+recipient="$(awk '/^# public key: / {print $4}' "$identity_file")"
+backup_output="$temp_dir/backup-output"
+
+TRADEPILOT_BACKUP_PGHOST=127.0.0.1 \
+TRADEPILOT_BACKUP_PGPORT="$source_port" \
+TRADEPILOT_BACKUP_PGDATABASE=tradepilot \
+TRADEPILOT_BACKUP_PGUSER=postgres \
+TRADEPILOT_BACKUP_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_BACKUP_AGE_RECIPIENT="$recipient" \
+TRADEPILOT_BACKUP_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_SYNTHETIC_TEST_MODE=true \
+TRADEPILOT_BACKUP_OUTPUT_DIR="$backup_output" \
+  bash "$BACKUP_SCRIPT"
+
+encrypted_file="$(find "$backup_output" -type f -name '*.dump.age' -print -quit)"
+[[ -n "$encrypted_file" && -s "$encrypted_file" ]]
+[[ -s "$encrypted_file.metadata.json" ]]
+[[ -s "$encrypted_file.completeness.json.age" ]]
+if grep -aq 'synthetic-user@example.test' "$encrypted_file"; then
+  printf 'Encrypted artifact unexpectedly contains synthetic plaintext.\n' >&2
+  exit 1
+fi
+
+# A failed encryption must not leave a partial encrypted artifact or metadata
+# beside otherwise valid backups.
+failing_age_bin="$temp_dir/failing-age-bin"
+mkdir -p "$failing_age_bin"
+cat >"$failing_age_bin/age" <<'FAILING_AGE'
+#!/usr/bin/env bash
+exit 79
+FAILING_AGE
+chmod 700 "$failing_age_bin/age"
+failed_backup_output="$temp_dir/failed-backup-output"
+set +e
+PATH="$failing_age_bin:$PATH" \
+TRADEPILOT_BACKUP_PGHOST=127.0.0.1 \
+TRADEPILOT_BACKUP_PGPORT="$source_port" \
+TRADEPILOT_BACKUP_PGDATABASE=tradepilot \
+TRADEPILOT_BACKUP_PGUSER=postgres \
+TRADEPILOT_BACKUP_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_BACKUP_AGE_RECIPIENT="$recipient" \
+TRADEPILOT_BACKUP_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_SYNTHETIC_TEST_MODE=true \
+TRADEPILOT_BACKUP_OUTPUT_DIR="$failed_backup_output" \
+  bash "$BACKUP_SCRIPT" >/dev/null 2>&1
+failed_encryption_status=$?
+set -e
+(( failed_encryption_status != 0 )) || {
+  printf 'Backup unexpectedly succeeded with an encryption failure.\n' >&2
+  exit 1
+}
+[[ -z "$(find "$failed_backup_output" -type f -print -quit)" ]] || {
+  printf 'Failed encryption left an encrypted artifact or metadata behind.\n' >&2
+  exit 1
+}
+
+fake_bin="$(make_fake_aws)"
+export FAKE_S3_ROOT="$temp_dir/fake-s3"
+export PATH="$fake_bin:$PATH"
+export AWS_ACCESS_KEY_ID=synthetic-access-key
+export AWS_SECRET_ACCESS_KEY=synthetic-secret-key
+export TRADEPILOT_BACKUP_S3_BUCKET=synthetic-backups
+export TRADEPILOT_BACKUP_S3_PREFIX=tradepilot/production/postgres
+export TRADEPILOT_BACKUP_S3_REGION=us-east-1
+export TRADEPILOT_BACKUP_S3_ENDPOINT_URL=https://s3.synthetic.invalid
+export TRADEPILOT_BACKUP_RETENTION_DAYS=21
+old_key="tradepilot/production/postgres/tradepilot-postgres-20200101T000000Z.dump.age"
+mkdir -p "$(dirname "$FAKE_S3_ROOT/synthetic-backups/$old_key")"
+printf 'old encrypted object' >"$FAKE_S3_ROOT/synthetic-backups/$old_key"
+printf 'old metadata' >"$FAKE_S3_ROOT/synthetic-backups/$old_key.metadata.json"
+TRADEPILOT_BACKUP_RETENTION_MODE=disabled bash "$UPLOAD_SCRIPT" "$encrypted_file"
+[[ -f "$FAKE_S3_ROOT/synthetic-backups/$old_key" ]]
+bash "$FRESHNESS_SCRIPT"
+
+remote_key="tradepilot/production/postgres/$(basename "$encrypted_file")"
+[[ -s "$FAKE_S3_ROOT/synthetic-backups/$remote_key" ]]
+[[ -s "$FAKE_S3_ROOT/synthetic-backups/$remote_key.metadata.json" ]]
+[[ -s "$FAKE_S3_ROOT/synthetic-backups/$remote_key.completeness.json.age" ]]
+TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" bash "$VERIFY_UPLOAD_SCRIPT"
+manifest_remote_path="$FAKE_S3_ROOT/synthetic-backups/$remote_key.completeness.json.age"
+cp "$manifest_remote_path" "$temp_dir/original-completeness-manifest.age"
+printf 'tampered manifest' >"$manifest_remote_path"
+set +e
+TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" bash "$VERIFY_UPLOAD_SCRIPT" >/dev/null 2>&1
+tampered_manifest_status=$?
+set -e
+(( tampered_manifest_status != 0 )) || {
+  printf 'Checksum verification accepted a tampered encrypted completeness manifest.\n' >&2
+  exit 1
+}
+mv "$temp_dir/original-completeness-manifest.age" "$manifest_remote_path"
+set +e
+TRADEPILOT_BACKUP_RETENTION_MODE=disabled bash "$UPLOAD_SCRIPT" "$encrypted_file" >/dev/null 2>&1
+collision_status=$?
+set -e
+(( collision_status != 0 )) || {
+  printf 'Upload unexpectedly overwrote an existing encrypted backup object.\n' >&2
+  exit 1
+}
+
+start_isolated_postgres "$restore_name"
+TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \
+TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes \
+TRADEPILOT_RESTORE_DOCKER_CONTAINER="$restore_name" \
+TRADEPILOT_RESTORE_SCOPE=application-public \
+TRADEPILOT_RESTORE_PGDATABASE=tradepilot \
+TRADEPILOT_RESTORE_PGUSER=postgres \
+TRADEPILOT_RESTORE_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_RESTORE_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" \
+  bash "$RESTORE_SCRIPT"
+
+restored_users="$(PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$restore_name" \
+  psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c 'select count(*) from users')"
+[[ "$restored_users" == "1" ]]
+restored_sequences="$(PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$restore_name" \
+  psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c "select count(*) from pg_catalog.pg_class relation join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public' and relation.relkind = 'S'")"
+[[ "$restored_sequences" == "3" ]]
+# The verifier reads sequence state without advancing it. On synthetic data only,
+# prove restored serial and identity sequences can allocate the next key.
+PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$restore_name" \
+  psql -X -v ON_ERROR_STOP=1 -U postgres -d tradepilot <<'SQL' >/dev/null
+insert into serial_ledger (note) values ('post-restore serial');
+insert into identity_default_ledger (note) values ('post-restore identity default');
+insert into identity_always_ledger (note) values ('post-restore identity always');
+SQL
+post_restore_sequence_maxima="$(PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$restore_name" \
+  psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c "select (select max(id) from serial_ledger) || ':' || (select max(id) from identity_default_ledger) || ':' || (select max(id) from identity_always_ledger)")"
+[[ "$post_restore_sequence_maxima" == "2:2:2" ]]
+
+# An application-scope restore must fail before mutation if public objects depend
+# on a Supabase-managed schema. This is a dependency guard, not an error bypass.
+PGPASSWORD=synthetic-test-password psql -X -v ON_ERROR_STOP=1 \
+  -h 127.0.0.1 -p "$source_port" -U postgres -d tradepilot <<'SQL'
+create schema vault;
+create table vault.marker (id integer primary key);
+create view public.depends_on_vault as select id from vault.marker;
+SQL
+sleep 1
+dependency_backup_output="$temp_dir/dependency-backup-output"
+TRADEPILOT_BACKUP_PGHOST=127.0.0.1 \
+TRADEPILOT_BACKUP_PGPORT="$source_port" \
+TRADEPILOT_BACKUP_PGDATABASE=tradepilot \
+TRADEPILOT_BACKUP_PGUSER=postgres \
+TRADEPILOT_BACKUP_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_BACKUP_AGE_RECIPIENT="$recipient" \
+TRADEPILOT_BACKUP_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_SYNTHETIC_TEST_MODE=true \
+TRADEPILOT_BACKUP_OUTPUT_DIR="$dependency_backup_output" \
+  bash "$BACKUP_SCRIPT"
+dependency_encrypted_file="$(find "$dependency_backup_output" -type f -name '*.dump.age' -print -quit)"
+start_isolated_postgres "$dependency_blocked_name"
+set +e
+TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \
+TRADEPILOT_BACKUP_ENCRYPTED_FILE="$dependency_encrypted_file" \
+TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes \
+TRADEPILOT_RESTORE_SCOPE=application-public \
+TRADEPILOT_RESTORE_DOCKER_CONTAINER="$dependency_blocked_name" \
+TRADEPILOT_RESTORE_PGDATABASE=tradepilot \
+TRADEPILOT_RESTORE_PGUSER=postgres \
+TRADEPILOT_RESTORE_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_RESTORE_PGSSLMODE=disable \
+  bash "$RESTORE_SCRIPT" >/dev/null 2>&1
+dependency_blocked_status=$?
+set -e
+(( dependency_blocked_status != 0 )) || {
+  printf 'Application-scope restore unexpectedly accepted a managed-schema dependency.\n' >&2
+  exit 1
+}
+dependency_target_tables="$(PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$dependency_blocked_name" \
+  psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c "select count(*) from pg_catalog.pg_class relation join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public' and relation.relkind in ('r', 'p')")"
+[[ "$dependency_target_tables" == "0" ]]
+
+# The Docker-stdin transport must preserve the empty-target guard, too.
+start_isolated_postgres "$docker_blocked_name"
+PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$docker_blocked_name" \
+  psql -X -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c 'create table public.marker (id integer primary key)' >/dev/null
+set +e
+TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \
+TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes \
+TRADEPILOT_RESTORE_DOCKER_CONTAINER="$docker_blocked_name" \
+TRADEPILOT_RESTORE_PGDATABASE=tradepilot \
+TRADEPILOT_RESTORE_PGUSER=postgres \
+TRADEPILOT_RESTORE_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_RESTORE_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" \
+  bash "$RESTORE_SCRIPT" >/dev/null 2>&1
+docker_blocked_status=$?
+set -e
+(( docker_blocked_status != 0 )) || {
+  printf 'Docker restore unexpectedly accepted a nonempty target.\n' >&2
+  exit 1
+}
+marker_exists="$(PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$docker_blocked_name" \
+  psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c "select to_regclass('public.marker') is not null")"
+[[ "$marker_exists" == "t" ]]
+
+# A target with an object outside public must also be refused before restore.
+blocked_port="$(start_postgres "$blocked_name")"
+PGPASSWORD=synthetic-test-password psql -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$blocked_port" -U postgres -d tradepilot <<'SQL'
+create schema unmanaged;
+create table unmanaged.marker (id integer primary key);
+SQL
+set +e
+TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \
+TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes \
+TRADEPILOT_RESTORE_PGHOST=127.0.0.1 \
+TRADEPILOT_RESTORE_PGPORT="$blocked_port" \
+TRADEPILOT_RESTORE_PGDATABASE=tradepilot \
+TRADEPILOT_RESTORE_PGUSER=postgres \
+TRADEPILOT_RESTORE_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_RESTORE_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" \
+  bash "$RESTORE_SCRIPT" >/dev/null 2>&1
+blocked_status=$?
+set -e
+(( blocked_status != 0 )) || {
+  printf 'Restore unexpectedly accepted a target with user-managed schema objects.\n' >&2
+  exit 1
+}
+marker_exists="$(PGPASSWORD=synthetic-test-password psql -X -A -t -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$blocked_port" -U postgres -d tradepilot -c "select to_regclass('unmanaged.marker') is not null")"
+[[ "$marker_exists" == "t" ]]
+
+# A public function and standalone type must also make the target ineligible.
+function_blocked_port="$(start_postgres "$function_blocked_name")"
+PGPASSWORD=synthetic-test-password psql -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$function_blocked_port" -U postgres -d tradepilot <<'SQL'
+create type public.marker_status as enum ('READY');
+create function public.marker_function() returns integer language sql as 'select 1';
+SQL
+set +e
+TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \
+TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes \
+TRADEPILOT_RESTORE_PGHOST=127.0.0.1 \
+TRADEPILOT_RESTORE_PGPORT="$function_blocked_port" \
+TRADEPILOT_RESTORE_PGDATABASE=tradepilot \
+TRADEPILOT_RESTORE_PGUSER=postgres \
+TRADEPILOT_RESTORE_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_RESTORE_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" \
+  bash "$RESTORE_SCRIPT" >/dev/null 2>&1
+function_blocked_status=$?
+set -e
+(( function_blocked_status != 0 )) || {
+  printf 'Restore unexpectedly accepted a target with public function/type objects.\n' >&2
+  exit 1
+}
+function_exists="$(PGPASSWORD=synthetic-test-password psql -X -A -t -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$function_blocked_port" -U postgres -d tradepilot -c "select to_regprocedure('public.marker_function()') is not null")"
+[[ "$function_exists" == "t" ]]
+printf 'Synthetic PostgreSQL 17 backup/encrypt/decrypt/restore verification passed.\n'
