@@ -1,7 +1,8 @@
 # Account Survival V1 Production Readiness
 
 **Branch / audited commit:** `feature/v1-account-survival-coach` /
-`1ac1ef61943a2b2185025bc17b0291c9e4cd352d`
+`853ba3e362d8fbd34885b27777127d2b2d7205f7`, plus the scoped
+post-import entitlement correction documented below.
 **Audit scope:** read-only repository, Render, Supabase, and Vercel review.
 **Decision:** **NO-GO pending the release conditions in this record.**
 
@@ -13,11 +14,11 @@ activate security exceptions.
 
 | Control | Evidence | Result |
 | --- | --- | --- |
-| Full-stack acceptance | `scripts/run-account-survival-fullstack.sh` used React, real Spring Boot, a fresh PostgreSQL 16 container, Flyway V001--V031, and real CSV import APIs | PASS locally |
-| Backend regression | Full Surefire reports at the audited commit: 723 tests, 0 failures, 0 errors, 2 skipped | PASS locally |
+| Full-stack acceptance | `scripts/run-account-survival-fullstack.sh` used React, real Spring Boot, a fresh PostgreSQL 16 container, Flyway V001--V031, actual authentication, and real CSV import APIs. It covers Free own-account 403, Pro own-account success, different Pro user's 404, and unauthenticated 401. | PASS locally, 1 test |
+| Backend regression | Full Surefire reports after the Pro-only regression correction: 725 tests, 0 failures, 0 errors, 2 skipped | PASS locally |
 | Fresh migration baseline | `mvn -Ppostgres-integration test` applied V001--V031 and initialized Hibernate validation | PASS locally |
-| Frontend acceptance | Vitest: 12 passed; mocked Account Survival Playwright: 7 passed; production build prerendered 25 routes | PASS locally |
-| Hosted CI | Owner confirmed all seven required hosted jobs passed for `1ac1ef6` | Owner-attested; retain run links on PR #1 |
+| Frontend acceptance | Vitest: 12 passed; mocked Account Survival Playwright: 7 passed; real-backend Playwright: 1 passed; production build prerendered 25 routes | PASS locally |
+| Hosted CI | Owner confirmed all seven required hosted jobs passed for `853ba3e` before the scoped correction | Owner-attested; rerun is required for the final candidate SHA |
 | Production Supabase | `tradepilotcoach-prod` is `ACTIVE_HEALTHY`, PostgreSQL 17.6 | PASS, connector verified |
 | Production Render | Service `tradepilot` is live, Docker runtime, branch `master`, root directory `backend` | PASS, connector verified |
 | Production Vercel | Feature-branch preview for `1ac1ef6` is `READY`; production domains are verified | PASS, connector verified |
@@ -119,24 +120,30 @@ records show the merge SHA.
 
 ## Account Survival access-policy decision
 
-Backend ownership is enforced. However, the Account Survival controller requires
-authentication through the application security chain and does **not** call
-`FeatureAccessService.requireFeature(Feature.SESSION_REVIEW)`. The Session Review
-service and navigation apply the Session Review plan gate, but a direct,
-authenticated Account Survival API request is not independently plan-gated.
-
 **Owner decision recorded 2026-11-01: Account Survival Coach V1 is Pro-only.**
-All nine Account Survival HTTP routes now call the existing
-`FeatureAccessService.requireFeature(user, Feature.SESSION_REVIEW)`, matching
-Session Review's established plan policy. Free users receive structured HTTP
-403 `SUBSCRIPTION_REQUIRED` with `requiredPlan=PRO`; Pro users continue
-to require account ownership and receive privacy-safe 404 responses for
-other users' accounts. The ownership integration suite includes a Free-tier
-all-routes rejection matrix, and the real-backend Playwright acceptance journey
-checks Free-tier denial and Pro-tier access.
+All nine Account Survival HTTP routes call the existing
+`FeatureAccessService.requireFeature(user, Feature.SESSION_REVIEW)` before
+reaching the user-scoped service layer:
 
-**Implementation is committed; hosted verification and production release
-prerequisites remain separate gates.**
+| Caller / target | Expected and verified result |
+| --- | --- |
+| Unauthenticated caller | `401` from the application security chain |
+| Free user / own account | `403 SUBSCRIPTION_REQUIRED`, `requiredPlan=PRO`, `feature=SESSION_REVIEW` |
+| Pro user / own account | Authorized, subject to ordinary request validation and lifecycle rules |
+| Different Pro user / another Pro user's account | Privacy-safe `404`, with no Account Survival evidence disclosed |
+
+The backend ownership suite covers every read and mutation endpoint for Free
+and cross-owner callers. The real-browser acceptance test independently covers
+the same matrix with actual authentication, React, Spring Boot, PostgreSQL, and
+the CSV import pipeline. The frontend uses the existing Session Review feature
+gate, but the API boundary is authoritative.
+
+On downgrade, historical commitments and evaluations remain preserved, while
+all Account Survival HTTP access is denied. The after-commit import callback
+now uses the same `FeatureAccessService.hasFeature` decision before evaluating
+existing commitments. It returns without error for Free users, so CSV import
+completion is not interrupted and no new Pro-only evaluation is created.
+The PostgreSQL concurrency suite verifies this downgrade path.
 
 ## Authenticated production smoke checklist
 
@@ -149,7 +156,9 @@ payment transaction.
 3. Import a supported CSV and verify the existing import summary and journal
    continue to render correctly.
 4. Confirm dashboard and journal behavior remains unchanged.
-5. Open Session Review / Account Survival, save a valid risk profile, and verify
+5. As a controlled Free user, confirm direct Account Survival API access returns
+   structured `403 SUBSCRIPTION_REQUIRED`; then, as a controlled Pro user, open
+   Session Review / Account Survival, save a valid risk profile, and verify
    assessment and evidence wording is deterministic and does not claim
    psychology, rule violations, or profitability.
 6. Save then accept a protection commitment. Retry acceptance and confirm its
@@ -158,8 +167,9 @@ payment transaction.
    A later recovery must not hide the worst cumulative realized session loss.
 8. Confirm missing contemporaneous evidence is `NOT_EVALUABLE`, never counted
    as followed.
-9. With a different normal user, request the first account's Account Survival
-   endpoints and require 404/no data disclosure.
+9. With a different controlled Pro user, request the first account's Account
+   Survival endpoints and require 404/no data disclosure. Confirm an
+   unauthenticated request returns 401.
 10. Verify normal billing plan UI, upgrade CTA, credit-pack UI, and existing
     import/journal features without completing payment.
 11. Review Render logs, health endpoint, Flyway V031 state, and Vercel/Render
@@ -187,18 +197,42 @@ exceptions remain in force. The documented exception expiry is
 `2026-11-30T00:00:00Z`; it must not be extended by this release. Gitleaks,
 Semgrep, frontend audit, and the hosted security checks remain mandatory.
 
-## Release decision and blockers
+## Pre-merge gates
 
-**NO-GO** until all of the following are recorded for the merge SHA:
+**NO-GO** until all of the following are recorded for the final merge-candidate
+SHA:
 
-1. Pro-only access policy is approved and implemented; require final hosted
-   CI and real-backend acceptance confirmation for the guard.
-2. Supabase backup/PITR retention and restore-owner evidence.
-3. Render JDBC runtime-role/RLS compatibility evidence and reconfirmed
-   production fail-closed feature/development flags.
-4. Successful Render Flyway V031/Hibernate startup and Vercel production
-   deployment provenance.
-5. Completed controlled authenticated smoke checklist with ownership isolation.
+1. The seven hosted CI jobs are green for that exact SHA, including the CVSS 8
+   negative control and the approved exception expiry check.
+2. Supabase backup/PITR retention and a named restore owner are confirmed from
+   provider/dashboard evidence. Connected read-only tooling does not expose
+   those settings.
+3. An authorized operator verifies the Render JDBC role over the actual runtime
+   connection: record role name, `current_user`, `session_user`, `BYPASSRLS`,
+   and table privileges for the four RLS-enabled Account Survival tables. The
+   Supabase management session is `postgres` with `BYPASSRLS`; it is not proof
+   of the runtime pooler role.
+4. Owner-attested production values are reconfirmed without recording values:
+   active profile `production`; dev auth and dev tools disabled; V2/V3 disabled;
+   replay worker disabled; market-data provider disabled. Source defaults are
+   fail-closed, and startup validation rejects enabled dev auth/tools in a
+   production profile, but environment overrides remain runtime evidence.
 
-When these are complete and the seven hosted CI jobs remain green for the final
-merge candidate, the recommendation becomes **GO FOR OWNER-APPROVED RELEASE**.
+## Post-merge deployment gates
+
+After owner-approved merge, do not declare rollout successful until:
+
+1. Render deploys the merge SHA and Flyway V031 succeeds. V031 creates two
+   idempotent indexes, preserves all historical evaluation versions, and does
+   not alter existing trading data; because the indexes are not `CONCURRENTLY`,
+   brief evaluation-table write blocking is possible while they build.
+2. Hibernate starts with `ddl-auto=validate` and the backend health endpoint is
+   `UP`.
+3. Vercel's production deployment is READY on the same merge SHA. Feature-branch
+   deployments are previews only; current production provenance must not be
+   inferred from the preview.
+4. The controlled authenticated smoke checklist above passes, including the
+   Free/Pro/unauthenticated/ownership matrix.
+
+The approved OWASP exception set remains unchanged, with CVSS 8 enforcement and
+an expiry of `2026-11-30T00:00:00Z`.
