@@ -31,6 +31,18 @@ metadata_key="${object_key}.metadata.json"
 checksum="$(backup_sha256 "$artifact_path")"
 size="$(wc -c <"$artifact_path" | tr -d '[:space:]')"
 
+# A controlled first backup must not overwrite an object if timestamp generation collides.
+existing_keys="$(aws "${BACKUP_S3_ARGS[@]}" s3api list-objects-v2 --bucket "$TRADEPILOT_BACKUP_S3_BUCKET" --prefix "$object_key" --output json | python3 -c '
+import json
+import sys
+
+key = sys.argv[1]
+for item in json.load(sys.stdin).get("Contents", []):
+    if item.get("Key") in {key, f"{key}.metadata.json"}:
+        print(item["Key"])
+' "$object_key")"
+[[ -z "$existing_keys" ]] || backup_die "refusing to overwrite an existing backup object"
+
 aws "${BACKUP_S3_ARGS[@]}" s3 cp "$artifact_path" "s3://${TRADEPILOT_BACKUP_S3_BUCKET}/${object_key}" \
   --only-show-errors --metadata "sha256=${checksum}"
 aws "${BACKUP_S3_ARGS[@]}" s3 cp "$metadata_path" "s3://${TRADEPILOT_BACKUP_S3_BUCKET}/${metadata_key}" --only-show-errors
@@ -41,6 +53,15 @@ remote_size="$(aws "${BACKUP_S3_ARGS[@]}" s3api head-object --bucket "$TRADEPILO
 [[ "$remote_size" == "$size" ]] || backup_die "uploaded artifact size mismatch"
 
 # Retention runs only after this new artifact is encrypted, uploaded, and verified.
+retention_mode="${TRADEPILOT_BACKUP_RETENTION_MODE:-enforce}"
+case "$retention_mode" in
+  enforce) ;;
+  disabled)
+    printf 'Encrypted backup upload and checksum verification completed with retention deletion disabled: %s\n' "$artifact_name"
+    exit 0
+    ;;
+  *) backup_die "TRADEPILOT_BACKUP_RETENTION_MODE must be enforce or disabled" ;;
+esac
 retention_days="${TRADEPILOT_BACKUP_RETENTION_DAYS:-21}"
 if ! [[ "$retention_days" =~ ^[0-9]+$ ]] || (( retention_days < 14 )); then
   backup_die "retention must be an integer of at least 14 days"

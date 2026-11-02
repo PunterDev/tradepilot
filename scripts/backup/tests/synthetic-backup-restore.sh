@@ -8,6 +8,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 BACKUP_SCRIPT="$ROOT_DIR/scripts/backup/backup-production-db.sh"
 RESTORE_SCRIPT="$ROOT_DIR/scripts/backup/restore-verify.sh"
 UPLOAD_SCRIPT="$ROOT_DIR/scripts/backup/upload-s3-backup.sh"
+VERIFY_UPLOAD_SCRIPT="$ROOT_DIR/scripts/backup/verify-uploaded-encrypted-backup.sh"
 FRESHNESS_SCRIPT="$ROOT_DIR/scripts/backup/check-backup-freshness.sh"
 
 for command in docker pg_dump pg_restore psql pg_isready age age-keygen python3; do
@@ -174,6 +175,39 @@ if grep -aq 'synthetic-user@example.test' "$encrypted_file"; then
   exit 1
 fi
 
+# A failed encryption must not leave a partial encrypted artifact or metadata
+# beside otherwise valid backups.
+failing_age_bin="$temp_dir/failing-age-bin"
+mkdir -p "$failing_age_bin"
+cat >"$failing_age_bin/age" <<'FAILING_AGE'
+#!/usr/bin/env bash
+exit 79
+FAILING_AGE
+chmod 700 "$failing_age_bin/age"
+failed_backup_output="$temp_dir/failed-backup-output"
+set +e
+PATH="$failing_age_bin:$PATH" \
+TRADEPILOT_BACKUP_PGHOST=127.0.0.1 \
+TRADEPILOT_BACKUP_PGPORT="$source_port" \
+TRADEPILOT_BACKUP_PGDATABASE=tradepilot \
+TRADEPILOT_BACKUP_PGUSER=postgres \
+TRADEPILOT_BACKUP_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_BACKUP_AGE_RECIPIENT="$recipient" \
+TRADEPILOT_BACKUP_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_SYNTHETIC_TEST_MODE=true \
+TRADEPILOT_BACKUP_OUTPUT_DIR="$failed_backup_output" \
+  bash "$BACKUP_SCRIPT" >/dev/null 2>&1
+failed_encryption_status=$?
+set -e
+(( failed_encryption_status != 0 )) || {
+  printf 'Backup unexpectedly succeeded with an encryption failure.\n' >&2
+  exit 1
+}
+[[ -z "$(find "$failed_backup_output" -type f -print -quit)" ]] || {
+  printf 'Failed encryption left an encrypted artifact or metadata behind.\n' >&2
+  exit 1
+}
+
 fake_bin="$(make_fake_aws)"
 export FAKE_S3_ROOT="$temp_dir/fake-s3"
 export PATH="$fake_bin:$PATH"
@@ -184,12 +218,26 @@ export TRADEPILOT_BACKUP_S3_PREFIX=tradepilot/production/postgres
 export TRADEPILOT_BACKUP_S3_REGION=us-east-1
 export TRADEPILOT_BACKUP_S3_ENDPOINT_URL=https://s3.synthetic.invalid
 export TRADEPILOT_BACKUP_RETENTION_DAYS=21
-bash "$UPLOAD_SCRIPT" "$encrypted_file"
+old_key="tradepilot/production/postgres/tradepilot-postgres-20200101T000000Z.dump.age"
+mkdir -p "$(dirname "$FAKE_S3_ROOT/synthetic-backups/$old_key")"
+printf 'old encrypted object' >"$FAKE_S3_ROOT/synthetic-backups/$old_key"
+printf 'old metadata' >"$FAKE_S3_ROOT/synthetic-backups/$old_key.metadata.json"
+TRADEPILOT_BACKUP_RETENTION_MODE=disabled bash "$UPLOAD_SCRIPT" "$encrypted_file"
+[[ -f "$FAKE_S3_ROOT/synthetic-backups/$old_key" ]]
 bash "$FRESHNESS_SCRIPT"
 
 remote_key="tradepilot/production/postgres/$(basename "$encrypted_file")"
 [[ -s "$FAKE_S3_ROOT/synthetic-backups/$remote_key" ]]
 [[ -s "$FAKE_S3_ROOT/synthetic-backups/$remote_key.metadata.json" ]]
+TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" bash "$VERIFY_UPLOAD_SCRIPT"
+set +e
+TRADEPILOT_BACKUP_RETENTION_MODE=disabled bash "$UPLOAD_SCRIPT" "$encrypted_file" >/dev/null 2>&1
+collision_status=$?
+set -e
+(( collision_status != 0 )) || {
+  printf 'Upload unexpectedly overwrote an existing encrypted backup object.\n' >&2
+  exit 1
+}
 
 restore_port="$(start_postgres "$restore_name")"
 TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \

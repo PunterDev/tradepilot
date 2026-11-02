@@ -42,8 +42,15 @@ chmod 700 "$output_dir"
 [[ -d "$output_dir" ]] || backup_die "backup output path is not a directory"
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/tradepilot-backup.XXXXXX")"
+backup_completed=false
 cleanup() {
   unset PGPASSWORD TRADEPILOT_BACKUP_PGPASSWORD
+  # The output names are unique to this invocation. Do not leave a partial
+  # encrypted artifact or metadata behind if dump, encryption, or metadata
+  # generation is interrupted before the backup becomes usable.
+  if [[ "$backup_completed" != "true" ]]; then
+    rm -f "${encrypted_path:-}" "${metadata_path:-}"
+  fi
   rm -rf "$work_dir"
 }
 trap cleanup EXIT HUP INT TERM
@@ -110,4 +117,5 @@ Path(path).write_text(json.dumps({
 PY
 chmod 600 "$metadata_path"
 
+backup_completed=true
 printf 'Backup archive verified, encrypted, and ready for approved upload: %s\n' "$encrypted_name"

@@ -29,10 +29,14 @@ object access.
 
 ## Included and excluded data
 
-The logical dump includes application schemas, rows, indexes, constraints,
-sequences, functions, RLS configuration/policies, and Flyway history in the
-target database. It protects application-owned user accounts, trading accounts,
-trades, imports, journals, billing records, and Account Survival records.
+The logical dump is a full database dump visible to the configured PostgreSQL
+role. It is not limited with `--schema`, so the first isolated restore must
+record exactly which Supabase-managed schemas/extensions the role can read and
+whether they restore cleanly into PostgreSQL 17. The application-owned data in
+the `public` schema includes rows, indexes, constraints, sequences, functions,
+RLS configuration/policies, and Flyway history; it protects user accounts,
+trading accounts, trades, imports, journals, billing records, and Account
+Survival records.
 
 It does not include PostgreSQL cluster roles, Supabase-managed platform
 configuration, Auth/Storage objects outside the dumped database, Stripe data,
@@ -46,6 +50,11 @@ This is a logical backup, not Supabase point-in-time recovery.
 - Retention: 21 days, exceeding the 14-day minimum recovery target.
 - Cleanup occurs only after a newly encrypted upload is verified. The script
   retains at least two encrypted artifacts and never removes the newest one.
+- The first controlled production backup uses
+  `TRADEPILOT_BACKUP_RETENTION_MODE=disabled`, so it performs no deletion.
+- Upload refuses an existing artifact or metadata key rather than overwriting
+  it, and the initial run separately downloads the encrypted object and checks
+  it against its metadata checksum.
 - A failed backup cannot enter cleanup because upload verification has not run.
 - A freshness check flags an actionable warning if no encrypted backup is newer
   than 36 hours; the post-upload check makes a successful run fail if freshness
