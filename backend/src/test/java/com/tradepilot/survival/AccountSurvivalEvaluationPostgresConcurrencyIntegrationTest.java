@@ -181,6 +181,24 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
     }
 
     @Test
+    void postImportEvaluatorSkipsHistoricalCommitmentsAfterAPlanDowngrade() {
+        Fixture fixture = committedFixture("downgraded-user");
+
+        transactions.executeWithoutResult(status -> {
+            User user = users.findById(fixture.userId()).orElseThrow();
+            user.setPlan(PlanType.FREE);
+            user.setSubscriptionStatus(SubscriptionStatus.NONE);
+            users.save(user);
+        });
+
+        transactions.executeWithoutResult(status -> service.evaluateEligibleAfterImport(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId()));
+
+        assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ?", Long.class,
+                fixture.commitmentId())).isZero();
+    }
+
+    @Test
     void evaluatesEveryLaterSessionAndVersionsOnlyTheCorrectedSession() {
         Fixture fixture = committedFixture("history");
         LocalDate secondSession = fixture.eligibleDate().plusDays(1);
@@ -430,8 +448,8 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
                     .passwordHash("hash")
                     .emailVerified(true)
                     .role(UserRole.USER)
-                    .plan(PlanType.FREE)
-                    .subscriptionStatus(SubscriptionStatus.NONE)
+                    .plan(PlanType.PRO)
+                    .subscriptionStatus(SubscriptionStatus.ACTIVE)
                     .build());
             TradingAccount account = accounts.save(TradingAccount.builder()
                     .user(user)

@@ -1,6 +1,8 @@
 package com.tradepilot.survival;
 
 import com.tradepilot.entity.*;
+import com.tradepilot.billing.Feature;
+import com.tradepilot.billing.FeatureAccessService;
 import com.tradepilot.exception.ResourceNotFoundException;
 import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.repository.TradingAccountRepository;
@@ -35,11 +37,12 @@ public class AccountSurvivalService {
     private final ProtectionCommitmentEvaluator commitmentEvaluator;
     private final CrossAccountContinuationDetector crossAccountContinuationDetector;
     private final AccountSurvivalTimeSource timeSource;
+    private final FeatureAccessService featureAccessService;
 
     public AccountSurvivalService(TradingAccountService accountService, TradingAccountRepository tradingAccountRepository, TradeRepository tradeRepository,
-            AccountRiskProfileRepository profileRepository, NextSessionProtectionCommitmentRepository commitmentRepository, NextSessionProtectionEvaluationRepository evaluationRepository, NextSessionProtectionRuleResultRepository ruleResultRepository, ProtectionCommitmentEvaluator commitmentEvaluator, CrossAccountContinuationDetector crossAccountContinuationDetector, AccountSurvivalTimeSource timeSource) {
+            AccountRiskProfileRepository profileRepository, NextSessionProtectionCommitmentRepository commitmentRepository, NextSessionProtectionEvaluationRepository evaluationRepository, NextSessionProtectionRuleResultRepository ruleResultRepository, ProtectionCommitmentEvaluator commitmentEvaluator, CrossAccountContinuationDetector crossAccountContinuationDetector, AccountSurvivalTimeSource timeSource, FeatureAccessService featureAccessService) {
         this.accountService = accountService; this.tradingAccountRepository = tradingAccountRepository; this.tradeRepository = tradeRepository;
-        this.profileRepository = profileRepository; this.commitmentRepository = commitmentRepository; this.evaluationRepository=evaluationRepository; this.ruleResultRepository=ruleResultRepository; this.commitmentEvaluator=commitmentEvaluator; this.crossAccountContinuationDetector=crossAccountContinuationDetector; this.timeSource=timeSource;
+        this.profileRepository = profileRepository; this.commitmentRepository = commitmentRepository; this.evaluationRepository=evaluationRepository; this.ruleResultRepository=ruleResultRepository; this.commitmentEvaluator=commitmentEvaluator; this.crossAccountContinuationDetector=crossAccountContinuationDetector; this.timeSource=timeSource; this.featureAccessService=featureAccessService;
     }
 
     @Transactional(readOnly = true)
@@ -229,6 +232,11 @@ public class AccountSurvivalService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void evaluateEligibleAfterImport(User user, Long accountId) {
         // Import callers run this after commit. We deliberately evaluate only commitments owned by this account/user.
+        // A plan downgrade must not block the completed import, but it must stop this Pro-only background work.
+        if (!featureAccessService.hasFeature(user, Feature.SESSION_REVIEW)) {
+            log.info("Skipping Account Survival post-import evaluation for non-Pro user. accountId={}", accountId);
+            return;
+        }
         commitmentRepository.findByAccount_IdAndUserAndStatusNot(accountId, user, ProtectionCommitmentStatus.DRAFT).forEach(c -> {
                     try { evaluateCommitment(user, accountId, c.getEffectiveSessionDate()); }
                     catch (RuntimeException ex) { log.warn("Account survival post-import evaluation failed safely. accountId={}, commitmentId={}, reason={}", accountId, c.getId(), ex.getClass().getSimpleName()); }

@@ -4,10 +4,12 @@ const apiBaseUrl = process.env.E2E_API_URL ?? "http://127.0.0.1:18080/api";
 
 type Fixture = {
   ownerToken: string;
-  otherToken: string;
+  otherProToken: string;
+  freeToken: string;
   owner: { id: number; name: string; email: string; plan: "FREE" | "PRO"; role: "USER" | "ADMIN" };
   sourceAccountId: number;
   laterAccountId: number;
+  freeAccountId: number;
   sessionDate: string;
 };
 
@@ -37,14 +39,14 @@ test("Account Survival uses the real backend for profile, evidence, commitment, 
   expect(owner.role).toBe("USER");
   expect(owner.plan).toBe("PRO");
   for (const path of [
-    `/accounts/${fixture.laterAccountId}/survival`,
-    `/accounts/${fixture.laterAccountId}/survival/profile`,
-    `/accounts/${fixture.laterAccountId}/survival/commitment?date=${fixture.sessionDate}`,
-    `/accounts/${fixture.laterAccountId}/survival/commitment/${fixture.sessionDate}/evaluation`,
-    `/accounts/${fixture.laterAccountId}/survival/commitment/${fixture.sessionDate}/evaluations`,
+    `/accounts/${fixture.freeAccountId}/survival`,
+    `/accounts/${fixture.freeAccountId}/survival/profile`,
+    `/accounts/${fixture.freeAccountId}/survival/commitment?date=${fixture.sessionDate}`,
+    `/accounts/${fixture.freeAccountId}/survival/commitment/${fixture.sessionDate}/evaluation`,
+    `/accounts/${fixture.freeAccountId}/survival/commitment/${fixture.sessionDate}/evaluations`,
   ]) {
     const freeResponse = await request.get(`${apiBaseUrl}${path}`, {
-      headers: { Authorization: `Bearer ${fixture.otherToken}` },
+      headers: { Authorization: `Bearer ${fixture.freeToken}` },
       failOnStatusCode: false,
     });
     expect(freeResponse.status()).toBe(403);
@@ -54,8 +56,8 @@ test("Account Survival uses the real backend for profile, evidence, commitment, 
       feature: "SESSION_REVIEW",
     });
   }
-  const freeWrite = await request.put(`${apiBaseUrl}/accounts/${fixture.laterAccountId}/survival/commitment`, {
-    headers: { Authorization: `Bearer ${fixture.otherToken}` },
+  const freeWrite = await request.put(`${apiBaseUrl}/accounts/${fixture.freeAccountId}/survival/commitment`, {
+    headers: { Authorization: `Bearer ${fixture.freeToken}` },
     data: { effectiveSessionDate: fixture.sessionDate, maxAttempts: 2 },
     failOnStatusCode: false,
   });
@@ -188,7 +190,7 @@ test("Account Survival uses the real backend for profile, evidence, commitment, 
   expect(durableEvaluation).toMatchObject({ available: true, overallStatus: "BROKEN", evaluationVersion: expect.anything(), rules: expect.any(Array) });
   expect((durableEvaluation?.rules as Array<Record<string, unknown>>).some((rule) => rule.rule === "FRESH_SETUP_CONFIRMATION" && rule.status === "NOT_EVALUABLE")).toBeTruthy();
   const unauthorized = await request.get(`${apiBaseUrl}/accounts/${fixture.sourceAccountId}/survival?date=${fixture.sessionDate}`, {
-    headers: { Authorization: `Bearer ${fixture.otherToken}` },
+    headers: { Authorization: `Bearer ${fixture.otherProToken}` },
     failOnStatusCode: false,
   });
   expect(unauthorized.status()).toBe(404);
@@ -196,6 +198,11 @@ test("Account Survival uses the real backend for profile, evidence, commitment, 
   expect(unauthorizedBody).not.toContain("Topstep 50K A");
   expect(unauthorizedBody).not.toContain("Apex 50K B");
   expect(unauthorizedBody).not.toContain("2000");
+
+  const unauthenticated = await request.get(`${apiBaseUrl}/accounts/${fixture.sourceAccountId}/survival?date=${fixture.sessionDate}`, {
+    failOnStatusCode: false,
+  });
+  expect(unauthenticated.status()).toBe(401);
 
   await page.selectOption("select", String(fixture.laterAccountId));
   await expect(page.getByRole("heading", { name: "Insufficient data" })).toBeVisible();

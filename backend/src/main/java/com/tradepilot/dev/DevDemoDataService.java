@@ -153,9 +153,11 @@ public class DevDemoDataService {
     @Transactional
     public Map<String, Object> prepareAccountSurvivalE2eData() {
         User owner = survivalUser("survival-e2e-owner@tradepilot.test", "Account Survival E2E Owner", PlanType.PRO);
-        User other = survivalUser("survival-e2e-other@tradepilot.test", "Account Survival E2E Other", PlanType.FREE);
+        User otherPro = survivalUser("survival-e2e-other-pro@tradepilot.test", "Account Survival E2E Other Pro", PlanType.PRO);
+        User free = survivalUser("survival-e2e-free@tradepilot.test", "Account Survival E2E Free", PlanType.FREE);
         TradingAccount source = survivalAccount(owner, "Topstep 50K A", PropFirmType.TOPSTEP, "SURVIVAL-E2E-A");
         TradingAccount later = survivalAccount(owner, "Apex 50K B", PropFirmType.OTHER, "SURVIVAL-E2E-B");
+        TradingAccount freeAccount = survivalAccount(free, "Free E2E Account", PropFirmType.TOPSTEP, "SURVIVAL-E2E-FREE");
         LocalDate first = LocalDate.of(2026, 10, 1);
         accountSurvivalTimeSource.resetE2eDate(first);
         for (int day = 1; day <= 5; day++) tradeRepository.save(survivalTrade(owner, source, first.minusDays(day), "NQ", "SHORT", "10:00:05", "10:04:05", "-400", 2, "LOSS-" + day));
@@ -171,7 +173,7 @@ public class DevDemoDataService {
         commitment.setRequireFreshSetupConfirmation(true); commitment.setSource(ProtectionCommitmentSource.SYSTEM_RECOMMENDED);
         commitment.setStatus(ProtectionCommitmentStatus.DRAFT);
         protectionCommitmentRepository.save(commitment);
-        return Map.of("ownerToken", jwtService.generateToken(owner), "otherToken", jwtService.generateToken(other), "owner", Map.of("id", owner.getId(), "name", owner.getName(), "email", owner.getEmail(), "plan", owner.getPlan().name(), "role", owner.getRole().name()), "sourceAccountId", source.getId(), "laterAccountId", later.getId(), "sessionDate", first.toString());
+        return Map.of("ownerToken", jwtService.generateToken(owner), "otherProToken", jwtService.generateToken(otherPro), "freeToken", jwtService.generateToken(free), "owner", Map.of("id", owner.getId(), "name", owner.getName(), "email", owner.getEmail(), "plan", owner.getPlan().name(), "role", owner.getRole().name()), "sourceAccountId", source.getId(), "laterAccountId", later.getId(), "freeAccountId", freeAccount.getId(), "sessionDate", first.toString());
     }
 
     public Map<String, Object> advanceAccountSurvivalE2eDate(LocalDate date) {
