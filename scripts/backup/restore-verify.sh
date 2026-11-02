@@ -18,13 +18,20 @@ backup_require_var TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE
 [[ -f "$TRADEPILOT_BACKUP_AGE_IDENTITY_FILE" ]] || backup_die "age identity file is unavailable"
 
 for required in \
-  TRADEPILOT_RESTORE_PGHOST \
-  TRADEPILOT_RESTORE_PGPORT \
   TRADEPILOT_RESTORE_PGDATABASE \
   TRADEPILOT_RESTORE_PGUSER \
   TRADEPILOT_RESTORE_PGPASSWORD; do
   backup_require_var "$required"
 done
+
+restore_docker_container="${TRADEPILOT_RESTORE_DOCKER_CONTAINER:-}"
+if [[ -n "$restore_docker_container" ]]; then
+  backup_require_command docker
+else
+  for required in TRADEPILOT_RESTORE_PGHOST TRADEPILOT_RESTORE_PGPORT; do
+    backup_require_var "$required"
+  done
+fi
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/tradepilot-restore.XXXXXX")"
 cleanup() {
@@ -66,14 +73,35 @@ age --decrypt --identity "$TRADEPILOT_BACKUP_AGE_IDENTITY_FILE" --output "$archi
 [[ -s "$archive_path" ]] || backup_die "decryption produced an empty archive"
 pg_restore --list "$archive_path" >/dev/null
 
-export PGHOST="$TRADEPILOT_RESTORE_PGHOST"
-export PGPORT="$TRADEPILOT_RESTORE_PGPORT"
 export PGDATABASE="$TRADEPILOT_RESTORE_PGDATABASE"
 export PGUSER="$TRADEPILOT_RESTORE_PGUSER"
 export PGPASSWORD="$TRADEPILOT_RESTORE_PGPASSWORD"
 export PGSSLMODE="${TRADEPILOT_RESTORE_PGSSLMODE:-disable}"
 
-existing_user_managed_state="$(psql -X -A -t -v ON_ERROR_STOP=1 -c "
+if [[ -z "$restore_docker_container" ]]; then
+  export PGHOST="$TRADEPILOT_RESTORE_PGHOST"
+  export PGPORT="$TRADEPILOT_RESTORE_PGPORT"
+fi
+
+restore_psql() {
+  if [[ -n "$restore_docker_container" ]]; then
+    docker exec --interactive --env PGPASSWORD "$restore_docker_container" \
+      psql -X -A -t -v ON_ERROR_STOP=1 --username="$PGUSER" --dbname="$PGDATABASE" "$@"
+  else
+    psql -X -A -t -v ON_ERROR_STOP=1 "$@"
+  fi
+}
+
+restore_archive() {
+  if [[ -n "$restore_docker_container" ]]; then
+    docker exec --interactive --env PGPASSWORD "$restore_docker_container" \
+      pg_restore --exit-on-error --no-owner --no-privileges --username="$PGUSER" --dbname="$PGDATABASE" <"$archive_path"
+  else
+    pg_restore --exit-on-error --no-owner --no-privileges --dbname="$PGDATABASE" "$archive_path"
+  fi
+}
+
+existing_user_managed_state="$(restore_psql -c "
   select count(*)
   from (
     select namespace.oid
@@ -103,41 +131,14 @@ existing_user_managed_state="$(psql -X -A -t -v ON_ERROR_STOP=1 -c "
   ) existing_state
 ")"
 [[ "$existing_user_managed_state" == "0" ]] || backup_die "restore target has user-managed schemas or objects; refusing to overwrite a non-disposable database"
-pg_restore --exit-on-error --no-owner --no-privileges --dbname="$PGDATABASE" "$archive_path"
+restore_archive
 
-python3 - <<'PY'
-import subprocess
-
-tables = [
-    "users",
-    "trading_accounts",
-    "trades",
-    "import_batches",
-    "journal_entries",
-    "flyway_schema_history",
-]
-for table in tables:
-    result = subprocess.run(
-        ["psql", "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-c", f"select to_regclass('public.{table}') is not null"],
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-    if result.stdout.strip() != "t":
-        raise SystemExit(f"missing required restored table: {table}")
-    subprocess.run(
-        ["psql", "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-c", f"select count(*) from public.{table}"],
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
-invalid = subprocess.run(
-    ["psql", "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-c", "select count(*) from pg_constraint where contype = 'f' and not convalidated"],
-    text=True,
-    capture_output=True,
-    check=True,
-)
-if invalid.stdout.strip() != "0":
-    raise SystemExit("restored database has unvalidated foreign-key constraints")
-PY
+for table in users trading_accounts trades import_batches journal_entries flyway_schema_history; do
+  table_present="$(restore_psql -c "select to_regclass('public.${table}') is not null")"
+  [[ "$table_present" == "t" ]] || backup_die "missing required restored table: $table"
+  restore_psql -c "select count(*) from public.${table}" >/dev/null
+done
+invalid_constraints="$(restore_psql -c "select count(*) from pg_constraint where contype = 'f' and not convalidated")"
+[[ "$invalid_constraints" == "0" ]] || backup_die "restored database has unvalidated foreign-key constraints"
 
 printf 'Restore verification passed for an isolated disposable PostgreSQL database.\n'

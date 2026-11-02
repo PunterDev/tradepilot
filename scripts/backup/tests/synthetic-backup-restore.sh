@@ -24,9 +24,10 @@ source_name="tradepilot-backup-source-$suffix"
 restore_name="tradepilot-backup-restore-$suffix"
 blocked_name="tradepilot-backup-blocked-$suffix"
 function_blocked_name="tradepilot-backup-function-blocked-$suffix"
+docker_blocked_name="tradepilot-backup-docker-blocked-$suffix"
 
 cleanup() {
-  docker rm -f "$source_name" "$restore_name" "$blocked_name" "$function_blocked_name" >/dev/null 2>&1 || true
+  docker rm -f "$source_name" "$restore_name" "$blocked_name" "$function_blocked_name" "$docker_blocked_name" >/dev/null 2>&1 || true
   rm -rf "$temp_dir"
 }
 trap cleanup EXIT HUP INT TERM
@@ -134,6 +135,21 @@ start_postgres() {
   printf '%s\n' "$port"
 }
 
+start_isolated_postgres() {
+  local name="$1"
+  docker run --detach --rm --name "$name" --network none \
+    -e POSTGRES_PASSWORD=synthetic-test-password \
+    -e POSTGRES_DB=tradepilot postgres:17-alpine >/dev/null
+  [[ "$(docker inspect "$name" --format '{{.HostConfig.NetworkMode}} {{json .NetworkSettings.Ports}}')" == "none {}" ]] || {
+    printf 'Synthetic isolated restore target has networking or published ports.\n' >&2
+    exit 1
+  }
+  until PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$name" \
+    pg_isready -U postgres -d tradepilot >/dev/null 2>&1; do
+    sleep 1
+  done
+}
+
 source_port="$(start_postgres "$source_name")"
 PGPASSWORD=synthetic-test-password psql -X -v ON_ERROR_STOP=1 \
   -h 127.0.0.1 -p "$source_port" -U postgres -d tradepilot <<'SQL'
@@ -239,11 +255,10 @@ set -e
   exit 1
 }
 
-restore_port="$(start_postgres "$restore_name")"
+start_isolated_postgres "$restore_name"
 TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \
 TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes \
-TRADEPILOT_RESTORE_PGHOST=127.0.0.1 \
-TRADEPILOT_RESTORE_PGPORT="$restore_port" \
+TRADEPILOT_RESTORE_DOCKER_CONTAINER="$restore_name" \
 TRADEPILOT_RESTORE_PGDATABASE=tradepilot \
 TRADEPILOT_RESTORE_PGUSER=postgres \
 TRADEPILOT_RESTORE_PGPASSWORD=synthetic-test-password \
@@ -251,8 +266,33 @@ TRADEPILOT_RESTORE_PGSSLMODE=disable \
 TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" \
   bash "$RESTORE_SCRIPT"
 
-restored_users="$(PGPASSWORD=synthetic-test-password psql -X -A -t -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$restore_port" -U postgres -d tradepilot -c 'select count(*) from users')"
+restored_users="$(PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$restore_name" \
+  psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c 'select count(*) from users')"
 [[ "$restored_users" == "1" ]]
+
+# The Docker-stdin transport must preserve the empty-target guard, too.
+start_isolated_postgres "$docker_blocked_name"
+PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$docker_blocked_name" \
+  psql -X -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c 'create table public.marker (id integer primary key)' >/dev/null
+set +e
+TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \
+TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes \
+TRADEPILOT_RESTORE_DOCKER_CONTAINER="$docker_blocked_name" \
+TRADEPILOT_RESTORE_PGDATABASE=tradepilot \
+TRADEPILOT_RESTORE_PGUSER=postgres \
+TRADEPILOT_RESTORE_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_RESTORE_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" \
+  bash "$RESTORE_SCRIPT" >/dev/null 2>&1
+docker_blocked_status=$?
+set -e
+(( docker_blocked_status != 0 )) || {
+  printf 'Docker restore unexpectedly accepted a nonempty target.\n' >&2
+  exit 1
+}
+marker_exists="$(PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$docker_blocked_name" \
+  psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c "select to_regclass('public.marker') is not null")"
+[[ "$marker_exists" == "t" ]]
 
 # A target with an object outside public must also be refused before restore.
 blocked_port="$(start_postgres "$blocked_name")"

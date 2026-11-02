@@ -138,6 +138,9 @@ and approved production dump: approximately compressed logical-dump size times
 
 1. Obtain explicit incident/recovery approval and provision a new, isolated,
    disposable PostgreSQL 17 target. Never restore over Supabase production.
+   The local verification launcher uses Docker `--network none`, publishes no
+   database port, and reaches PostgreSQL only through `docker exec`; it never
+   copies the age identity or R2 credentials into the container.
 2. Download the encrypted `.dump.age` and its `.metadata.json` from the private
    backup prefix using a recovery operator credential.
 3. Provide the approved private `age` identity file only to the isolated
