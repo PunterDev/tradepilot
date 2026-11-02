@@ -30,13 +30,23 @@ object access.
 ## Included and excluded data
 
 The logical dump is a full database dump visible to the configured PostgreSQL
-role. It is not limited with `--schema`, so the first isolated restore must
-record exactly which Supabase-managed schemas/extensions the role can read and
-whether they restore cleanly into PostgreSQL 17. The application-owned data in
-the `public` schema includes rows, indexes, constraints, sequences, functions,
-RLS configuration/policies, and Flyway history; it protects user accounts,
-trading accounts, trades, imports, journals, billing records, and Account
-Survival records.
+role. It is not limited with `--schema`. A stock PostgreSQL 17 image is not a
+complete Supabase recovery target because the dump can include Supabase-managed
+schemas and extensions such as `supabase_vault`. For this environment, the
+supported isolated verification is therefore an **APPLICATION-SCOPE RESTORE**:
+only `public` is restored after the archive's `public` DDL is checked to prove
+it has no reference to a managed Supabase schema or extension. The process
+fails before target mutation when that proof fails.
+
+The application-owned `public` scope includes rows, indexes, constraints,
+sequences, functions, RLS configuration/policies, and Flyway history; it
+protects user accounts, trading accounts, trades, imports, journals, billing
+records, and Account Survival records. It does **not** recover Supabase
+platform schemas (`auth`, `extensions`, `graphql`, `graphql_public`,
+`pgbouncer`, `realtime`, `storage`, `supabase_migrations`, and `vault`), their
+extension definitions, cluster roles, platform configuration, or service
+behavior. A complete Supabase-platform restore requires a verified
+Supabase-compatible recovery target and separate approval.
 
 It does not include PostgreSQL cluster roles, Supabase-managed platform
 configuration, Auth/Storage objects outside the dumped database, Stripe data,
@@ -145,12 +155,17 @@ and approved production dump: approximately compressed logical-dump size times
    backup prefix using a recovery operator credential.
 3. Provide the approved private `age` identity file only to the isolated
    recovery environment.
-4. Set `TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes` and the target connection
-   variables. Run `scripts/backup/restore-verify.sh`.
+4. Set `TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes`,
+   `TRADEPILOT_RESTORE_SCOPE=application-public`, and the target connection
+   variables. Run `scripts/backup/restore-verify.sh`. This labels and verifies
+   the result as an APPLICATION-SCOPE RESTORE; it is not a complete Supabase
+   restore.
 5. The script verifies encrypted SHA-256, decrypts into temporary storage,
    validates the archive, refuses a target containing any user-managed schema,
-   relation, function, type, or non-default extension, restores with
-   `pg_restore --exit-on-error`, validates required application tables and
+   relation, function, type, or non-default extension, validates that the
+   `public` archive DDL has no managed-schema/extension dependencies, restores
+   with `pg_restore --schema=public --strict-names --exit-on-error`, validates
+   the recovered public structural counts, required application tables and
    Flyway history, and checks all foreign keys are validated.
 6. Capture the restore result in the recovery record. Measure RTO only from an
    approved representative restore; until then RTO is **UNVERIFIED**.

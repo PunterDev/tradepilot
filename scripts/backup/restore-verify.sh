@@ -17,6 +17,12 @@ backup_require_var TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE
 [[ "$TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE" == "yes" ]] || backup_die "set TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes only for an isolated disposable database"
 [[ -f "$TRADEPILOT_BACKUP_AGE_IDENTITY_FILE" ]] || backup_die "age identity file is unavailable"
 
+restore_scope="${TRADEPILOT_RESTORE_SCOPE:-complete}"
+case "$restore_scope" in
+  complete|application-public) ;;
+  *) backup_die "TRADEPILOT_RESTORE_SCOPE must be complete or application-public" ;;
+esac
+
 for required in \
   TRADEPILOT_RESTORE_PGDATABASE \
   TRADEPILOT_RESTORE_PGUSER \
@@ -73,6 +79,14 @@ age --decrypt --identity "$TRADEPILOT_BACKUP_AGE_IDENTITY_FILE" --output "$archi
 [[ -s "$archive_path" ]] || backup_die "decryption produced an empty archive"
 pg_restore --list "$archive_path" >/dev/null
 
+scope_manifest=""
+if [[ "$restore_scope" == "application-public" ]]; then
+  scope_ddl="$work_dir/public-schema.sql"
+  scope_manifest="$work_dir/application-scope-manifest.json"
+  pg_restore --schema=public --strict-names --schema-only --file="$scope_ddl" "$archive_path"
+  python3 "$SCRIPT_DIR/validate-application-scope.py" --ddl "$scope_ddl" --manifest "$scope_manifest"
+fi
+
 export PGDATABASE="$TRADEPILOT_RESTORE_PGDATABASE"
 export PGUSER="$TRADEPILOT_RESTORE_PGUSER"
 export PGPASSWORD="$TRADEPILOT_RESTORE_PGPASSWORD"
@@ -93,12 +107,24 @@ restore_psql() {
 }
 
 restore_archive() {
+  local scope_args=()
+  if [[ "$restore_scope" == "application-public" ]]; then
+    scope_args+=(--schema=public --strict-names)
+  fi
   if [[ -n "$restore_docker_container" ]]; then
     docker exec --interactive --env PGPASSWORD "$restore_docker_container" \
-      pg_restore --exit-on-error --no-owner --no-privileges --username="$PGUSER" --dbname="$PGDATABASE" <"$archive_path"
+      pg_restore --exit-on-error --no-owner --no-privileges "${scope_args[@]}" --username="$PGUSER" --dbname="$PGDATABASE" <"$archive_path"
   else
-    pg_restore --exit-on-error --no-owner --no-privileges --dbname="$PGDATABASE" "$archive_path"
+    pg_restore --exit-on-error --no-owner --no-privileges "${scope_args[@]}" --dbname="$PGDATABASE" "$archive_path"
   fi
+}
+
+scope_manifest_value() {
+  python3 - "$scope_manifest" "$1" <<'PY'
+import json
+import sys
+print(json.load(open(sys.argv[1], encoding="utf-8"))[sys.argv[2]])
+PY
 }
 
 existing_user_managed_state="$(restore_psql -c "
@@ -132,6 +158,25 @@ existing_user_managed_state="$(restore_psql -c "
 ")"
 [[ "$existing_user_managed_state" == "0" ]] || backup_die "restore target has user-managed schemas or objects; refusing to overwrite a non-disposable database"
 restore_archive
+
+if [[ "$restore_scope" == "application-public" ]]; then
+  for check in \
+    "tables|select count(*) from pg_catalog.pg_class relation join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public' and relation.relkind in ('r', 'p')" \
+    "sequences|select count(*) from pg_catalog.pg_class relation join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public' and relation.relkind = 'S'" \
+    "functions|select count(*) from pg_catalog.pg_proc routine join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace where namespace.nspname = 'public'" \
+    "rls_tables|select count(*) from pg_catalog.pg_class relation join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public' and relation.relrowsecurity" \
+    "policies|select count(*) from pg_catalog.pg_policy policy join pg_catalog.pg_class relation on relation.oid = policy.polrelid join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public'" \
+    "triggers|select count(*) from pg_catalog.pg_trigger trigger join pg_catalog.pg_class relation on relation.oid = trigger.tgrelid join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public' and not trigger.tgisinternal"; do
+    IFS='|' read -r manifest_key sql <<<"$check"
+    expected_count="$(scope_manifest_value "$manifest_key")"
+    actual_count="$(restore_psql -c "$sql")"
+    [[ "$actual_count" == "$expected_count" ]] || backup_die "application-scope restore did not reproduce expected public ${manifest_key}"
+  done
+
+  expected_indexes="$(scope_manifest_value explicit_indexes)"
+  actual_indexes="$(restore_psql -c "select count(*) from pg_catalog.pg_indexes where schemaname = 'public'")"
+  (( actual_indexes >= expected_indexes )) || backup_die "application-scope restore did not reproduce expected public indexes"
+fi
 
 for table in users trading_accounts trades import_batches journal_entries flyway_schema_history; do
   table_present="$(restore_psql -c "select to_regclass('public.${table}') is not null")"

@@ -25,9 +25,10 @@ restore_name="tradepilot-backup-restore-$suffix"
 blocked_name="tradepilot-backup-blocked-$suffix"
 function_blocked_name="tradepilot-backup-function-blocked-$suffix"
 docker_blocked_name="tradepilot-backup-docker-blocked-$suffix"
+dependency_blocked_name="tradepilot-backup-dependency-blocked-$suffix"
 
 cleanup() {
-  docker rm -f "$source_name" "$restore_name" "$blocked_name" "$function_blocked_name" "$docker_blocked_name" >/dev/null 2>&1 || true
+  docker rm -f "$source_name" "$restore_name" "$blocked_name" "$function_blocked_name" "$docker_blocked_name" "$dependency_blocked_name" >/dev/null 2>&1 || true
   rm -rf "$temp_dir"
 }
 trap cleanup EXIT HUP INT TERM
@@ -259,6 +260,7 @@ start_isolated_postgres "$restore_name"
 TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \
 TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes \
 TRADEPILOT_RESTORE_DOCKER_CONTAINER="$restore_name" \
+TRADEPILOT_RESTORE_SCOPE=application-public \
 TRADEPILOT_RESTORE_PGDATABASE=tradepilot \
 TRADEPILOT_RESTORE_PGUSER=postgres \
 TRADEPILOT_RESTORE_PGPASSWORD=synthetic-test-password \
@@ -269,6 +271,49 @@ TRADEPILOT_BACKUP_OBJECT_KEY="$remote_key" \
 restored_users="$(PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$restore_name" \
   psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c 'select count(*) from users')"
 [[ "$restored_users" == "1" ]]
+
+# An application-scope restore must fail before mutation if public objects depend
+# on a Supabase-managed schema. This is a dependency guard, not an error bypass.
+PGPASSWORD=synthetic-test-password psql -X -v ON_ERROR_STOP=1 \
+  -h 127.0.0.1 -p "$source_port" -U postgres -d tradepilot <<'SQL'
+create schema vault;
+create table vault.marker (id integer primary key);
+create view public.depends_on_vault as select id from vault.marker;
+SQL
+sleep 1
+dependency_backup_output="$temp_dir/dependency-backup-output"
+TRADEPILOT_BACKUP_PGHOST=127.0.0.1 \
+TRADEPILOT_BACKUP_PGPORT="$source_port" \
+TRADEPILOT_BACKUP_PGDATABASE=tradepilot \
+TRADEPILOT_BACKUP_PGUSER=postgres \
+TRADEPILOT_BACKUP_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_BACKUP_AGE_RECIPIENT="$recipient" \
+TRADEPILOT_BACKUP_PGSSLMODE=disable \
+TRADEPILOT_BACKUP_SYNTHETIC_TEST_MODE=true \
+TRADEPILOT_BACKUP_OUTPUT_DIR="$dependency_backup_output" \
+  bash "$BACKUP_SCRIPT"
+dependency_encrypted_file="$(find "$dependency_backup_output" -type f -name '*.dump.age' -print -quit)"
+start_isolated_postgres "$dependency_blocked_name"
+set +e
+TRADEPILOT_BACKUP_AGE_IDENTITY_FILE="$identity_file" \
+TRADEPILOT_BACKUP_ENCRYPTED_FILE="$dependency_encrypted_file" \
+TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes \
+TRADEPILOT_RESTORE_SCOPE=application-public \
+TRADEPILOT_RESTORE_DOCKER_CONTAINER="$dependency_blocked_name" \
+TRADEPILOT_RESTORE_PGDATABASE=tradepilot \
+TRADEPILOT_RESTORE_PGUSER=postgres \
+TRADEPILOT_RESTORE_PGPASSWORD=synthetic-test-password \
+TRADEPILOT_RESTORE_PGSSLMODE=disable \
+  bash "$RESTORE_SCRIPT" >/dev/null 2>&1
+dependency_blocked_status=$?
+set -e
+(( dependency_blocked_status != 0 )) || {
+  printf 'Application-scope restore unexpectedly accepted a managed-schema dependency.\n' >&2
+  exit 1
+}
+dependency_target_tables="$(PGPASSWORD=synthetic-test-password docker exec --interactive --env PGPASSWORD "$dependency_blocked_name" \
+  psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d tradepilot -c "select count(*) from pg_catalog.pg_class relation join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public' and relation.relkind in ('r', 'p')")"
+[[ "$dependency_target_tables" == "0" ]]
 
 # The Docker-stdin transport must preserve the empty-target guard, too.
 start_isolated_postgres "$docker_blocked_name"
