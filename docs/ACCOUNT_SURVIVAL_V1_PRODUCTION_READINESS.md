@@ -125,16 +125,18 @@ authentication through the application security chain and does **not** call
 service and navigation apply the Session Review plan gate, but a direct,
 authenticated Account Survival API request is not independently plan-gated.
 
-Before merge, the owner must explicitly decide one of the following and attach
-the decision to PR #1:
+**Owner decision recorded 2026-11-01: Account Survival Coach V1 is Pro-only.**
+All nine Account Survival HTTP routes now call the existing
+`FeatureAccessService.requireFeature(user, Feature.SESSION_REVIEW)`, matching
+Session Review's established plan policy. Free users receive structured HTTP
+403 `SUBSCRIPTION_REQUIRED` with `requiredPlan=PRO`; Pro users continue
+to require account ownership and receive privacy-safe 404 responses for
+other users' accounts. The ownership integration suite includes a Free-tier
+all-routes rejection matrix, and the real-backend Playwright acceptance journey
+checks Free-tier denial and Pro-tier access.
 
-- Account Survival is intentionally available to every authenticated account
-  owner: document this as the V1 access policy and smoke-test it as such; or
-- Account Survival is a Pro/Session Review entitlement: add and test a
-  server-side feature guard before release.
-
-Until that product/security decision is recorded, feature-access correctness is
-**UNKNOWN** and release remains NO-GO.
+**Implementation is committed; hosted verification and production release
+prerequisites remain separate gates.**
 
 ## Authenticated production smoke checklist
 
@@ -189,8 +191,8 @@ Semgrep, frontend audit, and the hosted security checks remain mandatory.
 
 **NO-GO** until all of the following are recorded for the merge SHA:
 
-1. Explicit Account Survival plan/feature-access policy decision, followed by a
-   matching server-side control if entitlement is required.
+1. Pro-only access policy is approved and implemented; require final hosted
+   CI and real-backend acceptance confirmation for the guard.
 2. Supabase backup/PITR retention and restore-owner evidence.
 3. Render JDBC runtime-role/RLS compatibility evidence and reconfirmed
    production fail-closed feature/development flags.
