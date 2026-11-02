@@ -46,6 +46,45 @@ class AccountSurvivalOwnershipIntegrationTest {
     @Autowired PasswordEncoder passwordEncoder;
 
     @Test
+    void freeUsersCannotReadOrMutateAnyAccountSurvivalEndpoint() throws Exception {
+        User free = user("survival-free-entitlement@example.com");
+        free.setPlan(PlanType.FREE);
+        users.save(free);
+        TradingAccount account = account(free, "Free account");
+        String token = login(free.getEmail());
+        String root = base(account);
+        String date = "2026-10-01";
+        String payload = """
+                {"effectiveSessionDate":"2026-10-01","maxAttempts":2}
+                """;
+        for (String path : new String[] {
+                root, root + "/profile", root + "/commitment?date=" + date,
+                root + "/commitment/" + date + "/evaluation",
+                root + "/commitment/" + date + "/evaluations"
+        }) {
+            mockMvc.perform(get(path).header("Authorization", bearer(token)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.errorCode").value("SUBSCRIPTION_REQUIRED"))
+                    .andExpect(jsonPath("$.requiredPlan").value("PRO"))
+                    .andExpect(jsonPath("$.feature").value("SESSION_REVIEW"));
+        }
+        for (var request : new org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder[] {
+                put(root + "/profile").contentType(MediaType.APPLICATION_JSON).content("{}"),
+                put(root + "/commitment").contentType(MediaType.APPLICATION_JSON).content(payload),
+                post(root + "/commitment/" + date + "/accept"),
+                post(root + "/commitment/" + date + "/evaluate")
+        }) {
+            mockMvc.perform(request.header("Authorization", bearer(token)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.errorCode").value("SUBSCRIPTION_REQUIRED"))
+                    .andExpect(jsonPath("$.requiredPlan").value("PRO"));
+        }
+        org.assertj.core.api.Assertions.assertThat(commitments.findByAccount_IdAndUserAndEffectiveSessionDate(
+                account.getId(), free, LocalDate.parse(date))).isEmpty();
+        mockMvc.perform(get(root)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void ownerCanUseEverySurvivalResourceWhileAnotherUserGetsTheSamePrivacySafeNotFoundResponseAsUnknownAccount() throws Exception {
         User owner = user("survival-owner@example.com");
         User other = user("survival-other@example.com");
@@ -181,7 +220,7 @@ class AccountSurvivalOwnershipIntegrationTest {
     }
 
     private String login(String email) throws Exception { String body = mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"%s\",\"password\":\"password123\"}".formatted(email))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(); return objectMapper.readTree(body).get("token").asText(); }
-    private User user(String email) { return users.save(User.builder().name("Survival test user").email(email).passwordHash(passwordEncoder.encode("password123")).emailVerified(true).role(UserRole.USER).plan(PlanType.FREE).subscriptionStatus(SubscriptionStatus.ACTIVE).build()); }
+    private User user(String email) { return users.save(User.builder().name("Survival test user").email(email).passwordHash(passwordEncoder.encode("password123")).emailVerified(true).role(UserRole.USER).plan(PlanType.PRO).subscriptionStatus(SubscriptionStatus.ACTIVE).build()); }
     private TradingAccount account(User user, String name) { return accounts.save(TradingAccount.builder().user(user).name(name).propFirm(PropFirmType.TOPSTEP).accountType(TradingAccountType.PERSONAL).startingBalance(new BigDecimal("50000")).status(TradingAccountStatus.ACTIVE).build()); }
     private Trade trade(User user, TradingAccount account, LocalDate date, String symbol, String side, String entry, String exit, String pnl, int quantity) {
         return Trade.builder().user(user).account(account).symbol(symbol).market("FUTURES").tradeDate(date).entryTime(time(date, entry)).exitTime(time(date, exit))
