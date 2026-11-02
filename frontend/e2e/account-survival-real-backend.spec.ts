@@ -35,6 +35,31 @@ test("Account Survival uses the real backend for profile, evidence, commitment, 
   expect(ownerAuthResponse.ok(), await ownerAuthResponse.text()).toBeTruthy();
   const owner = await ownerAuthResponse.json() as Fixture["owner"];
   expect(owner.role).toBe("USER");
+  expect(owner.plan).toBe("PRO");
+  for (const path of [
+    `/accounts/${fixture.laterAccountId}/survival`,
+    `/accounts/${fixture.laterAccountId}/survival/profile`,
+    `/accounts/${fixture.laterAccountId}/survival/commitment?date=${fixture.sessionDate}`,
+    `/accounts/${fixture.laterAccountId}/survival/commitment/${fixture.sessionDate}/evaluation`,
+    `/accounts/${fixture.laterAccountId}/survival/commitment/${fixture.sessionDate}/evaluations`,
+  ]) {
+    const freeResponse = await request.get(`${apiBaseUrl}${path}`, {
+      headers: { Authorization: `Bearer ${fixture.otherToken}` },
+      failOnStatusCode: false,
+    });
+    expect(freeResponse.status()).toBe(403);
+    expect(await freeResponse.json()).toMatchObject({
+      errorCode: "SUBSCRIPTION_REQUIRED",
+      requiredPlan: "PRO",
+      feature: "SESSION_REVIEW",
+    });
+  }
+  const freeWrite = await request.put(`${apiBaseUrl}/accounts/${fixture.laterAccountId}/survival/commitment`, {
+    headers: { Authorization: `Bearer ${fixture.otherToken}` },
+    data: { effectiveSessionDate: fixture.sessionDate, maxAttempts: 2 },
+    failOnStatusCode: false,
+  });
+  expect(freeWrite.status()).toBe(403);
 
   const pageErrors: string[] = [];
   const survivalResponses: Array<{ url: string; status: number; body: Record<string, unknown> | null }> = [];
