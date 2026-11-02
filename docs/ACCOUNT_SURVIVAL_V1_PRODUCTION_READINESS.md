@@ -206,7 +206,10 @@ SHA:
    negative control and the approved exception expiry check.
 2. Supabase backup/PITR retention and a named restore owner are confirmed from
    provider/dashboard evidence. Connected read-only tooling does not expose
-   those settings.
+   those settings. The proposed encrypted daily logical-backup design is in
+   `docs/TRADEPILOT_PRODUCTION_DATABASE_BACKUP.md`, but it is not active and
+   does not satisfy this gate until a real off-site production backup has passed
+   an access-controlled restore verification.
 3. An authorized operator verifies the Render JDBC role over the actual runtime
    connection: record role name, `current_user`, `session_user`, `BYPASSRLS`,
    and table privileges for the four RLS-enabled Account Survival tables. The
