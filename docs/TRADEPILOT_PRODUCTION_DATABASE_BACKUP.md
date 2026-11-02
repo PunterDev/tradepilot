@@ -165,8 +165,10 @@ and approved production dump: approximately compressed logical-dump size times
    relation, function, type, or non-default extension, validates that the
    `public` archive DDL has no managed-schema/extension dependencies, restores
    with `pg_restore --schema=public --strict-names --exit-on-error`, validates
-   the recovered public structural counts, required application tables and
-   Flyway history, and checks all foreign keys are validated.
+   the recovered public structural counts, exact sequence names and ownership
+   (including identity sequences), non-advancing restored sequence state,
+   required application tables and Flyway history, and all foreign keys are
+   validated.
 6. Capture the restore result in the recovery record. Measure RTO only from an
    approved representative restore; until then RTO is **UNVERIFIED**.
 

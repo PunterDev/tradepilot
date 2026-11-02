@@ -83,8 +83,14 @@ scope_manifest=""
 if [[ "$restore_scope" == "application-public" ]]; then
   scope_ddl="$work_dir/public-schema.sql"
   scope_manifest="$work_dir/application-scope-manifest.json"
+  scope_sequence_list="$work_dir/public-sequence-set.list"
+  scope_sequence_states="$work_dir/public-sequence-state.sql"
   pg_restore --schema=public --strict-names --schema-only --file="$scope_ddl" "$archive_path"
   python3 "$SCRIPT_DIR/validate-application-scope.py" --ddl "$scope_ddl" --manifest "$scope_manifest"
+  pg_restore --list "$archive_path" | awk '/ SEQUENCE SET public / { print }' >"$scope_sequence_list"
+  [[ -s "$scope_sequence_list" ]] || backup_die "application-scope archive has sequences without sequence-state entries"
+  pg_restore --use-list="$scope_sequence_list" --file="$scope_sequence_states" "$archive_path"
+  [[ -s "$scope_sequence_states" ]] || backup_die "application-scope archive sequence-state extraction failed"
 fi
 
 export PGDATABASE="$TRADEPILOT_RESTORE_PGDATABASE"
@@ -103,6 +109,16 @@ restore_psql() {
       psql -X -A -t -v ON_ERROR_STOP=1 --username="$PGUSER" --dbname="$PGDATABASE" "$@"
   else
     psql -X -A -t -v ON_ERROR_STOP=1 "$@"
+  fi
+}
+
+restore_psql_file() {
+  local path="$1"
+  if [[ -n "$restore_docker_container" ]]; then
+    docker exec --interactive --env PGPASSWORD "$restore_docker_container" \
+      psql -X -v ON_ERROR_STOP=1 --username="$PGUSER" --dbname="$PGDATABASE" -f - <"$path"
+  else
+    psql -X -v ON_ERROR_STOP=1 -f "$path"
   fi
 }
 
@@ -162,7 +178,6 @@ restore_archive
 if [[ "$restore_scope" == "application-public" ]]; then
   for check in \
     "tables|select count(*) from pg_catalog.pg_class relation join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public' and relation.relkind in ('r', 'p')" \
-    "sequences|select count(*) from pg_catalog.pg_class relation join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public' and relation.relkind = 'S'" \
     "functions|select count(*) from pg_catalog.pg_proc routine join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace where namespace.nspname = 'public'" \
     "rls_tables|select count(*) from pg_catalog.pg_class relation join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public' and relation.relrowsecurity" \
     "policies|select count(*) from pg_catalog.pg_policy policy join pg_catalog.pg_class relation on relation.oid = policy.polrelid join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace where namespace.nspname = 'public'" \
@@ -176,6 +191,37 @@ if [[ "$restore_scope" == "application-public" ]]; then
   expected_indexes="$(scope_manifest_value explicit_indexes)"
   actual_indexes="$(restore_psql -c "select count(*) from pg_catalog.pg_indexes where schemaname = 'public'")"
   (( actual_indexes >= expected_indexes )) || backup_die "application-scope restore did not reproduce expected public indexes"
+
+  restored_sequence_inventory="$work_dir/restored-sequences.tsv"
+  restore_psql -F $'\t' -c "
+    select sequence.relname,
+           coalesce(owner_relation.relname, ''),
+           coalesce(owner_attribute.attname, ''),
+           coalesce(dependency.deptype::text, ''),
+           coalesce(nullif(owner_attribute.attidentity, ''), '')
+    from pg_catalog.pg_class sequence
+    join pg_catalog.pg_namespace sequence_namespace on sequence_namespace.oid = sequence.relnamespace
+    left join pg_catalog.pg_depend dependency
+      on dependency.classid = 'pg_class'::regclass
+      and dependency.objid = sequence.oid
+      and dependency.refclassid = 'pg_class'::regclass
+      and dependency.refobjsubid > 0
+      and dependency.deptype in ('a', 'i')
+    left join pg_catalog.pg_class owner_relation on owner_relation.oid = dependency.refobjid
+    left join pg_catalog.pg_attribute owner_attribute
+      on owner_attribute.attrelid = dependency.refobjid
+      and owner_attribute.attnum = dependency.refobjsubid
+    where sequence_namespace.nspname = 'public'
+      and sequence.relkind = 'S'
+    order by sequence.relname
+  " >"$restored_sequence_inventory"
+  python3 "$SCRIPT_DIR/validate-application-scope.py" \
+    --manifest "$scope_manifest" --actual-sequences "$restored_sequence_inventory"
+  sequence_state_check="$work_dir/check-restored-sequence-state.sql"
+  python3 "$SCRIPT_DIR/validate-application-scope.py" \
+    --manifest "$scope_manifest" --sequence-states "$scope_sequence_states" \
+    --emit-sequence-state-check >"$sequence_state_check"
+  restore_psql_file "$sequence_state_check" >/dev/null
 fi
 
 for table in users trading_accounts trades import_batches journal_entries flyway_schema_history; do
