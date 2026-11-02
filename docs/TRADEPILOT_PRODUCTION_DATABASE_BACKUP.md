@@ -125,8 +125,8 @@ and approved production dump: approximately compressed logical-dump size times
 4. Set `TRADEPILOT_RESTORE_CONFIRM_DISPOSABLE=yes` and the target connection
    variables. Run `scripts/backup/restore-verify.sh`.
 5. The script verifies encrypted SHA-256, decrypts into temporary storage,
-   validates the archive, refuses a target containing any user-managed schema
-   or object, restores with
+   validates the archive, refuses a target containing any user-managed schema,
+   relation, function, type, or non-default extension, restores with
    `pg_restore --exit-on-error`, validates required application tables and
    Flyway history, and checks all foreign keys are validated.
 6. Capture the restore result in the recovery record. Measure RTO only from an

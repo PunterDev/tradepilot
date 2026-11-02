@@ -86,7 +86,20 @@ existing_user_managed_state="$(psql -X -A -t -v ON_ERROR_STOP=1 -c "
     from pg_catalog.pg_class relation
     join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
     where namespace.nspname = 'public'
-      and relation.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
+    union
+    select routine.oid
+    from pg_catalog.pg_proc routine
+    join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+    where namespace.nspname = 'public'
+    union
+    select type.oid
+    from pg_catalog.pg_type type
+    join pg_catalog.pg_namespace namespace on namespace.oid = type.typnamespace
+    where namespace.nspname = 'public'
+    union
+    select extension.oid
+    from pg_catalog.pg_extension extension
+    where extension.extname <> 'plpgsql'
   ) existing_state
 ")"
 [[ "$existing_user_managed_state" == "0" ]] || backup_die "restore target has user-managed schemas or objects; refusing to overwrite a non-disposable database"
