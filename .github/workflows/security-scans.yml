@@ -54,14 +54,37 @@ jobs:
             exit 1
           fi
 
+      - name: Restore Dependency-Check data
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/dependency-check-data
+          # Each successful run writes a fresh snapshot; restore-keys reuse the latest prior snapshot.
+          key: dependency-check-v12-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            dependency-check-v12-${{ runner.os }}-
+
       - name: Backend dependency check
         working-directory: backend
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          DEPENDENCY_CHECK_DATA: ${{ runner.temp }}/dependency-check-data
         run: >-
-          mvn -B org.owasp:dependency-check-maven:check
+          mvn -B org.owasp:dependency-check-maven:12.1.0:check
           -DfailBuildOnCVSS=8
+          -DdataDirectory="$DEPENDENCY_CHECK_DATA"
           -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
+          -DnvdApiDelay=4000
+          -DnvdMaxRetryCount=5
+          -DconnectionTimeout=30000
+          -DconnectionReadTimeout=90000
+
+      - name: Upload Dependency-Check report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: backend/target/dependency-check-report.*
+          if-no-files-found: warn
 
   frontend-audit:
     name: frontend-audit
