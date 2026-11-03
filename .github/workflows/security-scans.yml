@@ -61,24 +61,35 @@ jobs:
           path: ${{ runner.temp }}/dependency-check-data
           # A complete update gets its own immutable cache entry. Restore the latest
           # compatible snapshot so each scan can perform the normal incremental update.
-          key: dependency-check-v12-${{ runner.os }}-${{ github.run_id }}
+          key: dependency-check-v12.2.2-reference-url-schema-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            dependency-check-v12-${{ runner.os }}-
+            dependency-check-v12.2.2-reference-url-schema-${{ runner.os }}-
 
       - name: Refresh Dependency-Check vulnerability data
         working-directory: backend
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
           DEPENDENCY_CHECK_DATA: ${{ runner.temp }}/dependency-check-data
-        run: >-
-          mvn -B org.owasp:dependency-check-maven:12.1.0:update-only
-          -DdataDirectory="$DEPENDENCY_CHECK_DATA"
-          -DfailOnError=true
-          -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
-          -DnvdApiDelay=4000
-          -DnvdMaxRetryCount=5
-          -DconnectionTimeout=30000
-          -DconnectionReadTimeout=90000
+        run: |
+          set -Eeuo pipefail
+          update_log="$(mktemp)"
+          trap 'rm -f "$update_log"' EXIT
+
+          mvn -B org.owasp:dependency-check-maven:12.2.2:update-only \
+            -DdataDirectory="$DEPENDENCY_CHECK_DATA" \
+            -DfailOnError=true \
+            -DnvdApiKeyEnvironmentVariable=NVD_API_KEY \
+            -DnvdApiDelay=4000 \
+            -DnvdMaxRetryCount=5 \
+            -DconnectionTimeout=30000 \
+            -DconnectionReadTimeout=90000 2>&1 | tee "$update_log"
+
+          # Dependency-Check 12.1.0 logged and continued after individual NVD
+          # CVE import failures. Never cache a data set with an ingestion error.
+          if grep -E 'Failed to process CVE-|NvdApiException|DatabaseException: Error updating' "$update_log"; then
+            echo '::error::Dependency-Check did not complete NVD vulnerability ingestion.'
+            exit 1
+          fi
 
       # Keep completed NVD data even when the following CVSS gate fails. A failed
       # update never reaches this step, so incomplete vulnerability data is not cached.
@@ -87,7 +98,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/dependency-check-data
-          key: dependency-check-v12-${{ runner.os }}-${{ github.run_id }}
+          key: dependency-check-v12.2.2-reference-url-schema-${{ runner.os }}-${{ github.run_id }}
 
       - name: Backend dependency check
         working-directory: backend
@@ -95,9 +106,10 @@ jobs:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
           DEPENDENCY_CHECK_DATA: ${{ runner.temp }}/dependency-check-data
         run: >-
-          mvn -B org.owasp:dependency-check-maven:12.1.0:check
+          mvn -B org.owasp:dependency-check-maven:12.2.2:check
           -DfailBuildOnCVSS=8
           -DdataDirectory="$DEPENDENCY_CHECK_DATA"
+          -DfailOnError=true
           -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
           -DnvdApiDelay=4000
           -DnvdMaxRetryCount=5
