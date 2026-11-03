@@ -55,13 +55,39 @@ jobs:
           fi
 
       - name: Restore Dependency-Check data
-        uses: actions/cache@v4
+        id: dependency-check-cache
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/dependency-check-data
-          # Each successful run writes a fresh snapshot; restore-keys reuse the latest prior snapshot.
+          # A complete update gets its own immutable cache entry. Restore the latest
+          # compatible snapshot so each scan can perform the normal incremental update.
           key: dependency-check-v12-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             dependency-check-v12-${{ runner.os }}-
+
+      - name: Refresh Dependency-Check vulnerability data
+        working-directory: backend
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          DEPENDENCY_CHECK_DATA: ${{ runner.temp }}/dependency-check-data
+        run: >-
+          mvn -B org.owasp:dependency-check-maven:12.1.0:update-only
+          -DdataDirectory="$DEPENDENCY_CHECK_DATA"
+          -DfailOnError=true
+          -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
+          -DnvdApiDelay=4000
+          -DnvdMaxRetryCount=5
+          -DconnectionTimeout=30000
+          -DconnectionReadTimeout=90000
+
+      # Keep completed NVD data even when the following CVSS gate fails. A failed
+      # update never reaches this step, so incomplete vulnerability data is not cached.
+      - name: Save refreshed Dependency-Check data
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/dependency-check-data
+          key: dependency-check-v12-${{ runner.os }}-${{ github.run_id }}
 
       - name: Backend dependency check
         working-directory: backend
