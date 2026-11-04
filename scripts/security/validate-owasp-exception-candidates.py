@@ -42,17 +42,31 @@ EXPANDED_SIXTEEN = ORIGINAL_EIGHT | frozenset(
         ("CVE-2026-59270", "pkg:maven/org.springframework.security/spring-security-web@6.5.11"),
     }
 )
-SCOPES = {
-    "original-eight": ORIGINAL_EIGHT,
-    "expanded-sixteen": EXPANDED_SIXTEEN,
-}
 SUPPRESSION_NAMESPACE = "{https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd}"
 APPROVAL_REPOSITORY = "PunterDev/tradepilot"
 APPROVAL_PR = 6
-REVIEWED_COMMITS = {
-    "original-eight": "5d6b05af6a2c7234ec3d666d8cabc3d45f020a35",
-    "expanded-sixteen": "db2ace78d080b86bd1520c7b027398557235c933",
+SCOPE_POLICIES = {
+    "original-eight": {
+        "approved": ORIGINAL_EIGHT,
+        "suppression_expiry": "2026-11-30",
+        "approval_expiry": "2026-11-30T23:59:59Z",
+        "reviewed_commit": "5d6b05af6a2c7234ec3d666d8cabc3d45f020a35",
+    },
+    # Historical, never-approved November amendment retained for audit evidence.
+    "expanded-sixteen": {
+        "approved": EXPANDED_SIXTEEN,
+        "suppression_expiry": "2026-11-30",
+        "approval_expiry": "2026-11-30T23:59:59Z",
+        "reviewed_commit": "db2ace78d080b86bd1520c7b027398557235c933",
+    },
+    "expanded-sixteen-dec15": {
+        "approved": EXPANDED_SIXTEEN,
+        "suppression_expiry": "2026-12-15",
+        "approval_expiry": "2026-12-15T23:59:59Z",
+        "reviewed_commit": "94e55830ac08b661b0f64d86c69d155c3646520f",
+    },
 }
+SCOPES = {scope: policy["approved"] for scope, policy in SCOPE_POLICIES.items()}
 SOLO_FOUNDER_MODE = "SOLO_FOUNDER"
 OWNER_ATTESTED_CONFIG_STATUS = "OWNER_ATTESTED_WITH_LIMITATIONS"
 REQUIRED_CONFIGURATION_LIMITATIONS = frozenset(
@@ -77,9 +91,9 @@ def parse_timestamp(value: str) -> datetime:
         raise PolicyError(f"invalid timestamp: {value}") from error
 
 
-def parse_suppression_expiry(value: str) -> datetime:
-    if value != SUPPRESSION_EXPIRY:
-        raise PolicyError(f"each suppression must expire exactly on {SUPPRESSION_EXPIRY}")
+def parse_suppression_expiry(value: str, expected_expiry: str) -> datetime:
+    if value != expected_expiry:
+        raise PolicyError(f"each suppression must expire exactly on {expected_expiry}")
     try:
         return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
     except ValueError as error:
@@ -96,7 +110,10 @@ def child_text(element: element_tree.Element, name: str) -> str | None:
 
 
 def validate_suppressions(
-    path: Path, as_of: datetime, approved: frozenset[tuple[str, str]]
+    path: Path,
+    as_of: datetime,
+    approved: frozenset[tuple[str, str]],
+    suppression_expiry: str = SUPPRESSION_EXPIRY,
 ) -> set[tuple[str, str]]:
     try:
         root = element_tree.parse(path).getroot()
@@ -115,7 +132,7 @@ def validate_suppressions(
             raise PolicyError(f"broad or unsupported suppression matcher present: {sorted(forbidden)}")
 
         expiry = suppression.get("until")
-        if as_of >= parse_suppression_expiry(expiry or ""):
+        if as_of >= parse_suppression_expiry(expiry or "", suppression_expiry):
             raise PolicyError(f"suppression is expired: {expiry}")
 
         package = suppression.find(f"{SUPPRESSION_NAMESPACE}packageUrl")
@@ -174,9 +191,10 @@ def load_approval(path: Path) -> dict:
 
 
 def validate_approval(approval: dict, scope: str) -> None:
+    policy = SCOPE_POLICIES[scope]
     if approval.get("status") != "APPROVED":
         raise PolicyError("approval record is not APPROVED")
-    if approval.get("reviewedCommit") != REVIEWED_COMMITS[scope]:
+    if approval.get("reviewedCommit") != policy["reviewed_commit"]:
         raise PolicyError("approval record does not identify the reviewed commit")
     if approval.get("scope") not in (None, scope):
         raise PolicyError("approval record scope does not match the candidate scope")
@@ -184,7 +202,7 @@ def validate_approval(approval: dict, scope: str) -> None:
     if not decision_timestamp:
         raise PolicyError("approval record lacks a decision timestamp")
     parsed_decision_timestamp = parse_timestamp(decision_timestamp)
-    if parsed_decision_timestamp > parse_timestamp(APPROVAL_EXPIRY):
+    if parsed_decision_timestamp > parse_timestamp(policy["approval_expiry"]):
         raise PolicyError("approval decision timestamp is after the exception expiry")
     for role in ("repositoryOwner", "securityRiskOwner"):
         actor = approval.get(role, {})
@@ -200,7 +218,7 @@ def validate_approval(approval: dict, scope: str) -> None:
     limitations = production_configuration.get("limitations")
     if not isinstance(limitations, list) or not REQUIRED_CONFIGURATION_LIMITATIONS.issubset(limitations):
         raise PolicyError("production configuration attestation does not record all limitations")
-    if approval.get("expiry") != APPROVAL_EXPIRY:
+    if approval.get("expiry") != policy["approval_expiry"]:
         raise PolicyError("approval expiry does not match the exception expiry")
 
     evidence = approval.get("approvalEvidence", {})
@@ -260,6 +278,7 @@ def verify_comment(
     required_terms: tuple[str, ...],
     role: str,
     decision_timestamp: datetime,
+    approval_expiry: str,
     require_owner_association: bool = False,
 ) -> None:
     actual_login = comment.get("user", {}).get("login")
@@ -280,7 +299,7 @@ def verify_comment(
         raise PolicyError(f"{role} approval comment has an invalid edit timestamp")
     if updated_at < decision_timestamp:
         raise PolicyError(f"{role} approval comment was not updated at or after the recorded decision")
-    if updated_at > parse_timestamp(APPROVAL_EXPIRY):
+    if updated_at > parse_timestamp(approval_expiry):
         raise PolicyError(f"{role} approval comment was updated after the exception expiry")
     missing_terms = [term for term in required_terms if term not in body]
     if missing_terms:
@@ -321,10 +340,11 @@ def verify_github_approvals(
         raise PolicyError("approval evidence does not bind to the current candidate XML")
 
     scope = approval.get("scope", "original-eight")
+    policy = SCOPE_POLICIES[scope]
     common_terms = (
-        REVIEWED_COMMITS[scope],
+        policy["reviewed_commit"],
         scope_hash,
-        APPROVAL_EXPIRY,
+        policy["approval_expiry"],
     )
     decision_timestamp = parse_timestamp(approval["decisionTimestamp"])
     owner = evidence["repositoryOwner"]
@@ -336,6 +356,7 @@ def verify_github_approvals(
         ("OWNER_AUTHORIZATION: APPROVE",) + common_terms,
         "repository-owner",
         decision_timestamp,
+        policy["approval_expiry"],
     )
     verify_comment(
         fetch_comment(APPROVAL_REPOSITORY, str(risk_owner["commentId"])),
@@ -343,6 +364,7 @@ def verify_github_approvals(
         ("SECURITY_RISK_ACCEPTANCE: ACCEPT_TEMPORARILY",) + common_terms,
         "security-risk owner",
         decision_timestamp,
+        policy["approval_expiry"],
     )
     verify_comment(
         fetch_comment(APPROVAL_REPOSITORY, str(config_attestor["commentId"])),
@@ -360,6 +382,7 @@ def verify_github_approvals(
         ),
         "production-configuration attestor",
         decision_timestamp,
+        policy["approval_expiry"],
     )
 
     governance = approval.get("governance", {})
@@ -390,6 +413,7 @@ def verify_github_approvals(
             ) + common_terms,
             "solo-founder governance",
             decision_timestamp,
+            policy["approval_expiry"],
             require_owner_association=True,
         )
         verify_exact_tuple_lines(comment.get("body", ""), approved, "solo-founder governance")
@@ -408,8 +432,9 @@ def main() -> int:
 
     try:
         as_of = parse_timestamp(args.as_of)
-        approved = SCOPES[args.scope]
-        validate_suppressions(args.suppression, as_of, approved)
+        policy = SCOPE_POLICIES[args.scope]
+        approved = policy["approved"]
+        validate_suppressions(args.suppression, as_of, approved, policy["suppression_expiry"])
         validate_findings(args.findings, approved)
         approval = load_approval(args.approval_record)
         if args.mode == "activation":

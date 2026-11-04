@@ -13,7 +13,9 @@ ROOT = Path(__file__).resolve().parents[3]
 VALIDATOR = ROOT / "scripts/security/validate-owasp-exception-candidates.py"
 CANDIDATE = ROOT / "docs/security/candidates/dependency-check-final-eight-candidate.xml"
 EXPANDED_CANDIDATE = ROOT / "docs/security/candidates/dependency-check-final-sixteen-candidate.xml"
+DECEMBER_EXPANDED_CANDIDATE = ROOT / "docs/security/candidates/dependency-check-expanded-sixteen-dec15-candidate.xml"
 PENDING_APPROVAL = ROOT / "docs/security/candidates/owasp-final-eight-approval.template.json"
+DECEMBER_EXPANDED_APPROVAL = ROOT / "docs/security/candidates/owasp-expanded-sixteen-dec15-approval.template.json"
 APPROVED_FINDINGS = [
     {"cve": "CVE-2026-53914", "purl": "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.25", "cvss": 9.8},
     {"cve": "CVE-2026-47884", "purl": "pkg:maven/org.springframework/spring-core@6.2.19", "cvss": 9.8},
@@ -55,12 +57,13 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
         return subprocess.run(command, text=True, capture_output=True, check=False)
 
     def approved_record(self, directory: Path, *, candidate: Path = CANDIDATE, scope: str = "original-eight") -> Path:
+        policy = VALIDATOR_MODULE["SCOPE_POLICIES"][scope]
         path = directory / "approval.json"
         path.write_text(json.dumps({
             "status": "APPROVED",
             "scope": scope,
-            "reviewedCommit": "5d6b05af6a2c7234ec3d666d8cabc3d45f020a35",
-            "expiry": "2026-11-30T23:59:59Z",
+            "reviewedCommit": policy["reviewed_commit"],
+            "expiry": policy["approval_expiry"],
             "decisionTimestamp": "2026-11-03T00:00:00Z",
             "repositoryOwner": {"name": "Owner", "decision": "APPROVE", "approvedAt": "2026-11-03T00:00:00Z"},
             "securityRiskOwner": {"name": "Security owner", "decision": "APPROVE", "approvedAt": "2026-11-03T00:00:00Z"},
@@ -110,8 +113,16 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
             f"- {finding['cve']} | {finding['purl']}" for finding in EXPANDED_FINDINGS
         )
 
-    def solo_founder_record(self, directory: Path) -> dict:
-        approval = json.loads(self.approved_record(directory).read_text())
+    def solo_founder_record(
+        self,
+        directory: Path,
+        *,
+        candidate: Path = CANDIDATE,
+        scope: str = "original-eight",
+    ) -> dict:
+        approval = json.loads(
+            self.approved_record(directory, candidate=candidate, scope=scope).read_text()
+        )
         approval["governance"] = {
             "mode": "SOLO_FOUNDER",
             "soloFounder": {
@@ -137,6 +148,16 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
             suppression=EXPANDED_CANDIDATE,
             findings=EXPANDED_FINDINGS,
             scope="expanded-sixteen",
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_december_renewal_candidate_has_exactly_sixteen_reviewed_tuples(self) -> None:
+        result = self.run_validator(
+            suppression=DECEMBER_EXPANDED_CANDIDATE,
+            approval=DECEMBER_EXPANDED_APPROVAL,
+            findings=EXPANDED_FINDINGS,
+            scope="expanded-sixteen-dec15",
+            as_of="2026-12-01T00:00:00Z",
         )
         self.assertEqual(0, result.returncode, result.stderr)
 
@@ -422,6 +443,40 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
             lambda _repository, _comment_id: comment,
         )
 
+    def test_december_renewal_requires_a_new_exact_scope_comment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            approval = self.solo_founder_record(
+                Path(temp),
+                candidate=DECEMBER_EXPANDED_CANDIDATE,
+                scope="expanded-sixteen-dec15",
+            )
+        scope_hash = approval["approvalEvidence"]["candidateSha256"]
+        body = "\n".join((
+            "SOLO_FOUNDER_GOVERNANCE: ADOPT",
+            "SOLE_OWNER_DEVELOPER_SECURITY_RISK_DECISION_MAKER",
+            "NO_INDEPENDENT_SECURITY_REVIEW",
+            "EXTERNAL_INDEPENDENT_REVIEW_OBLIGATIONS: NONE_IDENTIFIED",
+            "TEMPORARY_EXCEPTION_NOT_PERMANENT_WAIVER",
+            "OWNER_AUTHORIZATION: APPROVE",
+            "SECURITY_RISK_ACCEPTANCE: ACCEPT_TEMPORARILY",
+            "PRODUCTION_CONFIGURATION_ATTESTATION: OWNER_ATTESTED_WITH_LIMITATIONS",
+            "OWNER_ACCEPTS_RESIDUAL_CONFIGURATION_RISK",
+            "production SPRING_LDAP_EMBEDDED_* SPRING_EXPRESSION_COMPILER_MODE Environment Groups Secret Files",
+            "LIVE_CONTAINER_FILES_NOT_INDEPENDENTLY_VERIFIED",
+            "HOSTED_JVM_PROPERTIES_NOT_INDEPENDENTLY_VERIFIED",
+            "FUTURE_CONFIGURATION_DRIFT_NOT_INDEPENDENTLY_VERIFIED",
+            approval["reviewedCommit"], scope_hash, approval["expiry"],
+            self.exact_expanded_scope_lines(),
+        ))
+        comment = self.comment("founder", body)
+        VALIDATOR_MODULE["validate_approval"](approval, "expanded-sixteen-dec15")
+        VALIDATOR_MODULE["verify_github_approvals"](
+            approval,
+            DECEMBER_EXPANDED_CANDIDATE,
+            VALIDATOR_MODULE["EXPANDED_SIXTEEN"],
+            lambda _repository, _comment_id: comment,
+        )
+
     def test_candidate_sha_mismatch_remains_blocking(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             approval = self.solo_founder_record(Path(temp))
@@ -446,6 +501,31 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
         result = self.run_validator(as_of="2026-12-01T00:00:00Z")
         self.assertNotEqual(0, result.returncode)
         self.assertIn("expired", result.stderr)
+
+    def test_december_renewal_expires_after_its_approved_date(self) -> None:
+        result = self.run_validator(
+            suppression=DECEMBER_EXPANDED_CANDIDATE,
+            approval=DECEMBER_EXPANDED_APPROVAL,
+            scope="expanded-sixteen-dec15",
+            as_of="2026-12-16T00:00:00Z",
+        )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("expired", result.stderr)
+
+    def test_december_renewal_rejects_an_early_or_broad_expiry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            changed = Path(temp) / "wrong-expiry.xml"
+            changed.write_text(
+                DECEMBER_EXPANDED_CANDIDATE.read_text().replace("2026-12-15", "2026-12-31", 1)
+            )
+            result = self.run_validator(
+                suppression=changed,
+                approval=DECEMBER_EXPANDED_APPROVAL,
+                scope="expanded-sixteen-dec15",
+                as_of="2026-12-01T00:00:00Z",
+            )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("exactly on 2026-12-15", result.stderr)
 
     def test_missing_approval_fails_closed(self) -> None:
         result = self.run_validator(mode="activation")
