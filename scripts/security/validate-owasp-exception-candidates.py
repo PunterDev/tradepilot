@@ -44,13 +44,14 @@ EXPANDED_SIXTEEN = ORIGINAL_EIGHT | frozenset(
 )
 SUPPRESSION_NAMESPACE = "{https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd}"
 APPROVAL_REPOSITORY = "PunterDev/tradepilot"
-APPROVAL_PR = 6
+HISTORICAL_APPROVAL_PR = 6
 SCOPE_POLICIES = {
     "original-eight": {
         "approved": ORIGINAL_EIGHT,
         "suppression_expiry": "2026-11-30",
         "approval_expiry": "2026-11-30T23:59:59Z",
         "reviewed_commit": "5d6b05af6a2c7234ec3d666d8cabc3d45f020a35",
+        "approval_pr": HISTORICAL_APPROVAL_PR,
     },
     # Historical, never-approved November amendment retained for audit evidence.
     "expanded-sixteen": {
@@ -58,12 +59,17 @@ SCOPE_POLICIES = {
         "suppression_expiry": "2026-11-30",
         "approval_expiry": "2026-11-30T23:59:59Z",
         "reviewed_commit": "db2ace78d080b86bd1520c7b027398557235c933",
+        "approval_pr": HISTORICAL_APPROVAL_PR,
     },
     "expanded-sixteen-dec15": {
         "approved": EXPANDED_SIXTEEN,
         "suppression_expiry": "2026-12-15",
         "approval_expiry": "2026-12-15T23:59:59Z",
-        "reviewed_commit": "94e55830ac08b661b0f64d86c69d155c3646520f",
+        # This scope is deliberately bound to the head SHA of the new PR that
+        # targets master. It cannot inherit PR #6's approval or old review SHA.
+        "requires_new_pr_binding": True,
+        "prepared_baseline_commit": "666ce192bc8191586409fea2f2afe090637e5ce0",
+        "disallowed_approval_prs": frozenset({HISTORICAL_APPROVAL_PR}),
     },
 }
 SCOPES = {scope: policy["approved"] for scope, policy in SCOPE_POLICIES.items()}
@@ -190,11 +196,25 @@ def load_approval(path: Path) -> dict:
         raise PolicyError(f"cannot parse approval record: {error}") from error
 
 
+def is_commit_sha(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) is not None
+
+
+def approval_issue_url(repository: str, pull_request: int) -> str:
+    return f"https://api.github.com/repos/{repository}/issues/{pull_request}"
+
+
 def validate_approval(approval: dict, scope: str) -> None:
     policy = SCOPE_POLICIES[scope]
     if approval.get("status") != "APPROVED":
         raise PolicyError("approval record is not APPROVED")
-    if approval.get("reviewedCommit") != policy["reviewed_commit"]:
+    reviewed_commit = approval.get("reviewedCommit")
+    if policy.get("requires_new_pr_binding"):
+        if not is_commit_sha(reviewed_commit):
+            raise PolicyError("approval record must identify the new PR head commit")
+        if approval.get("preparedBaselineCommit") != policy["prepared_baseline_commit"]:
+            raise PolicyError("approval record does not identify the prepared December baseline")
+    elif reviewed_commit != policy["reviewed_commit"]:
         raise PolicyError("approval record does not identify the reviewed commit")
     if approval.get("scope") not in (None, scope):
         raise PolicyError("approval record scope does not match the candidate scope")
@@ -222,7 +242,17 @@ def validate_approval(approval: dict, scope: str) -> None:
         raise PolicyError("approval expiry does not match the exception expiry")
 
     evidence = approval.get("approvalEvidence", {})
-    if evidence.get("repository") != APPROVAL_REPOSITORY or evidence.get("pullRequest") != APPROVAL_PR:
+    if evidence.get("repository") != APPROVAL_REPOSITORY:
+        raise PolicyError("approval evidence must identify the reviewed repository")
+    pull_request = evidence.get("pullRequest")
+    if policy.get("requires_new_pr_binding"):
+        if not isinstance(pull_request, int) or pull_request <= 0:
+            raise PolicyError("approval evidence must identify a new pull request")
+        if pull_request in policy["disallowed_approval_prs"]:
+            raise PolicyError("historical PR approval cannot authorize the December renewal")
+        if evidence.get("reviewedPullRequestHeadSha") != reviewed_commit:
+            raise PolicyError("approval evidence must bind to the reviewed PR head commit")
+    elif pull_request != policy["approval_pr"]:
         raise PolicyError("approval evidence must identify the reviewed repository and PR")
     for role in ("repositoryOwner", "securityRiskOwner", "productionConfigurationAttestor"):
         comment = evidence.get(role, {})
@@ -272,6 +302,44 @@ def fetch_github_comment(repository: str, comment_id: str) -> dict:
         raise PolicyError(f"cannot verify GitHub approval comment {comment_id}: {error}") from error
 
 
+def fetch_github_pull_request(repository: str, pull_request: int) -> dict:
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise PolicyError("GITHUB_TOKEN is required to verify the reviewed pull request")
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repository}/pulls/{pull_request}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return json.loads(response.read())
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as error:
+        raise PolicyError(f"cannot verify reviewed pull request {pull_request}: {error}") from error
+
+
+def fetch_github_comparison(repository: str, base: str, head: str) -> dict:
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise PolicyError("GITHUB_TOKEN is required to verify reviewed commit ancestry")
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repository}/compare/{base}...{head}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return json.loads(response.read())
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as error:
+        raise PolicyError(f"cannot verify reviewed commit ancestry: {error}") from error
+
+
 def verify_comment(
     comment: dict,
     expected_login: str,
@@ -279,11 +347,11 @@ def verify_comment(
     role: str,
     decision_timestamp: datetime,
     approval_expiry: str,
+    expected_issue_url: str,
     require_owner_association: bool = False,
 ) -> None:
     actual_login = comment.get("user", {}).get("login")
     body = comment.get("body", "")
-    expected_issue_url = f"https://api.github.com/repos/{APPROVAL_REPOSITORY}/issues/{APPROVAL_PR}"
     if actual_login != expected_login:
         raise PolicyError(f"{role} comment author does not match the approval record")
     if comment.get("issue_url") != expected_issue_url:
@@ -333,6 +401,8 @@ def verify_github_approvals(
     suppression: Path,
     approved: frozenset[tuple[str, str]],
     fetch_comment=fetch_github_comment,
+    fetch_pull_request=fetch_github_pull_request,
+    fetch_comparison=fetch_github_comparison,
 ) -> None:
     evidence = approval["approvalEvidence"]
     scope_hash = candidate_sha256(suppression)
@@ -341,8 +411,9 @@ def verify_github_approvals(
 
     scope = approval.get("scope", "original-eight")
     policy = SCOPE_POLICIES[scope]
+    reviewed_commit = approval["reviewedCommit"]
     common_terms = (
-        policy["reviewed_commit"],
+        reviewed_commit,
         scope_hash,
         policy["approval_expiry"],
     )
@@ -350,6 +421,24 @@ def verify_github_approvals(
     owner = evidence["repositoryOwner"]
     risk_owner = evidence["securityRiskOwner"]
     config_attestor = evidence["productionConfigurationAttestor"]
+    pull_request = evidence["pullRequest"]
+    expected_issue_url = approval_issue_url(evidence["repository"], pull_request)
+    if policy.get("requires_new_pr_binding"):
+        pull_request_data = fetch_pull_request(evidence["repository"], pull_request)
+        if pull_request_data.get("number") != pull_request:
+            raise PolicyError("reviewed pull request number does not match the approval record")
+        if pull_request_data.get("base", {}).get("ref") != "master":
+            raise PolicyError("reviewed pull request must target master")
+        current_head = pull_request_data.get("head", {}).get("sha")
+        if not is_commit_sha(current_head):
+            raise PolicyError("reviewed pull request does not expose a valid head commit")
+        if current_head != reviewed_commit:
+            comparison = fetch_comparison(evidence["repository"], reviewed_commit, current_head)
+            if (
+                comparison.get("status") not in {"ahead", "identical"}
+                or comparison.get("merge_base_commit", {}).get("sha") != reviewed_commit
+            ):
+                raise PolicyError("reviewed commit is not an ancestor of the current PR head")
     verify_comment(
         fetch_comment(APPROVAL_REPOSITORY, str(owner["commentId"])),
         owner["githubLogin"],
@@ -357,6 +446,7 @@ def verify_github_approvals(
         "repository-owner",
         decision_timestamp,
         policy["approval_expiry"],
+        expected_issue_url,
     )
     verify_comment(
         fetch_comment(APPROVAL_REPOSITORY, str(risk_owner["commentId"])),
@@ -365,6 +455,7 @@ def verify_github_approvals(
         "security-risk owner",
         decision_timestamp,
         policy["approval_expiry"],
+        expected_issue_url,
     )
     verify_comment(
         fetch_comment(APPROVAL_REPOSITORY, str(config_attestor["commentId"])),
@@ -383,6 +474,7 @@ def verify_github_approvals(
         "production-configuration attestor",
         decision_timestamp,
         policy["approval_expiry"],
+        expected_issue_url,
     )
 
     governance = approval.get("governance", {})
@@ -414,6 +506,7 @@ def verify_github_approvals(
             "solo-founder governance",
             decision_timestamp,
             policy["approval_expiry"],
+            expected_issue_url,
             require_owner_association=True,
         )
         verify_exact_tuple_lines(comment.get("body", ""), approved, "solo-founder governance")
@@ -444,6 +537,14 @@ def main() -> int:
         else:
             if approval.get("status") != "PENDING":
                 raise PolicyError("proposal mode requires a PENDING approval record")
+            if policy.get("requires_new_pr_binding"):
+                evidence = approval.get("approvalEvidence", {})
+                if approval.get("reviewedCommit") not in (None, ""):
+                    raise PolicyError("pending December proposal cannot pre-bind a reviewed commit")
+                if evidence.get("pullRequest") is not None or evidence.get("reviewedPullRequestHeadSha") not in (None, ""):
+                    raise PolicyError("pending December proposal cannot pre-bind a pull request")
+                if approval.get("preparedBaselineCommit") != policy["prepared_baseline_commit"]:
+                    raise PolicyError("pending December proposal does not identify the prepared baseline")
     except (OSError, json.JSONDecodeError, PolicyError) as error:
         print(f"OWASP exception policy: FAIL: {error}", file=sys.stderr)
         return 1

@@ -4,8 +4,8 @@
 suppression, authorize a merge, or authorize deployment.
 
 **Prepared on:** 2026-11-03
-**Consolidated branch / reviewed commit:** `codex/security-consolidated` /
-`94e55830ac08b661b0f64d86c69d155c3646520f`
+**Consolidated branch / prepared baseline:** `codex/security-consolidated` /
+`666ce192bc8191586409fea2f2afe090637e5ce0`
 **Candidate:**
 `candidates/dependency-check-expanded-sixteen-dec15-candidate.xml`
 **Candidate SHA-256:**
@@ -23,7 +23,38 @@ approval authorizes this renewal.
 
 The December candidate is not referenced by Maven or GitHub Actions. The
 workflow remains configured with the original-eight candidate until a separate
-exact-scope activation change passes approval validation and CI.
+exact-scope activation change passes approval validation and CI. A new approval
+must bind to the new consolidated PR number and its exact head SHA; the PR #6
+comment cannot authorize this renewal.
+
+## Post-Reset Approval Sequence
+
+1. Push the consolidated branch and open a **draft** PR targeting `master`.
+   The lightweight `security-policy` job validates this pending template and
+   candidate in proposal mode. Dependency-Check, Gitleaks, Semgrep, and the
+   frontend audit are intentionally skipped while the PR remains draft; this
+   is not a security pass or an activation, and the skipped jobs cannot satisfy
+   a ready-for-review release gate.
+2. Record the new PR number and its current head SHA in the owner comment
+   below. The comment must be posted by the authenticated repository owner.
+3. In one narrow activation commit, replace the pending template with an
+   approved record that binds `pullRequest` and `reviewedPullRequestHeadSha` to that
+   exact SHA, switch the workflow to this December candidate, and preserve all
+   existing scan controls.
+4. Mark the PR ready for review. The strict activation validator re-fetches
+   the GitHub PR and comment, requires base branch `master`, requires the
+   reviewed SHA to be the recorded PR head at approval time and an ancestor of
+   the final activation head, and only then permits the full Dependency-Check
+   scan.
+
+The workflow listens only for PR `opened`, `synchronize`, `reopened`, and
+`ready_for_review` events, plus protected `master`/`main` pushes. It uses a
+PR-specific concurrency group with cancellation of superseded runs. A
+draft-to-ready transition therefore starts one complete current-PR scan; later
+pushes cancel only that PR's obsolete run.
+
+Any candidate change, approval-record drift, PR-head change, or comment from a
+different PR fails closed and requires a fresh approval/activation commit.
 
 ## Current Remediation Review
 
@@ -78,9 +109,11 @@ The approval must cover exactly these tuples and no others:
 ## Required Owner Comment
 
 The sole owner must post the following from their authenticated GitHub account
-on the eventual security PR, replacing only the timestamp placeholder. The
+on the eventual security PR, replacing the PR number, reviewed head SHA, and
+timestamp placeholders with the values from that newly created PR. The
 validator requires the exact tuple lines, candidate hash, expiry, owner
-association, and three configuration limitations.
+association, three configuration limitations, a `master` PR base, and a GitHub
+PR head SHA that exactly equals the reviewed commit.
 
 ```text
 SOLO_FOUNDER_GOVERNANCE: ADOPT
@@ -94,7 +127,8 @@ PRODUCTION_CONFIGURATION_ATTESTATION: OWNER_ATTESTED_WITH_LIMITATIONS
 OWNER_ACCEPTS_RESIDUAL_CONFIGURATION_RISK
 TEMPORARY_EXCEPTION_NOT_PERMANENT_WAIVER
 
-Reviewed commit: 94e55830ac08b661b0f64d86c69d155c3646520f
+Reviewed commit: <NEW_CONSOLIDATED_PR_HEAD_SHA>
+Reviewed PR: #<NEW_CONSOLIDATED_PR_NUMBER> targeting master
 Candidate SHA-256: 852d8f4178e6cf264346aaf1eb236e50894120c239049258f39dd6b760ceb190
 Exception expiry: 2026-12-15T23:59:59Z
 Decision timestamp (UTC): <UTC timestamp>

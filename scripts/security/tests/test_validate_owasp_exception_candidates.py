@@ -37,7 +37,12 @@ EXPANDED_FINDINGS = APPROVED_FINDINGS + [
     {"cve": "CVE-2026-59270", "purl": "pkg:maven/org.springframework.security/spring-security-web@6.5.11", "cvss": 9.1},
 ]
 VALIDATOR_MODULE = runpy.run_path(str(VALIDATOR))
-ISSUE_URL = "https://api.github.com/repos/PunterDev/tradepilot/issues/6"
+def issue_url(pull_request: int) -> str:
+    return f"https://api.github.com/repos/PunterDev/tradepilot/issues/{pull_request}"
+
+
+SYNTHETIC_DECEMBER_PR = 42
+SYNTHETIC_DECEMBER_HEAD = "a" * 40
 ATTESTATION_LIMITATIONS = [
     "LIVE_CONTAINER_FILES_NOT_INDEPENDENTLY_VERIFIED",
     "HOSTED_JVM_PROPERTIES_NOT_INDEPENDENTLY_VERIFIED",
@@ -58,11 +63,13 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
 
     def approved_record(self, directory: Path, *, candidate: Path = CANDIDATE, scope: str = "original-eight") -> Path:
         policy = VALIDATOR_MODULE["SCOPE_POLICIES"][scope]
+        is_new_pr_scope = policy.get("requires_new_pr_binding", False)
+        reviewed_commit = SYNTHETIC_DECEMBER_HEAD if is_new_pr_scope else policy["reviewed_commit"]
         path = directory / "approval.json"
-        path.write_text(json.dumps({
+        approval = {
             "status": "APPROVED",
             "scope": scope,
-            "reviewedCommit": policy["reviewed_commit"],
+            "reviewedCommit": reviewed_commit,
             "expiry": policy["approval_expiry"],
             "decisionTimestamp": "2026-11-03T00:00:00Z",
             "repositoryOwner": {"name": "Owner", "decision": "APPROVE", "approvedAt": "2026-11-03T00:00:00Z"},
@@ -74,13 +81,17 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
             },
             "approvalEvidence": {
                 "repository": "PunterDev/tradepilot",
-                "pullRequest": 6,
+                "pullRequest": SYNTHETIC_DECEMBER_PR if is_new_pr_scope else policy["approval_pr"],
+                "reviewedPullRequestHeadSha": reviewed_commit if is_new_pr_scope else None,
                 "candidateSha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
                 "repositoryOwner": {"githubLogin": "owner", "commentId": "101"},
                 "securityRiskOwner": {"githubLogin": "independent", "commentId": "102"},
                 "productionConfigurationAttestor": {"githubLogin": "operator", "commentId": "103"},
             },
-        }))
+        }
+        if is_new_pr_scope:
+            approval["preparedBaselineCommit"] = policy["prepared_baseline_commit"]
+        path.write_text(json.dumps(approval))
         return path
 
     def approval_without_production_attestation(self, directory: Path) -> Path:
@@ -91,11 +102,17 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
         return path
 
     @staticmethod
-    def comment(login: str, body: str, *, author_association: str = "OWNER") -> dict:
+    def comment(
+        login: str,
+        body: str,
+        *,
+        pull_request: int = 6,
+        author_association: str = "OWNER",
+    ) -> dict:
         return {
             "user": {"login": login},
             "author_association": author_association,
-            "issue_url": ISSUE_URL,
+            "issue_url": issue_url(pull_request),
             "created_at": "2026-11-02T23:59:00Z",
             "updated_at": "2026-11-03T00:00:00Z",
             "body": body,
@@ -161,6 +178,21 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_pending_december_proposal_rejects_a_prebound_pull_request(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            approval = json.loads(DECEMBER_EXPANDED_APPROVAL.read_text())
+            approval["approvalEvidence"]["pullRequest"] = SYNTHETIC_DECEMBER_PR
+            approval_path = Path(temp) / "prebound-proposal.json"
+            approval_path.write_text(json.dumps(approval))
+            result = self.run_validator(
+                suppression=DECEMBER_EXPANDED_CANDIDATE,
+                approval=approval_path,
+                scope="expanded-sixteen-dec15",
+                as_of="2026-12-01T00:00:00Z",
+            )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("cannot pre-bind a pull request", result.stderr)
+
     def test_complete_synthetic_approval_can_validate_only_the_eight_tuples(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             result = self.run_validator(
@@ -198,7 +230,7 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
         scope_hash = approval["approvalEvidence"]["candidateSha256"]
         comment = self.comment(
             "founder",
-            " ".join((
+            "\n".join((
                 "SOLO_FOUNDER_GOVERNANCE: ADOPT",
                 "SOLE_OWNER_DEVELOPER_SECURITY_RISK_DECISION_MAKER",
                 "NO_INDEPENDENT_SECURITY_REVIEW",
@@ -468,14 +500,152 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
             approval["reviewedCommit"], scope_hash, approval["expiry"],
             self.exact_expanded_scope_lines(),
         ))
-        comment = self.comment("founder", body)
+        comment = self.comment("founder", body, pull_request=SYNTHETIC_DECEMBER_PR)
         VALIDATOR_MODULE["validate_approval"](approval, "expanded-sixteen-dec15")
         VALIDATOR_MODULE["verify_github_approvals"](
             approval,
             DECEMBER_EXPANDED_CANDIDATE,
             VALIDATOR_MODULE["EXPANDED_SIXTEEN"],
             lambda _repository, _comment_id: comment,
+            lambda _repository, pull_request: {
+                "number": pull_request,
+                "base": {"ref": "master"},
+                "head": {"sha": SYNTHETIC_DECEMBER_HEAD},
+            },
         )
+
+    def test_december_renewal_rejects_historical_pr_six(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            approval = json.loads(self.approved_record(
+                Path(temp), candidate=DECEMBER_EXPANDED_CANDIDATE, scope="expanded-sixteen-dec15"
+            ).read_text())
+        approval["approvalEvidence"]["pullRequest"] = 6
+        with self.assertRaisesRegex(VALIDATOR_MODULE["PolicyError"], "historical PR approval"):
+            VALIDATOR_MODULE["validate_approval"](approval, "expanded-sixteen-dec15")
+
+    def test_december_renewal_rejects_mismatched_pr_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            approval = self.solo_founder_record(
+                Path(temp), candidate=DECEMBER_EXPANDED_CANDIDATE, scope="expanded-sixteen-dec15"
+            )
+        scope_hash = approval["approvalEvidence"]["candidateSha256"]
+        comment = self.comment(
+            "founder",
+            " ".join((
+                "SOLO_FOUNDER_GOVERNANCE: ADOPT",
+                "SOLE_OWNER_DEVELOPER_SECURITY_RISK_DECISION_MAKER",
+                "NO_INDEPENDENT_SECURITY_REVIEW",
+                "EXTERNAL_INDEPENDENT_REVIEW_OBLIGATIONS: NONE_IDENTIFIED",
+                "TEMPORARY_EXCEPTION_NOT_PERMANENT_WAIVER",
+                "OWNER_AUTHORIZATION: APPROVE",
+                "SECURITY_RISK_ACCEPTANCE: ACCEPT_TEMPORARILY",
+                "PRODUCTION_CONFIGURATION_ATTESTATION: OWNER_ATTESTED_WITH_LIMITATIONS",
+                "OWNER_ACCEPTS_RESIDUAL_CONFIGURATION_RISK",
+                "production SPRING_LDAP_EMBEDDED_* SPRING_EXPRESSION_COMPILER_MODE Environment Groups Secret Files",
+                "LIVE_CONTAINER_FILES_NOT_INDEPENDENTLY_VERIFIED",
+                "HOSTED_JVM_PROPERTIES_NOT_INDEPENDENTLY_VERIFIED",
+                "FUTURE_CONFIGURATION_DRIFT_NOT_INDEPENDENTLY_VERIFIED",
+                approval["reviewedCommit"], scope_hash, approval["expiry"], self.exact_expanded_scope_lines(),
+            )),
+            pull_request=SYNTHETIC_DECEMBER_PR,
+        )
+        with self.assertRaisesRegex(VALIDATOR_MODULE["PolicyError"], "not an ancestor"):
+            VALIDATOR_MODULE["verify_github_approvals"](
+                approval,
+                DECEMBER_EXPANDED_CANDIDATE,
+                VALIDATOR_MODULE["EXPANDED_SIXTEEN"],
+                lambda _repository, _comment_id: comment,
+                lambda _repository, pull_request: {
+                    "number": pull_request,
+                    "base": {"ref": "master"},
+                    "head": {"sha": "b" * 40},
+                },
+                lambda _repository, _base, _head: {
+                    "status": "diverged",
+                    "merge_base_commit": {"sha": "c" * 40},
+                },
+            )
+
+    def test_december_renewal_allows_only_an_activation_commit_after_review(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            approval = self.solo_founder_record(
+                Path(temp), candidate=DECEMBER_EXPANDED_CANDIDATE, scope="expanded-sixteen-dec15"
+            )
+        scope_hash = approval["approvalEvidence"]["candidateSha256"]
+        comment = self.comment(
+            "founder",
+            "\n".join((
+                "SOLO_FOUNDER_GOVERNANCE: ADOPT",
+                "SOLE_OWNER_DEVELOPER_SECURITY_RISK_DECISION_MAKER",
+                "NO_INDEPENDENT_SECURITY_REVIEW",
+                "EXTERNAL_INDEPENDENT_REVIEW_OBLIGATIONS: NONE_IDENTIFIED",
+                "TEMPORARY_EXCEPTION_NOT_PERMANENT_WAIVER",
+                "OWNER_AUTHORIZATION: APPROVE",
+                "SECURITY_RISK_ACCEPTANCE: ACCEPT_TEMPORARILY",
+                "PRODUCTION_CONFIGURATION_ATTESTATION: OWNER_ATTESTED_WITH_LIMITATIONS",
+                "OWNER_ACCEPTS_RESIDUAL_CONFIGURATION_RISK",
+                "production SPRING_LDAP_EMBEDDED_* SPRING_EXPRESSION_COMPILER_MODE Environment Groups Secret Files",
+                "LIVE_CONTAINER_FILES_NOT_INDEPENDENTLY_VERIFIED",
+                "HOSTED_JVM_PROPERTIES_NOT_INDEPENDENTLY_VERIFIED",
+                "FUTURE_CONFIGURATION_DRIFT_NOT_INDEPENDENTLY_VERIFIED",
+                approval["reviewedCommit"], scope_hash, approval["expiry"], self.exact_expanded_scope_lines(),
+            )),
+            pull_request=SYNTHETIC_DECEMBER_PR,
+        )
+        VALIDATOR_MODULE["verify_github_approvals"](
+            approval,
+            DECEMBER_EXPANDED_CANDIDATE,
+            VALIDATOR_MODULE["EXPANDED_SIXTEEN"],
+            lambda _repository, _comment_id: comment,
+            lambda _repository, pull_request: {
+                "number": pull_request,
+                "base": {"ref": "master"},
+                "head": {"sha": "d" * 40},
+            },
+            lambda _repository, base, _head: {
+                "status": "ahead",
+                "merge_base_commit": {"sha": base},
+            },
+        )
+
+    def test_december_renewal_requires_master_base(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            approval = self.solo_founder_record(
+                Path(temp), candidate=DECEMBER_EXPANDED_CANDIDATE, scope="expanded-sixteen-dec15"
+            )
+        scope_hash = approval["approvalEvidence"]["candidateSha256"]
+        comment = self.comment(
+            "founder",
+            " ".join((
+                "SOLO_FOUNDER_GOVERNANCE: ADOPT",
+                "SOLE_OWNER_DEVELOPER_SECURITY_RISK_DECISION_MAKER",
+                "NO_INDEPENDENT_SECURITY_REVIEW",
+                "EXTERNAL_INDEPENDENT_REVIEW_OBLIGATIONS: NONE_IDENTIFIED",
+                "TEMPORARY_EXCEPTION_NOT_PERMANENT_WAIVER",
+                "OWNER_AUTHORIZATION: APPROVE",
+                "SECURITY_RISK_ACCEPTANCE: ACCEPT_TEMPORARILY",
+                "PRODUCTION_CONFIGURATION_ATTESTATION: OWNER_ATTESTED_WITH_LIMITATIONS",
+                "OWNER_ACCEPTS_RESIDUAL_CONFIGURATION_RISK",
+                "production SPRING_LDAP_EMBEDDED_* SPRING_EXPRESSION_COMPILER_MODE Environment Groups Secret Files",
+                "LIVE_CONTAINER_FILES_NOT_INDEPENDENTLY_VERIFIED",
+                "HOSTED_JVM_PROPERTIES_NOT_INDEPENDENTLY_VERIFIED",
+                "FUTURE_CONFIGURATION_DRIFT_NOT_INDEPENDENTLY_VERIFIED",
+                approval["reviewedCommit"], scope_hash, approval["expiry"], self.exact_expanded_scope_lines(),
+            )),
+            pull_request=SYNTHETIC_DECEMBER_PR,
+        )
+        with self.assertRaisesRegex(VALIDATOR_MODULE["PolicyError"], "must target master"):
+            VALIDATOR_MODULE["verify_github_approvals"](
+                approval,
+                DECEMBER_EXPANDED_CANDIDATE,
+                VALIDATOR_MODULE["EXPANDED_SIXTEEN"],
+                lambda _repository, _comment_id: comment,
+                lambda _repository, pull_request: {
+                    "number": pull_request,
+                    "base": {"ref": "develop"},
+                    "head": {"sha": SYNTHETIC_DECEMBER_HEAD},
+                },
+            )
 
     def test_candidate_sha_mismatch_remains_blocking(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

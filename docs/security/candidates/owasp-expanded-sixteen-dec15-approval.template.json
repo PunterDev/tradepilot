@@ -1,8 +1,8 @@
 {
   "status": "PENDING",
   "scope": "expanded-sixteen-dec15",
-  "reviewedCommit": "94e55830ac08b661b0f64d86c69d155c3646520f",
-  "baseActivationCommit": "94e55830ac08b661b0f64d86c69d155c3646520f",
+  "reviewedCommit": "",
+  "preparedBaselineCommit": "666ce192bc8191586409fea2f2afe090637e5ce0",
   "expiry": "2026-12-15T23:59:59Z",
   "decisionTimestamp": "",
   "originalApproval": {
@@ -22,7 +22,7 @@
   },
   "productionConfiguration": {
     "status": "OWNER_ATTESTED_WITH_LIMITATIONS",
-    "evidenceReference": "October 31 Render owner attestation; PR #6 comment 6620183351",
+    "evidenceReference": "October 31 Render owner attestation; historical PR #6 comment 6620183351",
     "limitations": [
       "LIVE_CONTAINER_FILES_NOT_INDEPENDENTLY_VERIFIED",
       "HOSTED_JVM_PROPERTIES_NOT_INDEPENDENTLY_VERIFIED",
@@ -39,7 +39,8 @@
   },
   "approvalEvidence": {
     "repository": "PunterDev/tradepilot",
-    "pullRequest": 6,
+    "pullRequest": null,
+    "reviewedPullRequestHeadSha": "",
     "candidateSha256": "",
     "repositoryOwner": {
       "githubLogin": "",
