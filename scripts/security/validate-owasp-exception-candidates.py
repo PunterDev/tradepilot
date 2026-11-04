@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed validation for the inactive final-eight exception candidate."""
+"""Fail-closed validation for exact Dependency-Check exception candidates."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from pathlib import Path
 
 SUPPRESSION_EXPIRY = "2026-11-30"
 APPROVAL_EXPIRY = "2026-11-30T23:59:59Z"
-APPROVED = frozenset(
+ORIGINAL_EIGHT = frozenset(
     {
         ("CVE-2026-53914", "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.25"),
         ("CVE-2026-47884", "pkg:maven/org.springframework/spring-core@6.2.19"),
@@ -30,10 +30,29 @@ APPROVED = frozenset(
         ("CVE-2026-59270", "pkg:maven/org.springframework.security/spring-security-core@6.5.11"),
     }
 )
+EXPANDED_SIXTEEN = ORIGINAL_EIGHT | frozenset(
+    {
+        ("CVE-2026-53914", "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk7@1.9.25"),
+        ("CVE-2026-47884", "pkg:maven/org.springframework/spring-tx@6.2.19"),
+        ("CVE-2026-47890", "pkg:maven/org.springframework/spring-tx@6.2.19"),
+        ("CVE-2026-47891", "pkg:maven/org.springframework/spring-tx@6.2.19"),
+        ("CVE-2026-47892", "pkg:maven/org.springframework/spring-tx@6.2.19"),
+        ("CVE-2026-59313", "pkg:maven/org.springframework/spring-tx@6.2.19"),
+        ("CVE-2026-59283", "pkg:maven/org.springframework/spring-tx@6.2.19"),
+        ("CVE-2026-59270", "pkg:maven/org.springframework.security/spring-security-web@6.5.11"),
+    }
+)
+SCOPES = {
+    "original-eight": ORIGINAL_EIGHT,
+    "expanded-sixteen": EXPANDED_SIXTEEN,
+}
 SUPPRESSION_NAMESPACE = "{https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd}"
 APPROVAL_REPOSITORY = "PunterDev/tradepilot"
 APPROVAL_PR = 6
-REVIEWED_COMMIT = "5d6b05af6a2c7234ec3d666d8cabc3d45f020a35"
+REVIEWED_COMMITS = {
+    "original-eight": "5d6b05af6a2c7234ec3d666d8cabc3d45f020a35",
+    "expanded-sixteen": "db2ace78d080b86bd1520c7b027398557235c933",
+}
 SOLO_FOUNDER_MODE = "SOLO_FOUNDER"
 OWNER_ATTESTED_CONFIG_STATUS = "OWNER_ATTESTED_WITH_LIMITATIONS"
 REQUIRED_CONFIGURATION_LIMITATIONS = frozenset(
@@ -76,7 +95,9 @@ def child_text(element: element_tree.Element, name: str) -> str | None:
     return child.text.strip() if child is not None and child.text else None
 
 
-def validate_suppressions(path: Path, as_of: datetime) -> set[tuple[str, str]]:
+def validate_suppressions(
+    path: Path, as_of: datetime, approved: frozenset[tuple[str, str]]
+) -> set[tuple[str, str]]:
     try:
         root = element_tree.parse(path).getroot()
     except (OSError, element_tree.ParseError) as error:
@@ -105,25 +126,28 @@ def validate_suppressions(path: Path, as_of: datetime) -> set[tuple[str, str]]:
         if not cve:
             raise PolicyError("each suppression needs one explicit CVE")
 
-        matches = [package_url for approved_cve, package_url in APPROVED if approved_cve == cve]
-        if len(matches) != 1:
-            raise PolicyError(f"unapproved CVE: {cve}")
-        package_url = matches[0]
-        if package_pattern != exact_package_pattern(package_url):
-            raise PolicyError(f"packageUrl is not the exact approved PURL for {cve}")
-        tuple_value = (cve, package_url)
+        tuple_value = next(
+            (
+                (approved_cve, package_url)
+                for approved_cve, package_url in approved
+                if approved_cve == cve and package_pattern == exact_package_pattern(package_url)
+            ),
+            None,
+        )
+        if tuple_value is None:
+            raise PolicyError(f"unapproved CVE/PURL tuple: {cve}")
         if tuple_value in actual:
-            raise PolicyError(f"duplicate suppression: {cve} {package_url}")
+            raise PolicyError(f"duplicate suppression: {tuple_value[0]} {tuple_value[1]}")
         actual.add(tuple_value)
 
-    if actual != APPROVED:
-        missing = APPROVED - actual
-        extra = actual - APPROVED
+    if actual != approved:
+        missing = approved - actual
+        extra = actual - approved
         raise PolicyError(f"suppression scope mismatch; missing={sorted(missing)} extra={sorted(extra)}")
     return actual
 
 
-def validate_findings(path: Path | None) -> None:
+def validate_findings(path: Path | None, approved: frozenset[tuple[str, str]]) -> None:
     if path is None:
         return
     try:
@@ -138,7 +162,7 @@ def validate_findings(path: Path | None) -> None:
             cvss = float(finding["cvss"])
         except (KeyError, TypeError, ValueError) as error:
             raise PolicyError("findings inventory contains an invalid finding") from error
-        if cvss >= 8 and tuple_value not in APPROVED:
+        if cvss >= 8 and tuple_value not in approved:
             raise PolicyError(f"unrelated CVSS >= 8 finding remains blocking: {tuple_value}")
 
 
@@ -149,11 +173,13 @@ def load_approval(path: Path) -> dict:
         raise PolicyError(f"cannot parse approval record: {error}") from error
 
 
-def validate_approval(approval: dict) -> None:
+def validate_approval(approval: dict, scope: str) -> None:
     if approval.get("status") != "APPROVED":
         raise PolicyError("approval record is not APPROVED")
-    if approval.get("reviewedCommit") != REVIEWED_COMMIT:
+    if approval.get("reviewedCommit") != REVIEWED_COMMITS[scope]:
         raise PolicyError("approval record does not identify the reviewed commit")
+    if approval.get("scope") not in (None, scope):
+        raise PolicyError("approval record scope does not match the candidate scope")
     decision_timestamp = approval.get("decisionTimestamp")
     if not decision_timestamp:
         raise PolicyError("approval record lacks a decision timestamp")
@@ -261,14 +287,42 @@ def verify_comment(
         raise PolicyError(f"{role} approval comment is missing required scope evidence: {missing_terms}")
 
 
-def verify_github_approvals(approval: dict, suppression: Path, fetch_comment=fetch_github_comment) -> None:
+def parse_approved_tuple_lines(body: str) -> set[tuple[str, str]]:
+    return {
+        (match.group(1), match.group(2))
+        for match in re.finditer(
+            r"(?m)^\s*-\s*(CVE-\d{4}-\d+)\s*\|\s*"
+            r"(pkg:maven/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[A-Za-z0-9._-]+)\s*$",
+            body,
+        )
+    }
+
+
+def verify_exact_tuple_lines(body: str, approved: frozenset[tuple[str, str]], role: str) -> None:
+    actual = parse_approved_tuple_lines(body)
+    if actual != approved:
+        missing = approved - actual
+        extra = actual - approved
+        raise PolicyError(
+            f"{role} approval comment tuple scope mismatch; "
+            f"missing={sorted(missing)} extra={sorted(extra)}"
+        )
+
+
+def verify_github_approvals(
+    approval: dict,
+    suppression: Path,
+    approved: frozenset[tuple[str, str]],
+    fetch_comment=fetch_github_comment,
+) -> None:
     evidence = approval["approvalEvidence"]
     scope_hash = candidate_sha256(suppression)
     if evidence.get("candidateSha256") != scope_hash:
         raise PolicyError("approval evidence does not bind to the current candidate XML")
 
+    scope = approval.get("scope", "original-eight")
     common_terms = (
-        REVIEWED_COMMIT,
+        REVIEWED_COMMITS[scope],
         scope_hash,
         APPROVAL_EXPIRY,
     )
@@ -311,13 +365,9 @@ def verify_github_approvals(approval: dict, suppression: Path, fetch_comment=fet
     governance = approval.get("governance", {})
     if governance.get("mode") == SOLO_FOUNDER_MODE:
         solo_founder = governance["soloFounder"]
-        tuple_terms = tuple(
-            item
-            for cve, package_url in sorted(APPROVED)
-            for item in (cve, package_url)
-        )
+        comment = fetch_comment(APPROVAL_REPOSITORY, str(solo_founder["commentId"]))
         verify_comment(
-            fetch_comment(APPROVAL_REPOSITORY, str(solo_founder["commentId"])),
+            comment,
             solo_founder["githubLogin"],
             (
                 "SOLO_FOUNDER_GOVERNANCE: ADOPT",
@@ -337,11 +387,12 @@ def verify_github_approvals(approval: dict, suppression: Path, fetch_comment=fet
                 "LIVE_CONTAINER_FILES_NOT_INDEPENDENTLY_VERIFIED",
                 "HOSTED_JVM_PROPERTIES_NOT_INDEPENDENTLY_VERIFIED",
                 "FUTURE_CONFIGURATION_DRIFT_NOT_INDEPENDENTLY_VERIFIED",
-            ) + common_terms + tuple_terms,
+            ) + common_terms,
             "solo-founder governance",
             decision_timestamp,
             require_owner_association=True,
         )
+        verify_exact_tuple_lines(comment.get("body", ""), approved, "solo-founder governance")
 
 
 def main() -> int:
@@ -351,18 +402,20 @@ def main() -> int:
     parser.add_argument("--findings", type=Path)
     parser.add_argument("--as-of", default=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
     parser.add_argument("--mode", choices=("proposal", "activation"), required=True)
+    parser.add_argument("--scope", choices=tuple(SCOPES), default="original-eight")
     parser.add_argument("--verify-github-approvals", action="store_true")
     args = parser.parse_args()
 
     try:
         as_of = parse_timestamp(args.as_of)
-        validate_suppressions(args.suppression, as_of)
-        validate_findings(args.findings)
+        approved = SCOPES[args.scope]
+        validate_suppressions(args.suppression, as_of, approved)
+        validate_findings(args.findings, approved)
         approval = load_approval(args.approval_record)
         if args.mode == "activation":
-            validate_approval(approval)
+            validate_approval(approval, args.scope)
             if args.verify_github_approvals:
-                verify_github_approvals(approval, args.suppression)
+                verify_github_approvals(approval, args.suppression, approved)
         else:
             if approval.get("status") != "PENDING":
                 raise PolicyError("proposal mode requires a PENDING approval record")

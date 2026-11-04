@@ -1,6 +1,6 @@
 # OWASP Exception Approval Record - November 2026
 
-**Status:** APPROVED FOR EXACT-SCOPE ACTIVATION. The authenticated owner
+**Original-eight status:** APPROVED FOR EXACT-SCOPE ACTIVATION. The authenticated owner
 authorization is recorded in PR #6 comment
 [`6620183351`](https://github.com/PunterDev/tradepilot/pull/6#issuecomment-6620183351).
 This record activates no broad exception and does not authorize a merge or deployment.
@@ -16,6 +16,41 @@ Any future approval must bind to candidate XML SHA-256
 commit `5d6b05af6a2c7234ec3d666d8cabc3d45f020a35`, and the proposed expiry. A
 changed candidate, dependency version, CVE, or reviewed configuration requires
 a new review.
+
+## Pending Sixteen-Tuple Amendment
+
+Run `41757589036`, artifact `13288697637`, exposed eight additional exact
+CVE/PURL/version associations that were not covered by the historical comment.
+The report HTML obtained through authenticated GitHub access has SHA-256
+`3bcaeaf6affd93518e9217c329332eea232f4593fc3d1a4b8a082929af1dc272`.
+
+The original eight exceptions stay active and unchanged. The expanded candidate
+at [`candidates/dependency-check-final-sixteen-candidate.xml`](candidates/dependency-check-final-sixteen-candidate.xml)
+is **PENDING** and is not referenced by the workflow. Its pending approval
+record is [`candidates/owasp-final-sixteen-amendment.template.json`](candidates/owasp-final-sixteen-amendment.template.json).
+It is a fresh approval request based on activation baseline
+`db2ace78d080b86bd1520c7b027398557235c933`, not an edit of comment `6620183351`.
+
+The amendment adds only:
+
+- CVE-2026-53914 | pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk7@1.9.25
+- CVE-2026-59270 | pkg:maven/org.springframework.security/spring-security-web@6.5.11
+- CVE-2026-47884 | pkg:maven/org.springframework/spring-tx@6.2.19
+- CVE-2026-47890 | pkg:maven/org.springframework/spring-tx@6.2.19
+- CVE-2026-47891 | pkg:maven/org.springframework/spring-tx@6.2.19
+- CVE-2026-47892 | pkg:maven/org.springframework/spring-tx@6.2.19
+- CVE-2026-59313 | pkg:maven/org.springframework/spring-tx@6.2.19
+- CVE-2026-59283 | pkg:maven/org.springframework/spring-tx@6.2.19
+
+The validator now accepts a CVE on multiple approved PURLs only when every
+CVE/PURL pair is exact and complete. It rejects a third PURL for the same CVE,
+a swapped CVE/PURL pair, missing or duplicate entries, changed versions,
+expired entries, broad matchers, and comments whose tuple lines do not match
+the full exact set.
+
+No amended exception may be activated until the owner posts a new authenticated
+comment binding the sixteen tuples, candidate SHA-256, and the unchanged expiry
+`2026-11-30T23:59:59Z`.
 
 ## Governance Paths
 
@@ -113,6 +148,65 @@ the commenter identity and that it belongs to PR #6, and checks the exact
 commit, candidate hash, expiry, scope, owner authorization, risk acceptance,
 configuration attestation, its three stated limitations, and solo-founder
 disclosures. A local JSON record alone cannot authorize activation.
+
+## Required Comment for the Pending Sixteen-Tuple Amendment
+
+The owner must post a fresh authenticated PR #6 comment using this form. The
+historical comment `6620183351` is not reusable for this expanded scope.
+
+```text
+SOLO_FOUNDER_GOVERNANCE: ADOPT
+SOLE_OWNER_DEVELOPER_SECURITY_RISK_DECISION_MAKER
+NO_INDEPENDENT_SECURITY_REVIEW
+EXTERNAL_INDEPENDENT_REVIEW_OBLIGATIONS: NONE_IDENTIFIED
+
+OWNER_AUTHORIZATION: APPROVE
+SECURITY_RISK_ACCEPTANCE: ACCEPT_TEMPORARILY
+PRODUCTION_CONFIGURATION_ATTESTATION: OWNER_ATTESTED_WITH_LIMITATIONS
+OWNER_ACCEPTS_RESIDUAL_CONFIGURATION_RISK
+TEMPORARY_EXCEPTION_NOT_PERMANENT_WAIVER
+
+Reviewed commit: db2ace78d080b86bd1520c7b027398557235c933
+Candidate SHA-256: fd40e63b366dc3ba04b4c30738cbef6c38dc1fc971b9d8e2cf264e791d203070
+Exception expiry: 2026-11-30T23:59:59Z
+Decision timestamp (UTC): <UTC timestamp>
+
+I reviewed GitHub Actions run 41757589036, artifact 13288697637,
+the report HTML SHA-256 3bcaeaf6affd93518e9217c329332eea232f4593fc3d1a4b8a082929af1dc272,
+the historical original-eight approval, and docs/security/OWASP_FINAL_EIGHT_CVE_ASSESSMENT.md.
+No independent security review occurred. I identified no applicable external
+independent-review obligation. I accept the documented residual risk temporarily
+through the expiry above. This is not a permanent vulnerability waiver and does
+not itself activate a scanner suppression, authorize a merge, or authorize deployment.
+
+The only approved candidate tuples are:
+- CVE-2026-53914 | pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.25
+- CVE-2026-47884 | pkg:maven/org.springframework/spring-core@6.2.19
+- CVE-2026-47890 | pkg:maven/org.springframework/spring-core@6.2.19
+- CVE-2026-47891 | pkg:maven/org.springframework/spring-core@6.2.19
+- CVE-2026-47892 | pkg:maven/org.springframework/spring-core@6.2.19
+- CVE-2026-59313 | pkg:maven/org.springframework/spring-core@6.2.19
+- CVE-2026-59283 | pkg:maven/org.springframework/spring-core@6.2.19
+- CVE-2026-59270 | pkg:maven/org.springframework.security/spring-security-core@6.5.11
+- CVE-2026-53914 | pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk7@1.9.25
+- CVE-2026-59270 | pkg:maven/org.springframework.security/spring-security-web@6.5.11
+- CVE-2026-47884 | pkg:maven/org.springframework/spring-tx@6.2.19
+- CVE-2026-47890 | pkg:maven/org.springframework/spring-tx@6.2.19
+- CVE-2026-47891 | pkg:maven/org.springframework/spring-tx@6.2.19
+- CVE-2026-47892 | pkg:maven/org.springframework/spring-tx@6.2.19
+- CVE-2026-59313 | pkg:maven/org.springframework/spring-tx@6.2.19
+- CVE-2026-59283 | pkg:maven/org.springframework/spring-tx@6.2.19
+
+The October 31 owner-attested Render review confirmed production profile
+`production`, no Environment Groups, no Secret Files, and no environment
+variable names matching `SPRING_LDAP_EMBEDDED_*` or
+`SPRING_EXPRESSION_COMPILER_MODE`. I understand this is owner-attested
+configuration evidence, not an independently authenticated Render audit.
+The attestation limitations are:
+- LIVE_CONTAINER_FILES_NOT_INDEPENDENTLY_VERIFIED
+- HOSTED_JVM_PROPERTIES_NOT_INDEPENDENTLY_VERIFIED
+- FUTURE_CONFIGURATION_DRIFT_NOT_INDEPENDENTLY_VERIFIED
+```
 
 ## Non-Negotiable Controls
 

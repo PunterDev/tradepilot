@@ -1,13 +1,32 @@
 # Final OWASP Eight-CVE Assessment
 
-**Status:** PROPOSED EXCEPTION PACKAGE ONLY. No Dependency-Check suppression is active.
+**Status:** The original eight exact tuples are active under the historical
+approval. The expanded sixteen-tuple amendment below is **PENDING** and is not
+referenced by Maven or GitHub Actions.
 
 **Repository / branch / PR:** `PunterDev/tradepilot` / `fix/backend-dependency-security` / PR #6
-**Reviewed commit:** `5d6b05af6a2c7234ec3d666d8cabc3d45f020a35`
+**Original reviewed commit:** `5d6b05af6a2c7234ec3d666d8cabc3d45f020a35`
+**Amendment baseline:** `db2ace78d080b86bd1520c7b027398557235c933`
 **Candidate expiry:** `2026-11-30T23:59:59Z`
 **Scanner gate:** `failBuildOnCVSS=8` and `failOnError=true` remain required.
 
 ## Evidence and scope
+
+The original eight-tuple scope was activated separately and is bound to PR #6
+comment `6620183351` and candidate SHA-256
+`f9b964c787c906e6ba780ce675f00a409021b5efd54785e0430cf35872bfa3eb`.
+That authorization is historical and remains limited to those eight exact
+tuples. It does not authorize the amendment.
+
+GitHub Actions run
+[`41757589036`](https://github.com/PunterDev/tradepilot/actions/runs/41757589036),
+artifact `13288697637` (`dependency-check-report`), was downloaded through an
+authenticated GitHub session on 2026-11-03. The extracted HTML SHA-256 is
+`3bcaeaf6affd93518e9217c329332eea232f4593fc3d1a4b8a082929af1dc272`.
+It records eight additional CVE/PURL/version associations at CVSS >= 8 while
+the original eight suppressions remain in effect. This document treats that
+report as direct artifact evidence; artifact ID retention is owner-supplied
+metadata, not an independently re-read GitHub retention setting.
 
 The authoritative current report is GitHub Actions run
 [`41737155331`](https://github.com/PunterDev/tradepilot/actions/runs/41737155331),
@@ -67,7 +86,7 @@ those configuration residual risks only through the authenticated policy path
 documented below and only if no applicable external obligation requires
 independent verification.
 
-## Eight-CVE matrix
+## Original eight-tuple matrix
 
 | CVE | Exact PURL / scanner CVSS | Vendor severity and prerequisite | Classification and disposition |
 | --- | --- | --- | --- |
@@ -86,15 +105,42 @@ commercial support. Their public OSS fixes are on the Spring Framework/Security
 7 line, which implies an unapproved Spring Boot 4 migration. No unsupported,
 beta, or enterprise-only dependency has been added.
 
+## Pending sixteen-tuple amendment
+
+Dependency-Check 12.2.2 reported these additional associations in run
+`41757589036`. They map to the same eight CVEs but are distinct artifact
+coordinates and must receive a new exact-scope approval rather than inheriting
+the original approval.
+
+| CVE | New exact PURL / scanner CVSS | Applicability evidence | Pending disposition |
+| --- | --- | --- | --- |
+| CVE-2026-53914 | `pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk7@1.9.25` / 9.8 | The report describes Kotlin build-cache metadata deserialization; reviewed Maven/runtime source has no `kotlin-gradle-plugin` or Gradle build cache. `kotlin-stdlib-jdk7` is a compatibility runtime artifact, not the plugin. | Pending exact tuple only; wrong-artifact assessment matches the original Kotlin association. |
+| CVE-2026-47884 | `pkg:maven/org.springframework/spring-tx@6.2.19` / 9.8 | The advisory requires `XsltView` plus unsafe implicit MVC view mapping. Reviewed source/configuration has neither. | Pending exact tuple only; generic Spring Framework attribution is not proof of the prerequisite. |
+| CVE-2026-47890 | `pkg:maven/org.springframework/spring-tx@6.2.19` / 9.8 | Requires MVC/WebFlux SSE view fragments and attacker-controlled content. Reviewed source has no SSE, WebFlux, or view fragments. | Pending exact tuple only. |
+| CVE-2026-47891 | `pkg:maven/org.springframework/spring-tx@6.2.19` / 9.8 | Requires WebFlux, Aalto XML, and `Jaxb2Decoder`. The reviewed application is servlet MVC and resolves none of those prerequisites. | Pending exact tuple only. |
+| CVE-2026-47892 | `pkg:maven/org.springframework/spring-tx@6.2.19` / 9.8 | Requires WebFlux functional endpoints deployed through `DispatcherServlet`; no `RouterFunction` or WebFlux route exists in reviewed source. | Pending exact tuple only. |
+| CVE-2026-59313 | `pkg:maven/org.springframework/spring-tx@6.2.19` / 9.8 | Requires functional MVC `RouterFunction` SSE and streamed attacker-controlled content; neither is present in reviewed source. | Pending exact tuple only. |
+| CVE-2026-59283 | `pkg:maven/org.springframework/spring-tx@6.2.19` / 9.1 | Requires `SimpleEvaluationContext` with active SpEL compilation. Source has neither; the owner-attested production review found no `SPRING_EXPRESSION_COMPILER_MODE` name. Hosted JVM properties remain unverified. | Pending exact tuple only, with the same attestation limitation as the original scope. |
+| CVE-2026-59270 | `pkg:maven/org.springframework.security/spring-security-web@6.5.11` / 9.1 | Requires a reachable embedded `UnboundIdContainer` LDAP listener. Reviewed dependencies/source have no UnboundID or LDAP configuration; owner attestation found no `SPRING_LDAP_EMBEDDED_*` name. | Pending exact tuple only, with the same attestation limitation as the original scope. |
+
+The new candidate is
+[`candidates/dependency-check-final-sixteen-candidate.xml`](candidates/dependency-check-final-sixteen-candidate.xml).
+It contains the original eight entries unchanged plus exactly the eight rows
+above. It is deliberately not wired into the active workflow. Its SHA-256 is
+`fd40e63b366dc3ba04b4c30738cbef6c38dc1fc971b9d8e2cf264e791d203070`; a new
+authenticated owner comment must bind to that hash before activation can be
+considered.
+
 ## Candidate exception package and controls
 
-The candidate file is
+The active original candidate file is
 [`candidates/dependency-check-final-eight-candidate.xml`](candidates/dependency-check-final-eight-candidate.xml).
 It contains exactly eight one-CVE, one-PURL, exact-version entries. Dependency-
 Check 12.2.2's schema requires a date-only `until`, so each uses the conservative
 machine expiry `2026-11-30` (no later than the human approval deadline of
 `2026-11-30T23:59:59Z`). It has no CPE, CVSS, wildcard, or package-family matcher.
-It is intentionally not referenced by the Maven POM or GitHub workflow.
+It is referenced by the guarded active workflow only after the historical
+approval and does not apply to the pending sixteen-tuple amendment.
 Its current SHA-256 is
 `f9b964c787c906e6ba780ce675f00a409021b5efd54785e0430cf35872bfa3eb`.
 Dependency-Check 12.2.2's own `SuppressionParser` parsed exactly eight rules from

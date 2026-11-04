@@ -6,8 +6,13 @@ on:
     branches:
       - main
       - master
-      - "codex/**"
   workflow_dispatch:
+
+# A new commit to the same PR/ref supersedes an older scan. Retain scans for
+# every PR and protected branch, but do not spend minutes finishing obsolete runs.
+concurrency:
+  group: security-scans-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
