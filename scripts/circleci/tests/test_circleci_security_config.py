@@ -23,7 +23,12 @@ class CircleCiSecurityConfigTests(unittest.TestCase):
         self.assertIn("ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d", self.config)
         self.assertIn("cimg/openjdk:17.0.13@sha256:402f246164077f437f8a19d586137038e83beb63d21bedbc89cd5d11ee20b3e6", self.config)
         self.assertIn("cimg/node:22.15.1@sha256:2914f60f3ffaa8427a9038d5ade497d5e01e3baa974eb78d690c3b3d669c70f6", self.config)
-        self.assertIn("semgrep/semgrep:1.100.0@sha256:62c5c71d6da15096bdde79035782d30be8b89a6e2b5fb9b3228d37c3316fa9d4", self.config)
+        self.assertIn("python:3.11.10-slim-bookworm@sha256:840e180ebcc6e5c8efab209c43f5e40fd2af98cb49db5c7103c90539c56bb30e", self.config)
+        self.assertIn("executor: python311", self.config)
+        self.assertIn("setuptools==75.6.0 semgrep==1.100.0", self.config)
+        self.assertIn('test "$(semgrep --version)" = "1.100.0"', self.config)
+        self.assertIn("semgrep scan --config p/java --config p/typescript --config p/javascript --error --metrics=off", self.config)
+        self.assertNotIn("semgrep/semgrep:1.100.0@sha256", self.config)
 
     def test_completed_nvd_update_is_saved_before_cvss_analysis(self) -> None:
         update = self.config.index("update-only")

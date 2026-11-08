@@ -12,6 +12,11 @@ executors:
   node22:
     docker:
       - image: cimg/node:22.15.1@sha256:2914f60f3ffaa8427a9038d5ade497d5e01e3baa974eb78d690c3b3d669c70f6
+  python311:
+    docker:
+      # Semgrep's own image exits 2 in CircleCI before scanning. Keep the
+      # scanner version pinned, but install it in a standard Python executor.
+      - image: python:3.11.10-slim-bookworm@sha256:840e180ebcc6e5c8efab209c43f5e40fd2af98cb49db5c7103c90539c56bb30e
 
 commands:
   checkout_security_source:
@@ -149,13 +154,19 @@ jobs:
             npm audit --audit-level=high
 
   semgrep:
-    docker:
-      - image: semgrep/semgrep:1.100.0@sha256:62c5c71d6da15096bdde79035782d30be8b89a6e2b5fb9b3228d37c3316fa9d4
+    executor: python311
     steps:
       - checkout_security_source
       - run:
           name: Run blocking SAST rules
-          command: semgrep scan --config p/java --config p/typescript --config p/javascript --error --metrics=off
+          command: |
+            set -Eeuo pipefail
+            # Semgrep 1.100.0 imports pkg_resources; pin setuptools to retain
+            # that compatibility in the slim Python image.
+            python3 -m pip install --no-cache-dir --disable-pip-version-check \
+              setuptools==75.6.0 semgrep==1.100.0
+            test "$(semgrep --version)" = "1.100.0"
+            semgrep scan --config p/java --config p/typescript --config p/javascript --error --metrics=off
 
 workflows:
   proposal:
