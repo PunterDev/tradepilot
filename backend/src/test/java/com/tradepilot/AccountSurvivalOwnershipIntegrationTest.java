@@ -200,8 +200,12 @@ class AccountSurvivalOwnershipIntegrationTest {
                 .andExpect(jsonPath("$.turningPoint.detected").value(false));
 
         String body = mockMvc.perform(get(base(source)).param("date", date.toString()).header("Authorization", bearer(otherToken)))
-                .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
-        org.assertj.core.api.Assertions.assertThat(body).doesNotContain("Owner source account", "Owner later account", "240", "540", "10:12");
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.turningPoint").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(body).doesNotContain(
+                "Owner source account", "Owner later account", "crossAccountEvidence",
+                "stopBeforeActionPnl", "lossesAvoided", "winnersForgone");
     }
 
     @Test
