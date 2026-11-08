@@ -2,11 +2,15 @@
 
 ## Status and scope
 
-This is an **isolated local proof of concept** on branch
-`codex/circleci-security-poc`. It has not been pushed, connected to CircleCI,
-or used to report a GitHub status. It does not modify PR #7, activate the
-pending December sixteen-tuple candidate, or replace the GitHub Actions
-release gate.
+This is an **isolated proof of concept** on branch
+`codex/circleci-security-poc`, published as draft
+[PR #10](https://github.com/PunterDev/tradepilot/pull/10) against
+`codex/security-consolidated`. The CircleCI GitHub App pull-request trigger is
+configured for the POC. Hosted proposal-job execution and GitHub status
+reporting remain verification steps; configuration alone is not evidence that
+the trigger, metadata contract, or status integration worked. This POC does
+not modify PR #7, activate the pending December sixteen-tuple candidate, or
+replace the GitHub Actions release gate.
 
 The configuration mirrors the current strict policy:
 
@@ -40,14 +44,16 @@ scope. A future 16-tuple activation must be an explicit, reviewed source
 change that updates **all** activation references together only after a fresh
 owner approval. The historical PR #6 approval cannot be reused.
 
-## Required CircleCI connection steps
+## CircleCI connection and remaining hosted-validation steps
 
-1. Connect the private `PunterDev/tradepilot` repository through CircleCI's
-   GitHub App/OAuth integration and confirm it can post a commit/PR status.
-2. Configure a GitHub App draft-PR trigger for proposal mode, and a separate
-   `PR marked ready for review` trigger for the activation workflow. Disable
-   the default all-push trigger to avoid duplicate spending. Verify on one
-   throwaway draft PR that CircleCI exposes `CIRCLE_PULL_REQUEST`,
+1. The private `PunterDev/tradepilot` repository is connected through the
+   CircleCI GitHub App, and its pull-request trigger is configured. The first
+   hosted proposal-only execution on draft PR #10 must confirm that CircleCI
+   can post a commit/PR status without receiving protected secrets.
+2. Keep proposal mode on a GitHub App draft-PR trigger and activation on a
+   separate `PR marked ready for review` trigger. Keep the default all-push
+   trigger disabled to avoid duplicate spending. Verify on draft PR #10 that
+   CircleCI exposes `CIRCLE_PULL_REQUEST`,
    `CIRCLE_SHA1`, `CIRCLE_PROJECT_USERNAME`, and `CIRCLE_PROJECT_REPONAME` as
    assumed by the gate. This is an integration prerequisite, not established
    by local tests.
