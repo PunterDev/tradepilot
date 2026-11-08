@@ -23,11 +23,19 @@ The configuration mirrors the current strict policy:
 - Blocking Gitleaks, Semgrep, and `npm audit --audit-level=high` jobs.
 - No broad suppression, CVSS threshold change, or error-tolerant scan path.
 
+The repository owner attested on 2026-11-08 that CircleCI Project Settings →
+Environment Variables contains no variables after removing `NVD_API_KEY`.
+This is owner-attested configuration evidence, not independently verified by
+this repository or the local CircleCI CLI. Draft proposal jobs attach no
+CircleCI context and must continue to run without credentials.
+
 ## Proposal versus activation
 
-A GitHub App draft-PR event runs only the pending-candidate validator. It never
-receives NVD credentials and never runs a vulnerability scan. A non-draft
-GitHub App pull-request event runs `validate_security_activation.py` first.
+A GitHub App draft-PR event runs the pending-candidate validator followed by
+Gitleaks, Semgrep, and the frontend high-severity npm audit. These jobs never
+receive NVD credentials or a CircleCI context. Dependency-Check never runs on
+a draft PR. A non-draft GitHub App pull-request event runs
+`validate_security_activation.py` first.
 That adapter fails unless all of the following are true:
 
 1. A protected CircleCI secret named `TRADEPILOT_GITHUB_APPROVAL_READ_TOKEN`

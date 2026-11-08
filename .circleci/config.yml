@@ -165,6 +165,12 @@ workflows:
         - equal: [true, << pipeline.event.github.pull_request.draft >>]
     jobs:
       - security-policy-proposal
+      - gitleaks:
+          requires: [security-policy-proposal]
+      - frontend-audit:
+          requires: [security-policy-proposal]
+      - semgrep:
+          requires: [security-policy-proposal]
 
   activation:
     when:

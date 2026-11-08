@@ -50,11 +50,20 @@ class CircleCiSecurityConfigTests(unittest.TestCase):
         self.assertIn("- equal: [true, << pipeline.event.github.pull_request.draft >>]", self.config)
         self.assertIn("- equal: [false, << pipeline.event.github.pull_request.draft >>]", self.config)
 
-    def test_full_scans_depend_on_the_activation_gate(self) -> None:
-        activation = self.config[self.config.index("activation:"):]
+    def test_draft_pr_runs_secretless_scanners_after_proposal_validation(self) -> None:
+        workflows = self.config[self.config.index("workflows:"):]
+        proposal = workflows[workflows.index("  proposal:"):workflows.index("  activation:")]
+        self.assertIn("- security-policy-proposal", proposal)
+        for job in ("gitleaks", "frontend-audit", "semgrep"):
+            self.assertIn(f"- {job}:\n          requires: [security-policy-proposal]", proposal)
+        self.assertNotIn("dependency-check", proposal)
+        self.assertNotIn("security-policy-activation", proposal)
+        self.assertNotIn("tradepilot-security-activation", proposal)
+
+    def test_activation_scans_remain_behind_the_protected_activation_gate(self) -> None:
+        workflows = self.config[self.config.index("workflows:"):]
+        activation = workflows[workflows.index("  activation:"):]
         self.assertIn("- security-policy-activation:\n          context: tradepilot-security-activation", activation)
         self.assertIn("- dependency-check:\n          requires: [security-policy-activation]\n          context: tradepilot-security-activation", activation)
         for job in ("gitleaks", "dependency-check", "frontend-audit", "semgrep"):
             self.assertIn(f"- {job}:\n          requires: [security-policy-activation]", activation)
-        proposal = self.config[self.config.index("proposal:"):self.config.index("activation:")]
-        self.assertNotIn("tradepilot-security-activation", proposal)
