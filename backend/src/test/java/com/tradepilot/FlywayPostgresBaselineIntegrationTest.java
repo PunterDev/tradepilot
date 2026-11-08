@@ -117,6 +117,7 @@ class FlywayPostgresBaselineIntegrationTest {
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '028' and success = true")).isEqualTo("028");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '029' and success = true")).isEqualTo("029");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '030' and success = true")).isEqualTo("030");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '031' and success = true")).isEqualTo("031");
 
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
