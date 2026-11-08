@@ -1,0 +1,202 @@
+version: 2.1
+
+# LOCAL PROOF OF CONCEPT ONLY. This file is intentionally not present on the
+# consolidated security release branch. Do not enable this pipeline until the
+# connection and secrets described in docs/security/CIRCLECI_FREE_SECURITY_POC.md
+# have been verified in a private test project.
+
+executors:
+  java17:
+    docker:
+      - image: cimg/openjdk:17.0.13@sha256:402f246164077f437f8a19d586137038e83beb63d21bedbc89cd5d11ee20b3e6
+  node22:
+    docker:
+      - image: cimg/node:22.15.1@sha256:2914f60f3ffaa8427a9038d5ade497d5e01e3baa974eb78d690c3b3d669c70f6
+  python311:
+    docker:
+      # Semgrep's own image exits 2 in CircleCI before scanning. Keep the
+      # scanner version pinned, but install it in a standard Python executor.
+      - image: python:3.11.10-slim-bookworm@sha256:840e180ebcc6e5c8efab209c43f5e40fd2af98cb49db5c7103c90539c56bb30e
+
+commands:
+  checkout_security_source:
+    steps:
+      - checkout
+
+jobs:
+  security-policy-proposal:
+    executor: java17
+    steps:
+      - checkout_security_source
+      - run:
+          name: Validate pending December proposal (no scan)
+          command: |
+            set -Eeuo pipefail
+            python3 scripts/security/validate-owasp-exception-candidates.py \
+              --suppression docs/security/candidates/dependency-check-expanded-sixteen-dec15-candidate.xml \
+              --approval-record docs/security/candidates/owasp-expanded-sixteen-dec15-approval.template.json \
+              --scope expanded-sixteen-dec15 \
+              --mode proposal
+
+  security-policy-activation:
+    executor: java17
+    steps:
+      - checkout_security_source
+      - run:
+          name: Verify ready, approved GitHub pull request and active policy
+          command: |
+            set -Eeuo pipefail
+            python3 scripts/circleci/validate_security_activation.py
+
+  gitleaks:
+    executor: java17
+    steps:
+      - checkout_security_source
+      - run:
+          name: Install and verify pinned Gitleaks binary
+          command: |
+            set -Eeuo pipefail
+            readonly GITLEAKS_VERSION="v8.18.4"
+            readonly GITLEAKS_LINUX_AMD64_SHA256="ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d"
+            archive="gitleaks_${GITLEAKS_VERSION#v}_linux_x64.tar.gz"
+            curl --fail --location --retry 3 --retry-all-errors \
+              "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/${archive}" \
+              --output /tmp/gitleaks.tar.gz
+            echo "${GITLEAKS_LINUX_AMD64_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum --check --status
+            tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+            /tmp/gitleaks detect --source . --no-banner --redact
+
+  dependency-check:
+    executor: java17
+    # Dependency-Check's NVD database is intentionally mutable, unlike a
+    # dependency lockfile. A unique key lets a completed refresh be retained
+    # even when the later CVSS gate fails; short retention constrains Free-plan
+    # storage consumption.
+    retention:
+      caches: 1d
+    steps:
+      - checkout_security_source
+      - restore_cache:
+          keys:
+            - dependency-check-v12.2.2-reference-url-schema-
+      - run:
+          name: Require NVD key and refresh complete vulnerability data
+          no_output_timeout: 30m
+          command: |
+            set -Eeuo pipefail
+            : "${NVD_API_KEY:?NVD_API_KEY must be configured as a protected CircleCI secret}"
+            export DEPENDENCY_CHECK_DATA="$HOME/.cache/dependency-check-data"
+            mkdir -p "$DEPENDENCY_CHECK_DATA"
+            update_log="$(mktemp)"
+            trap 'rm -f "$update_log"' EXIT
+            (
+              cd backend
+              mvn -B org.owasp:dependency-check-maven:12.2.2:update-only \
+                -DdataDirectory="$DEPENDENCY_CHECK_DATA" \
+                -DfailOnError=true \
+                -DnvdApiKeyEnvironmentVariable=NVD_API_KEY \
+                -DnvdApiDelay=4000 \
+                -DnvdMaxRetryCount=5 \
+                -DconnectionTimeout=30000 \
+                -DconnectionReadTimeout=90000
+            ) 2>&1 | tee "$update_log"
+            if grep -E 'Failed to process CVE-|NvdApiException|DatabaseException: Error updating' "$update_log"; then
+              echo 'Dependency-Check NVD ingestion was incomplete; cache will not be saved.' >&2
+              exit 1
+            fi
+      # This step occurs before CVSS analysis. CircleCI only saves a cache after
+      # a successful step, so an update failure cannot persist partial data.
+      - save_cache:
+          key: dependency-check-v12.2.2-reference-url-schema-{{ .BuildNum }}
+          paths:
+            - ~/.cache/dependency-check-data
+      - run:
+          name: Run strict Dependency-Check gate and retain its exit status
+          no_output_timeout: 30m
+          command: |
+            set -Euo pipefail
+            export DEPENDENCY_CHECK_DATA="$HOME/.cache/dependency-check-data"
+            cd backend
+            set +e
+            mvn -B org.owasp:dependency-check-maven:12.2.2:check \
+              -DfailBuildOnCVSS=8 \
+              -DdataDirectory="$DEPENDENCY_CHECK_DATA" \
+              -DfailOnError=true \
+              -DnvdApiKeyEnvironmentVariable=NVD_API_KEY \
+              -DnvdApiDelay=4000 \
+              -DnvdMaxRetryCount=5 \
+              -DconnectionTimeout=30000 \
+              -DconnectionReadTimeout=90000 \
+              -DsuppressionFiles="../docs/security/candidates/dependency-check-final-eight-candidate.xml" \
+              -DfailBuildOnUnusedSuppressionRule=true
+            status=$?
+            printf '%s\n' "$status" > /tmp/dependency-check-exit-status
+            exit 0
+      - store_artifacts:
+          path: backend/target/dependency-check-report.html
+          destination: dependency-check-report.html
+      - run:
+          name: Enforce retained Dependency-Check result
+          command: |
+            set -Eeuo pipefail
+            test -f /tmp/dependency-check-exit-status
+            exit "$(cat /tmp/dependency-check-exit-status)"
+
+  frontend-audit:
+    executor: node22
+    steps:
+      - checkout_security_source
+      - run:
+          name: Audit frontend high-and-above vulnerabilities
+          command: |
+            set -Eeuo pipefail
+            cd frontend
+            npm audit --audit-level=high
+
+  semgrep:
+    executor: python311
+    steps:
+      - checkout_security_source
+      - run:
+          name: Run blocking SAST rules
+          command: |
+            set -Eeuo pipefail
+            # Semgrep 1.100.0 imports pkg_resources; pin setuptools to retain
+            # that compatibility in the slim Python image.
+            python3 -m pip install --no-cache-dir --disable-pip-version-check \
+              setuptools==75.6.0 semgrep==1.100.0
+            test "$(semgrep --version)" = "1.100.0"
+            semgrep scan --config p/java --config p/typescript --config p/javascript --error --metrics=off
+
+workflows:
+  proposal:
+    when:
+      and:
+        - equal: [pull_request, << pipeline.event.name >>]
+        - equal: [true, << pipeline.event.github.pull_request.draft >>]
+    jobs:
+      - security-policy-proposal
+      - gitleaks:
+          requires: [security-policy-proposal]
+      - frontend-audit:
+          requires: [security-policy-proposal]
+      - semgrep:
+          requires: [security-policy-proposal]
+
+  activation:
+    when:
+      and:
+        - equal: [pull_request, << pipeline.event.name >>]
+        - equal: [false, << pipeline.event.github.pull_request.draft >>]
+    jobs:
+      - security-policy-activation:
+          context: tradepilot-security-activation
+      - gitleaks:
+          requires: [security-policy-activation]
+      - dependency-check:
+          requires: [security-policy-activation]
+          context: tradepilot-security-activation
+      - frontend-audit:
+          requires: [security-policy-activation]
+      - semgrep:
+          requires: [security-policy-activation]
