@@ -22,6 +22,18 @@ public class AiRequestMetric {
     private Integer completionTokens;
     @Column(name = "total_tokens")
     private Integer totalTokens;
+    @Column(name = "input_tokens")
+    private Integer inputTokens;
+    @Column(name = "cached_input_tokens")
+    private Integer cachedInputTokens;
+    @Column(name = "output_tokens")
+    private Integer outputTokens;
+    @Column(name = "reasoning_tokens")
+    private Integer reasoningTokens;
+    @Column(name = "retry_attempt")
+    private Integer retryAttempt;
+    @Column(name = "error_category", length = 40)
+    private String errorCategory;
     @Column(name = "estimated_cost", precision = 12, scale = 6)
     private BigDecimal estimatedCost;
     @Column(name = "duration_ms", nullable = false)
@@ -211,6 +223,12 @@ public class AiRequestMetric {
     public Integer getTotalTokens() {
         return this.totalTokens;
     }
+    public Integer getInputTokens() { return inputTokens; }
+    public Integer getCachedInputTokens() { return cachedInputTokens; }
+    public Integer getOutputTokens() { return outputTokens; }
+    public Integer getReasoningTokens() { return reasoningTokens; }
+    public Integer getRetryAttempt() { return retryAttempt; }
+    public String getErrorCategory() { return errorCategory; }
 
     @java.lang.SuppressWarnings("all")
     public BigDecimal getEstimatedCost() {
@@ -266,6 +284,12 @@ public class AiRequestMetric {
     public void setTotalTokens(final Integer totalTokens) {
         this.totalTokens = totalTokens;
     }
+    public void setInputTokens(Integer inputTokens) { this.inputTokens = inputTokens; }
+    public void setCachedInputTokens(Integer cachedInputTokens) { this.cachedInputTokens = cachedInputTokens; }
+    public void setOutputTokens(Integer outputTokens) { this.outputTokens = outputTokens; }
+    public void setReasoningTokens(Integer reasoningTokens) { this.reasoningTokens = reasoningTokens; }
+    public void setRetryAttempt(Integer retryAttempt) { this.retryAttempt = retryAttempt; }
+    public void setErrorCategory(String errorCategory) { this.errorCategory = errorCategory; }
 
     @java.lang.SuppressWarnings("all")
     public void setEstimatedCost(final BigDecimal estimatedCost) {

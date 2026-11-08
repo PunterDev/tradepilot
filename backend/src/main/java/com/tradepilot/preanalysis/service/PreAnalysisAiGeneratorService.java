@@ -7,37 +7,31 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
-import com.tradepilot.config.OpenAiProperties;
-import com.tradepilot.observability.ObservabilityService;
+import com.tradepilot.ai.openai.OpenAiGeneratedResponse;
+import com.tradepilot.ai.openai.OpenAiResponsesClient;
 import com.tradepilot.preanalysis.dto.PreAnalysisDtos.*;
 import com.tradepilot.preanalysis.dto.TradingPlaybookDto;
 import com.tradepilot.preanalysis.entity.*;
-import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestTemplate;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.List;
-import java.util.Map;
 
 @Service
 public class PreAnalysisAiGeneratorService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PreAnalysisAiGeneratorService.class);
     private static final int MAX_RETRIES = 2;
     private static final long RETRY_DELAY_MS = 700;
-    private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
-    private final OpenAiProperties openAiProperties;
+    private final OpenAiResponsesClient openAiResponsesClient;
     private final PreAnalysisPromptBuilder promptBuilder;
-    private final ObservabilityService observabilityService;
     private final PreAnalysisDecisionService decisionService;
 
     public PreAnalysisAiResult generate(Long userId, TradingPlaybookDto playbook, PreAnalysisMarket market, PreAnalysisTimeframe timeframe, String traderNote, byte[] imageBytes, String contentType) throws Exception {
-        if (openAiProperties.getApiKey() == null || openAiProperties.getApiKey().isBlank()) {
+        if (!openAiResponsesClient.isConfigured()) {
             return fallback(playbook, market, timeframe);
         }
         Exception lastException = null;
@@ -68,54 +62,31 @@ public class PreAnalysisAiGeneratorService {
     private PreAnalysisAiResult callOpenAi(Long userId, TradingPlaybookDto playbook, PreAnalysisMarket market, PreAnalysisTimeframe timeframe, String traderNote, byte[] imageBytes, String contentType, boolean retry) throws Exception {
         Instant start = Instant.now();
         long startedAt = System.nanoTime();
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(openAiProperties.getApiKey());
-        long headersReadyAt = System.nanoTime();
         String prompt = promptBuilder.userPrompt(playbook, market, timeframe, traderNote, retry);
         long promptReadyAt = System.nanoTime();
-        String imageUrl = "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(imageBytes);
         long imageEncodedAt = System.nanoTime();
-        Map<String, Object> userMessage = Map.of(
-                "role", "user",
-                "content", List.of(
-                        Map.of("type", "text", "text", prompt),
-                        Map.of("type", "image_url", "image_url", Map.of("url", imageUrl))
-                )
-        );
-        Map<String, Object> body = Map.of(
-                "model", openAiProperties.getModel(),
-                "messages", List.of(Map.of("role", "system", "content", promptBuilder.systemPrompt()), userMessage),
-                "temperature", 0.15,
-                "response_format", Map.of("type", "json_object")
-        );
-        ResponseEntity<String> response;
+        OpenAiGeneratedResponse response;
         try {
-            response = restTemplate.exchange("https://api.openai.com/v1/chat/completions", HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
+            response = openAiResponsesClient.generateJson(userId, "AI_PRE_ANALYSIS", promptBuilder.systemPrompt(), prompt, imageBytes, contentType);
         } catch (Exception ex) {
-            observabilityService.recordAiCall(userId, "AI_PRE_ANALYSIS", openAiProperties.getModel(), 0, 0, 0, Duration.between(start, Instant.now()).toMillis(), false);
-            log.info("pre_analysis_openai_timing userId={} retry={} success=false headersMs={} promptMs={} imageEncodingMs={} openAiRequestMs={} totalMs={}", userId, retry, ms(startedAt, headersReadyAt), ms(headersReadyAt, promptReadyAt), ms(promptReadyAt, imageEncodedAt), Duration.between(start, Instant.now()).toMillis(), ms(startedAt, System.nanoTime()));
+            log.info("pre_analysis_openai_timing userId={} retry={} success=false promptMs={} imagePreparationMs={} openAiRequestMs={} totalMs={}", userId, retry, ms(startedAt, promptReadyAt), ms(promptReadyAt, imageEncodedAt), Duration.between(start, Instant.now()).toMillis(), ms(startedAt, System.nanoTime()));
             throw ex;
         }
         long responseReadyAt = System.nanoTime();
         long elapsedMs = Duration.between(start, Instant.now()).toMillis();
-        JsonNode root = objectMapper.readTree(response.getBody());
-        JsonNode usage = root.path("usage");
-        int promptTokens = usage.path("prompt_tokens").asInt(0);
-        int completionTokens = usage.path("completion_tokens").asInt(0);
-        int totalTokens = usage.path("total_tokens").asInt(0);
-        String content = root.path("choices").get(0).path("message").path("content").asText();
+        int promptTokens = response.usage().inputTokens();
+        int completionTokens = response.usage().outputTokens();
+        int totalTokens = response.usage().totalTokens();
+        String content = response.content();
         try {
             PreAnalysisAiResult result = objectMapper.readValue(cleanJson(content), PreAnalysisAiResult.class);
             long parsedAt = System.nanoTime();
             PreAnalysisAiResult normalized = decisionService.normalizeAndValidate(result);
             long normalizedAt = System.nanoTime();
-            observabilityService.recordAiCall(userId, "AI_PRE_ANALYSIS", openAiProperties.getModel(), promptTokens, completionTokens, totalTokens, elapsedMs, true);
-            log.info("pre_analysis_openai_timing userId={} retry={} success=true headersMs={} promptMs={} imageEncodingMs={} openAiRequestMs={} parseMs={} normalizeMs={} totalMs={} promptTokens={} completionTokens={} totalTokens={}", userId, retry, ms(startedAt, headersReadyAt), ms(headersReadyAt, promptReadyAt), ms(promptReadyAt, imageEncodedAt), ms(imageEncodedAt, responseReadyAt), ms(responseReadyAt, parsedAt), ms(parsedAt, normalizedAt), ms(startedAt, normalizedAt), promptTokens, completionTokens, totalTokens);
+            log.info("pre_analysis_openai_timing userId={} retry={} success=true promptMs={} imagePreparationMs={} openAiRequestMs={} parseMs={} normalizeMs={} totalMs={} promptTokens={} completionTokens={} totalTokens={}", userId, retry, ms(startedAt, promptReadyAt), ms(promptReadyAt, imageEncodedAt), ms(imageEncodedAt, responseReadyAt), ms(responseReadyAt, parsedAt), ms(parsedAt, normalizedAt), ms(startedAt, normalizedAt), promptTokens, completionTokens, totalTokens);
             return normalized;
         } catch (Exception ex) {
-            observabilityService.recordAiCall(userId, "AI_PRE_ANALYSIS", openAiProperties.getModel(), promptTokens, completionTokens, totalTokens, elapsedMs, false);
-            log.info("pre_analysis_openai_timing userId={} retry={} success=false headersMs={} promptMs={} imageEncodingMs={} openAiRequestMs={} parseAndNormalizeMs={} totalMs={} promptTokens={} completionTokens={} totalTokens={}", userId, retry, ms(startedAt, headersReadyAt), ms(headersReadyAt, promptReadyAt), ms(promptReadyAt, imageEncodedAt), ms(imageEncodedAt, responseReadyAt), ms(responseReadyAt, System.nanoTime()), ms(startedAt, System.nanoTime()), promptTokens, completionTokens, totalTokens);
+            log.info("pre_analysis_openai_timing userId={} retry={} success=false promptMs={} imagePreparationMs={} openAiRequestMs={} parseAndNormalizeMs={} totalMs={} promptTokens={} completionTokens={} totalTokens={}", userId, retry, ms(startedAt, promptReadyAt), ms(promptReadyAt, imageEncodedAt), ms(imageEncodedAt, responseReadyAt), ms(responseReadyAt, System.nanoTime()), ms(startedAt, System.nanoTime()), promptTokens, completionTokens, totalTokens);
             throw ex;
         }
     }
@@ -224,12 +195,10 @@ public class PreAnalysisAiGeneratorService {
         return current;
     }
 
-    public PreAnalysisAiGeneratorService(RestTemplate restTemplate, ObjectMapper objectMapper, OpenAiProperties openAiProperties, PreAnalysisPromptBuilder promptBuilder, ObservabilityService observabilityService, PreAnalysisDecisionService decisionService) {
-        this.restTemplate = restTemplate;
+    public PreAnalysisAiGeneratorService(ObjectMapper objectMapper, OpenAiResponsesClient openAiResponsesClient, PreAnalysisPromptBuilder promptBuilder, PreAnalysisDecisionService decisionService) {
         this.objectMapper = objectMapper;
-        this.openAiProperties = openAiProperties;
+        this.openAiResponsesClient = openAiResponsesClient;
         this.promptBuilder = promptBuilder;
-        this.observabilityService = observabilityService;
         this.decisionService = decisionService;
     }
 }
