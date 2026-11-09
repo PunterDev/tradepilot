@@ -31,6 +31,7 @@ jobs:
           command: |
             set -Eeuo pipefail
             test "$CIRCLE_BRANCH" = master
+            test "$(git rev-parse HEAD)" = "$CIRCLE_SHA1"
             python3 scripts/circleci/validate_trusted_owasp_activation.py \
               --target-pr << pipeline.parameters.target_pr >> \
               --target-sha << pipeline.parameters.target_sha >> \
@@ -73,7 +74,7 @@ jobs:
                 /tmp/approved-target.json /tmp/nvd-bundle
       - persist_to_workspace:
           root: /tmp
-          paths: [analysis-result.json]
+          paths: [analysis-result.json, analysis-report.json]
 
   trusted-final-approval-validation:
     executor: java17
@@ -86,20 +87,19 @@ jobs:
           command: |
             set -Eeuo pipefail
             test "$CIRCLE_BRANCH" = master
+            test "$(git rev-parse HEAD)" = "$CIRCLE_SHA1"
             python3 scripts/circleci/validate_trusted_owasp_activation.py \
               --target-pr << pipeline.parameters.target_pr >> \
               --target-sha << pipeline.parameters.target_sha >> \
               --candidate-sha256 << pipeline.parameters.candidate_sha256 >> \
               --output /tmp/revalidated-target.json
             cmp /tmp/approved-target.json /tmp/revalidated-target.json
-            python3 - <<'PY'
-            import json
-            from pathlib import Path
-            result = json.loads(Path('/tmp/analysis-result.json').read_text())
-            target = json.loads(Path('/tmp/approved-target.json').read_text())
-            if result != target:
-                raise SystemExit('analysis result does not bind to the final approval target')
-            PY
+            python3 scripts/circleci/verify_trusted_nvd_manifest.py \
+              --manifest /tmp/nvd-bundle/manifest.json \
+              --archive /tmp/nvd-bundle/dependency-check-data.tar.gz \
+              --analysis-evidence /tmp/analysis-result.json \
+              --approved-target /tmp/approved-target.json \
+              --report /tmp/analysis-report.json
 
 workflows:
   trusted-owasp-activation:

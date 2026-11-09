@@ -37,7 +37,13 @@ class TrustedOwaspActivationTests(unittest.TestCase):
         return approval_path, pr_path, candidate
 
     def run_validator(self, approval: Path, pr: Path, candidate: Path, *, sha: str = SHA, candidate_hash: str | None = None, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-        environment = os.environ | {"CIRCLE_BRANCH": "master", "CIRCLE_PROJECT_USERNAME": "PunterDev", "CIRCLE_PROJECT_REPONAME": "tradepilot"}
+        environment = os.environ | {
+            "CIRCLE_BRANCH": "master",
+            "CIRCLE_PROJECT_USERNAME": "PunterDev",
+            "CIRCLE_PROJECT_REPONAME": "tradepilot",
+            "CIRCLE_CONFIG_SOURCE": "repository",
+            "CIRCLE_SHA1": "b" * 40,
+        }
         candidate_hash = candidate_hash or hashlib.sha256(candidate.read_bytes()).hexdigest()
         if env:
             environment.update(env)
@@ -93,3 +99,11 @@ class TrustedOwaspActivationTests(unittest.TestCase):
             self.assertNotEqual(0, self.run_validator(
                 approval, pr, candidate, env={"CIRCLE_PROJECT_USERNAME": "untrusted"},
             ).returncode)
+
+    def test_rejects_missing_trusted_environment_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            approval, pr, candidate = self.fixture_files(Path(temporary))
+            for name, value in (("CIRCLE_CONFIG_SOURCE", "api"), ("CIRCLE_SHA1", "")):
+                self.assertNotEqual(0, self.run_validator(
+                    approval, pr, candidate, env={name: value},
+                ).returncode)

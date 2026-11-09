@@ -38,6 +38,13 @@ class TrustedNvdManifestTests(unittest.TestCase):
             "--as-of", "2026-11-08T13:00:00Z",
         ], text=True, capture_output=True, check=False)
 
+    def validate_evidence(self, manifest: Path, archive: Path, evidence: Path, target: Path, report: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run([
+            "python3", str(VALIDATOR), "--manifest", str(manifest), "--archive", str(archive),
+            "--analysis-evidence", str(evidence), "--approved-target", str(target),
+            "--report", str(report), "--as-of", "2026-11-08T13:00:00Z",
+        ], text=True, capture_output=True, check=False)
+
     def test_accepts_fresh_verified_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             manifest, archive = self.bundle(Path(temporary))
@@ -71,6 +78,40 @@ class TrustedNvdManifestTests(unittest.TestCase):
             manifest.write_text(json.dumps(payload))
             self.assertNotEqual(0, self.validate(manifest, unsafe).returncode)
 
+    def test_rejects_skipped_or_forged_analysis_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            manifest, archive = self.bundle(directory)
+            target = directory / "target.json"
+            target.write_text(json.dumps({
+                "targetSha": "a" * 40,
+                "candidateSha256": "b" * 64,
+                "trustedControlSha": "c" * 40,
+            }))
+            report = directory / "report.json"
+            report.write_text(json.dumps({"dependencies": [{"fileName": "synthetic.jar"}]}))
+            evidence = directory / "evidence.json"
+            evidence.write_text(json.dumps({
+                "schemaVersion": 1,
+                "status": "PASS",
+                "targetSha": "a" * 40,
+                "candidateSha256": "b" * 64,
+                "trustedControlSha": "c" * 40,
+                "scannerVersion": "12.2.2",
+                "nvdManifestSha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                "reportSha256": hashlib.sha256(report.read_bytes()).hexdigest(),
+            }))
+            self.assertEqual(0, self.validate_evidence(manifest, archive, evidence, target, report).returncode)
+            evidence.write_text(json.dumps({"status": "PASS"}))
+            self.assertNotEqual(0, self.validate_evidence(manifest, archive, evidence, target, report).returncode)
+            evidence.write_text(json.dumps({
+                "schemaVersion": 1, "status": "PASS", "targetSha": "d" * 40,
+                "candidateSha256": "b" * 64, "trustedControlSha": "c" * 40,
+                "scannerVersion": "12.2.2", "nvdManifestSha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                "reportSha256": hashlib.sha256(report.read_bytes()).hexdigest(),
+            }))
+            self.assertNotEqual(0, self.validate_evidence(manifest, archive, evidence, target, report).returncode)
+
     def test_trusted_configuration_never_grants_context_to_analysis(self) -> None:
         config = CONFIG.read_text()
         self.assertIn("context: tradepilot-approval-read", config)
@@ -78,6 +119,7 @@ class TrustedNvdManifestTests(unittest.TestCase):
         analysis = config.split("secretless-dependency-check:", 1)[1].split("workflows:", 1)[0]
         self.assertNotIn("context:", analysis)
         self.assertIn("env -u NVD_API_KEY -u TRADEPILOT_GITHUB_APPROVAL_READ_TOKEN", analysis)
+        self.assertIn("analysis-report.json", config)
         self.assertIn("equal: [master, << pipeline.git.branch >>]", config)
         self.assertIn("trusted-final-approval-validation", config)
         self.assertIn("cmp /tmp/approved-target.json /tmp/revalidated-target.json", config)
@@ -87,3 +129,14 @@ class TrustedNvdManifestTests(unittest.TestCase):
         self.assertIn("equal: [true, << pipeline.parameters.security_activation >>]", config)
         self.assertIn("test \"$CIRCLE_BRANCH\" = master", config)
         self.assertIn("context: tradepilot-approval-read", config)
+
+    def test_refresh_uses_environment_key_lookup_not_a_secret_argument(self) -> None:
+        refresh = (ROOT / "scripts/circleci/refresh_trusted_nvd_data.sh").read_text()
+        analysis = (ROOT / "scripts/circleci/scan_approved_pr_dependency_graph.sh").read_text()
+        self.assertIn("-DnvdApiKeyEnvironmentVariable=NVD_API_KEY", refresh)
+        self.assertNotIn("-DnvdApiKey=", refresh)
+        self.assertIn("sha256sum", refresh)
+        self.assertNotIn("rg ", refresh)
+        self.assertIn("-DsuppressionFiles=", analysis)
+        self.assertIn("-DfailBuildOnUnusedSuppressionRule=true", analysis)
+        self.assertIn("command -v", analysis)

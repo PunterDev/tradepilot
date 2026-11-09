@@ -28,10 +28,44 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def validate_analysis_evidence(
+    evidence_path: Path,
+    target_path: Path,
+    report_path: Path,
+    manifest_path: Path,
+) -> None:
+    if not all(path.is_file() for path in (evidence_path, target_path, report_path, manifest_path)):
+        fail("analysis evidence, target, report, or manifest is missing")
+    try:
+        evidence = json.loads(evidence_path.read_text())
+        target = json.loads(target_path.read_text())
+        report = json.loads(report_path.read_text())
+    except json.JSONDecodeError:
+        fail("analysis evidence or report is malformed")
+    required = {
+        "schemaVersion": 1,
+        "status": "PASS",
+        "targetSha": target.get("targetSha"),
+        "candidateSha256": target.get("candidateSha256"),
+        "trustedControlSha": target.get("trustedControlSha"),
+        "scannerVersion": SCANNER_VERSION,
+        "nvdManifestSha256": sha256(manifest_path),
+        "reportSha256": sha256(report_path),
+    }
+    if any(evidence.get(key) != value for key, value in required.items()):
+        fail("analysis evidence does not match the approved scan inputs")
+    dependencies = report.get("dependencies")
+    if not isinstance(dependencies, list) or not dependencies:
+        fail("analysis report is empty or does not contain dependencies")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--archive", type=Path, required=True)
+    parser.add_argument("--analysis-evidence", type=Path)
+    parser.add_argument("--approved-target", type=Path)
+    parser.add_argument("--report", type=Path)
     parser.add_argument("--as-of", default=None)
     args = parser.parse_args()
     if not args.manifest.is_file() or not args.archive.is_file():
@@ -64,6 +98,13 @@ def main() -> None:
                 fail("archive does not contain the Dependency-Check database")
     except tarfile.TarError:
         fail("archive is corrupt")
+    evidence_arguments = (args.analysis_evidence, args.approved_target, args.report)
+    if any(evidence_arguments):
+        if not all(evidence_arguments):
+            fail("analysis evidence requires target and report inputs")
+        validate_analysis_evidence(
+            args.analysis_evidence, args.approved_target, args.report, args.manifest,
+        )
 
 
 if __name__ == "__main__":

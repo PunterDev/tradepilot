@@ -29,17 +29,21 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def expected_environment() -> None:
-    if os.environ.get("CIRCLE_PROJECT_USERNAME") not in (None, "PunterDev"):
+def expected_environment() -> str:
+    if os.environ.get("CIRCLE_PROJECT_USERNAME") != "PunterDev":
         fail("wrong repository owner")
-    if os.environ.get("CIRCLE_PROJECT_REPONAME") not in (None, "tradepilot"):
+    if os.environ.get("CIRCLE_PROJECT_REPONAME") != "tradepilot":
         fail("wrong repository name")
     if os.environ.get("CIRCLE_BRANCH") != "master":
         fail("control pipeline must run from master")
     if os.environ.get("CIRCLE_SSH_CONNECTION"):
         fail("SSH reruns are not trusted")
-    if os.environ.get("CIRCLE_CONFIG_SOURCE", "").startswith("api"):
-        fail("API-supplied configuration is not trusted")
+    if os.environ.get("CIRCLE_CONFIG_SOURCE") != "repository":
+        fail("configuration source is not the approved repository route")
+    control_sha = os.environ.get("CIRCLE_SHA1", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", control_sha):
+        fail("trusted control commit is missing or invalid")
+    return control_sha
 
 
 def read_pr(pr_number: int, fixture: Path | None) -> dict[str, object]:
@@ -59,7 +63,7 @@ def main() -> None:
     parser.add_argument("--as-of")
     parser.add_argument("--output", type=Path, default=Path("/tmp/approved-target.json"))
     args = parser.parse_args()
-    expected_environment()
+    control_sha = expected_environment()
     if not re.fullmatch(r"[0-9a-f]{40}", args.target_sha):
         fail("target SHA is invalid")
     if not re.fullmatch(r"[0-9a-f]{64}", args.candidate_sha256):
@@ -119,6 +123,7 @@ def main() -> None:
         "candidateSha256": args.candidate_sha256,
         "scope": SCOPE,
         "expiresAt": EXPIRY,
+        "trustedControlSha": control_sha,
     }, sort_keys=True) + "\n")
 
 
