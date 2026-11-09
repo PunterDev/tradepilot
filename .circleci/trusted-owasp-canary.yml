@@ -1,0 +1,69 @@
+version: 2.1
+
+parameters:
+  run_config_canary:
+    type: boolean
+    default: false
+  expected_control_sha:
+    type: string
+    default: ""
+
+jobs:
+  config-source-canary:
+    docker:
+      - image: cimg/openjdk:17.0.13@sha256:402f246164077f437f8a19d586137038e83beb63d21bedbc89cd5d11ee20b3e6
+    environment:
+      EXPECTED_CONFIG_REPOSITORY: PunterDev/tradepilot
+      EXPECTED_CONFIG_PATH: .circleci/trusted-owasp-canary.yml
+      EXPECTED_CONFIG_REF: refs/heads/master
+      EXPECTED_CONTROL_SHA: << pipeline.parameters.expected_control_sha >>
+      CONFIG_REPOSITORY: << pipeline.config.repository.name >>
+      CONFIG_PATH: << pipeline.config.file_path >>
+      CONFIG_REF: << pipeline.config.ref >>
+      CONFIG_SHA: << pipeline.config.sha >>
+      CHECKOUT_BRANCH: << pipeline.git.branch >>
+      CHECKOUT_SHA: << pipeline.git.revision >>
+      INTEGRATION_SOURCE: << pipeline.integration_source >>
+      TRIGGER_TYPE: << pipeline.trigger.type >>
+      EVENT_NAME: << pipeline.event.name >>
+    steps:
+      - checkout
+      - run:
+          name: Verify trusted configuration metadata
+          command: |
+            set -Eeuo pipefail
+            test "$INTEGRATION_SOURCE" = github_app
+            test "$CONFIG_REPOSITORY" = "$EXPECTED_CONFIG_REPOSITORY"
+            test "$CONFIG_PATH" = "$EXPECTED_CONFIG_PATH"
+            test "$CONFIG_REF" = "$EXPECTED_CONFIG_REF"
+            [[ "$CONFIG_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$CHECKOUT_BRANCH" = master
+            [[ "$CHECKOUT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$EXPECTED_CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$TRIGGER_TYPE" = api
+            test "$EVENT_NAME" = api
+            test "$CONFIG_SHA" = "$EXPECTED_CONTROL_SHA"
+            test "$CHECKOUT_SHA" = "$CONFIG_SHA"
+            test "$(git rev-parse HEAD)" = "$CHECKOUT_SHA"
+            test -z "${CIRCLE_SSH_CONNECTION:-}"
+            printf '%s\n' \
+              "integration_source=$INTEGRATION_SOURCE" \
+              "trigger_type=$TRIGGER_TYPE" \
+              "event_name=$EVENT_NAME" \
+              "config_repository=$CONFIG_REPOSITORY" \
+              "config_path=$CONFIG_PATH" \
+              "config_ref=$CONFIG_REF" \
+              "config_sha=$CONFIG_SHA" \
+              "checkout_branch=$CHECKOUT_BRANCH" \
+              "checkout_sha=$CHECKOUT_SHA"
+
+workflows:
+  config-source-canary:
+    when:
+      and:
+        - equal: [true, << pipeline.parameters.run_config_canary >>]
+        - equal: [api, << pipeline.trigger.type >>]
+        - equal: [api, << pipeline.event.name >>]
+        - equal: [master, << pipeline.git.branch >>]
+    jobs:
+      - config-source-canary
