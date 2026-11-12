@@ -1,0 +1,48 @@
+# Protected configuration source. It is a setup configuration fetched from master.
+version: 2.1
+setup: true
+
+orbs:
+  continuation: circleci/continuation@1.1.0
+
+jobs:
+  trusted-control-dispatch:
+    docker:
+      - image: cimg/openjdk:17.0.13@sha256:402f246164077f437f8a19d586137038e83beb63d21bedbc89cd5d11ee20b3e6
+    environment:
+      TP_CONFIG_REPOSITORY: << pipeline.config.repository.name >>
+      TP_CONFIG_PATH: << pipeline.config.file_path >>
+      TP_CONFIG_REF: << pipeline.config.ref >>
+      TP_CONFIG_SHA: << pipeline.config.sha >>
+      TP_INTEGRATION_SOURCE: << pipeline.integration_source >>
+      TP_REPO_OWNER: << pipeline.git.repo_owner >>
+      TP_REPO_NAME: << pipeline.git.repo_name >>
+      TP_CHECKOUT_BRANCH: << pipeline.git.branch >>
+      TP_CHECKOUT_SHA: << pipeline.git.revision >>
+      TP_TRIGGER_TYPE: << pipeline.trigger.type >>
+      TP_EVENT_NAME: << pipeline.event.name >>
+      TP_GITHUB_PUSH_REF: << pipeline.event.github.ref >>
+      TP_GITHUB_PUSH_AFTER: << pipeline.event.github.after >>
+    steps:
+      - checkout
+      - run:
+          command: |
+            set -Eeuo pipefail
+            mkdir -p /tmp/trusted-control
+            git archive "$TP_CONFIG_SHA" scripts/circleci | tar -x -C /tmp/trusted-control
+            git show "$TP_CHECKOUT_SHA:docs/security/trusted-owasp-activation-intent.json" > /tmp/activation-intent.json
+            python3 /tmp/trusted-control/scripts/circleci/prepare_trusted_owasp_continuation.py \
+              --intent /tmp/activation-intent.json --parameters /tmp/trusted-owasp-parameters.json \
+              --control-sha "$TP_CONFIG_SHA" --activation-sha "$TP_CHECKOUT_SHA"
+            git show "$TP_CONFIG_SHA:.circleci/trusted-owasp-continuation.yml" > /tmp/trusted-owasp-continuation.yml
+      - continuation/continue:
+          configuration_path: /tmp/trusted-owasp-continuation.yml
+          parameters: /tmp/trusted-owasp-parameters.json
+
+workflows:
+  trusted-owasp-dispatch:
+    jobs:
+      - trusted-control-dispatch:
+          filters:
+            branches:
+              only: master

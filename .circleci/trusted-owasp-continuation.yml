@@ -1,0 +1,73 @@
+version: 2.1
+parameters:
+  run_protected: {type: boolean, default: false}
+
+commands:
+  materialize-trusted-control:
+    steps:
+      - run:
+          name: Materialize immutable control scripts
+          command: |
+            set -Eeuo pipefail
+            mkdir -p /tmp/trusted-control
+            git archive "$TP_CONFIG_SHA" scripts/circleci | tar -x -C /tmp/trusted-control
+            git show "$TP_CHECKOUT_SHA:docs/security/trusted-owasp-activation-intent.json" > /tmp/activation-intent.json
+
+jobs:
+  trusted-approval-validation:
+    docker: [{image: cimg/openjdk:17.0.13@sha256:402f246164077f437f8a19d586137038e83beb63d21bedbc89cd5d11ee20b3e6}]
+    environment: &trusted-metadata
+      TP_CONFIG_REPOSITORY: << pipeline.config.repository.name >>
+      TP_CONFIG_PATH: << pipeline.config.file_path >>
+      TP_CONFIG_REF: << pipeline.config.ref >>
+      TP_CONFIG_SHA: << pipeline.config.sha >>
+      TP_INTEGRATION_SOURCE: << pipeline.integration_source >>
+      TP_REPO_OWNER: << pipeline.git.repo_owner >>
+      TP_REPO_NAME: << pipeline.git.repo_name >>
+      TP_CHECKOUT_BRANCH: << pipeline.git.branch >>
+      TP_CHECKOUT_SHA: << pipeline.git.revision >>
+      TP_TRIGGER_TYPE: << pipeline.trigger.type >>
+      TP_EVENT_NAME: << pipeline.event.name >>
+      TP_GITHUB_PUSH_REF: << pipeline.event.github.ref >>
+      TP_GITHUB_PUSH_AFTER: << pipeline.event.github.after >>
+    steps:
+      - checkout
+      - materialize-trusted-control
+      - run: python3 /tmp/trusted-control/scripts/circleci/validate_trusted_owasp_activation.py --intent /tmp/activation-intent.json --control-sha "$TP_CONFIG_SHA" --activation-sha "$TP_CHECKOUT_SHA" --output /tmp/approved-target.json
+      - persist_to_workspace: {root: /tmp, paths: [approved-target.json]}
+  trusted-nvd-refresh:
+    docker: [{image: cimg/openjdk:17.0.13@sha256:402f246164077f437f8a19d586137038e83beb63d21bedbc89cd5d11ee20b3e6}]
+    environment: *trusted-metadata
+    steps:
+      - checkout
+      - materialize-trusted-control
+      - run: ': "${NVD_API_KEY:?protected context is required}"; bash /tmp/trusted-control/scripts/circleci/refresh_trusted_nvd_data.sh /tmp/nvd-bundle'
+      - persist_to_workspace: {root: /tmp, paths: [nvd-bundle]}
+  secretless-dependency-check:
+    docker: [{image: cimg/openjdk:17.0.13@sha256:402f246164077f437f8a19d586137038e83beb63d21bedbc89cd5d11ee20b3e6}]
+    environment: *trusted-metadata
+    steps:
+      - checkout
+      - materialize-trusted-control
+      - attach_workspace: {at: /tmp}
+      - run: 'env -u NVD_API_KEY -u TRADEPILOT_GITHUB_APPROVAL_READ_TOKEN bash /tmp/trusted-control/scripts/circleci/scan_approved_pr_dependency_graph.sh /tmp/approved-target.json /tmp/nvd-bundle'
+      - persist_to_workspace: {root: /tmp, paths: [analysis-result.json, analysis-report.json]}
+  trusted-final-approval-validation:
+    docker: [{image: cimg/openjdk:17.0.13@sha256:402f246164077f437f8a19d586137038e83beb63d21bedbc89cd5d11ee20b3e6}]
+    environment: *trusted-metadata
+    steps:
+      - checkout
+      - materialize-trusted-control
+      - attach_workspace: {at: /tmp}
+      - run: 'python3 /tmp/trusted-control/scripts/circleci/validate_trusted_owasp_activation.py --intent /tmp/activation-intent.json --control-sha "$TP_CONFIG_SHA" --activation-sha "$TP_CHECKOUT_SHA" --output /tmp/revalidated-target.json && cmp /tmp/approved-target.json /tmp/revalidated-target.json && python3 /tmp/trusted-control/scripts/circleci/verify_trusted_nvd_manifest.py --manifest /tmp/nvd-bundle/manifest.json --archive /tmp/nvd-bundle/dependency-check-data.tar.gz --analysis-evidence /tmp/analysis-result.json --approved-target /tmp/approved-target.json --report /tmp/analysis-report.json'
+
+workflows:
+  trusted-owasp-activation:
+    when: << pipeline.parameters.run_protected >>
+    jobs:
+      - trusted-approval-validation: {context: tradepilot-approval-read}
+      - trusted-nvd-refresh: {context: tradepilot-nvd-refresh}
+      - secretless-dependency-check: {requires: [trusted-approval-validation, trusted-nvd-refresh]}
+      - trusted-final-approval-validation:
+          context: tradepilot-approval-read
+          requires: [secretless-dependency-check]
