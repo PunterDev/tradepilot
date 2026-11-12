@@ -1,0 +1,69 @@
+version: 2.1
+
+parameters:
+  run_metadata_verification:
+    type: boolean
+    default: false
+
+jobs:
+  verify-continuation-metadata:
+    docker:
+      - image: cimg/openjdk:17.0.13@sha256:402f246164077f437f8a19d586137038e83beb63d21bedbc89cd5d11ee20b3e6
+    environment:
+      EXPECTED_REPOSITORY: PunterDev/tradepilot
+      EXPECTED_CONFIG_PATH: .circleci/dynamic-metadata-poc.yml
+      EXPECTED_BRANCH: codex/circleci-dynamic-metadata-poc
+      INTEGRATION_SOURCE: << pipeline.integration_source >>
+      CONFIG_REPOSITORY: << pipeline.config.repository.name >>
+      CONFIG_PATH: << pipeline.config.file_path >>
+      CONFIG_REF: << pipeline.config.ref >>
+      CONFIG_SHA: << pipeline.config.sha >>
+      CHECKOUT_OWNER: << pipeline.git.repo_owner >>
+      CHECKOUT_REPOSITORY: << pipeline.git.repo_name >>
+      CHECKOUT_BRANCH: << pipeline.git.branch >>
+      CHECKOUT_SHA: << pipeline.git.revision >>
+      TRIGGER_TYPE: << pipeline.trigger.type >>
+      EVENT_NAME: << pipeline.event.name >>
+      PUSH_REF: << pipeline.event.github.ref >>
+      PUSH_AFTER: << pipeline.event.github.after >>
+    steps:
+      - checkout
+      - run:
+          name: Verify and print continuation metadata
+          command: |
+            set -Eeuo pipefail
+            test "$INTEGRATION_SOURCE" = github_app
+            test "$CONFIG_REPOSITORY" = "$EXPECTED_REPOSITORY"
+            test "$CONFIG_PATH" = "$EXPECTED_CONFIG_PATH"
+            [[ "$CONFIG_REF" = "refs/heads/$EXPECTED_BRANCH" ]]
+            [[ "$CONFIG_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$CHECKOUT_OWNER/$CHECKOUT_REPOSITORY" = "$EXPECTED_REPOSITORY"
+            test "$CHECKOUT_BRANCH" = "$EXPECTED_BRANCH"
+            [[ "$CHECKOUT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$(git rev-parse HEAD)" = "$CHECKOUT_SHA"
+            test "$TRIGGER_TYPE" = github_app
+            test "$EVENT_NAME" = push
+            test "$PUSH_REF" = "refs/heads/$EXPECTED_BRANCH"
+            test "$PUSH_AFTER" = "$CHECKOUT_SHA"
+            test -z "${CIRCLE_SSH_CONNECTION:-}"
+            printf '%s\n' \
+              "integration_source=$INTEGRATION_SOURCE" \
+              "config_repository=$CONFIG_REPOSITORY" \
+              "config_path=$CONFIG_PATH" \
+              "config_ref=$CONFIG_REF" \
+              "config_sha=$CONFIG_SHA" \
+              "checkout_owner=$CHECKOUT_OWNER" \
+              "checkout_repository=$CHECKOUT_REPOSITORY" \
+              "checkout_branch=$CHECKOUT_BRANCH" \
+              "checkout_sha=$CHECKOUT_SHA" \
+              "trigger_type=$TRIGGER_TYPE" \
+              "event_name=$EVENT_NAME" \
+              "push_ref=$PUSH_REF" \
+              "push_after=$PUSH_AFTER"
+            printf '%s\n' 'Dynamic metadata continuation verification passed.'
+
+workflows:
+  dynamic-metadata-poc-continuation:
+    when: << pipeline.parameters.run_metadata_verification >>
+    jobs:
+      - verify-continuation-metadata
