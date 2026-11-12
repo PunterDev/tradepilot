@@ -30,12 +30,141 @@ class ProtectionCommitmentEvaluatorTests {
         assertThat(result.rules()).extracting(r -> r.rule() + ":" + r.status()).contains("MAX_ATTEMPTS:BROKEN", "MAX_NORMALIZED_EXPOSURE:BROKEN", "MAX_SESSION_LOSS:BROKEN");
     }
 
-    @Test void evaluatesPostLossPauseAndDoesNotTreatNoReentryAsSuccess() {
+    @Test void breaksWhenCumulativeRealizedLossReachesBoundaryEvenWhenSessionFinishesPositive() {
+        NextSessionProtectionCommitment commitment = commitment(); commitment.setMaxSessionLoss(new BigDecimal("200"));
+        var result = evaluator.evaluate(commitment, List.of(
+                trade("09:30", "09:35", "-150", 1),
+                trade("09:40", "09:45", "-100", 1),
+                trade("10:00", "10:05", "300", 1)), ZoneId.of("America/New_York"));
+        var loss = result.rules().stream().filter(rule -> "MAX_SESSION_LOSS".equals(rule.rule())).findFirst().orElseThrow();
+        assertThat(loss.status()).isEqualTo("BROKEN");
+        assertThat(loss.observedValue()).isEqualTo("-250");
+        assertThat(loss.message()).contains("trade", "1 completed trade(s) followed", "Equality counts as reaching the boundary");
+    }
+
+    @Test void treatsAnExactLossBoundaryAsBroken() {
+        NextSessionProtectionCommitment commitment = commitment(); commitment.setMaxSessionLoss(new BigDecimal("200"));
+        var result = evaluator.evaluate(commitment, List.of(trade("09:30", "09:35", "-200", 1)), ZoneId.of("America/New_York"));
+        assertThat(result.rules()).anySatisfy(rule -> {
+            assertThat(rule.rule()).isEqualTo("MAX_SESSION_LOSS");
+            assertThat(rule.status()).isEqualTo("BROKEN");
+        });
+    }
+
+    @Test void doesNotInventAChronologicalLossResultWhenTimestampsAreIncompleteOrOverlapping() {
+        NextSessionProtectionCommitment commitment = commitment(); commitment.setMaxSessionLoss(new BigDecimal("200"));
+        Trade missingExit = trade("09:30", "09:35", "-250", 1); missingExit.setExitTime(null);
+        var incomplete = evaluator.evaluate(commitment, List.of(missingExit), ZoneId.of("America/New_York"));
+        assertThat(incomplete.rules()).anySatisfy(rule -> {
+            assertThat(rule.rule()).isEqualTo("MAX_SESSION_LOSS"); assertThat(rule.status()).isEqualTo("NOT_EVALUABLE");
+        });
+        var overlapping = evaluator.evaluate(commitment, List.of(
+                trade("09:30", "09:45", "-150", 1), trade("09:40", "09:50", "-100", 1)), ZoneId.of("America/New_York"));
+        assertThat(overlapping.rules()).anySatisfy(rule -> {
+            assertThat(rule.rule()).isEqualTo("MAX_SESSION_LOSS"); assertThat(rule.status()).isEqualTo("NOT_EVALUABLE");
+        });
+    }
+
+    @Test void refusesToCallSessionLossFollowedWhenRealizedPnlIsMissing() {
+        NextSessionProtectionCommitment commitment = commitment();
+        commitment.setMaxSessionLoss(new BigDecimal("200"));
+        Trade missingPnl = trade("09:30", "09:35", "-250", 1);
+        missingPnl.setPnlAmount(null);
+        var result = evaluator.evaluate(commitment, List.of(missingPnl), ZoneId.of("America/New_York"));
+        var loss = result.rules().stream().filter(rule -> "MAX_SESSION_LOSS".equals(rule.rule())).findFirst().orElseThrow();
+        assertThat(loss.status()).isEqualTo("NOT_EVALUABLE");
+        assertThat(loss.message()).contains("missing realized P&L");
+        assertThat(result.overallStatus()).isEqualTo(ProtectionCommitmentStatus.NOT_EVALUABLE);
+    }
+
+    @Test void refusesToCallSessionLossFollowedOnInvalidOrAbsentCompletedTrades() {
+        NextSessionProtectionCommitment commitment = commitment();
+        commitment.setMaxSessionLoss(new BigDecimal("200"));
+        var empty = evaluator.evaluate(commitment, List.of(), ZoneId.of("America/New_York"));
+        assertThat(empty.rules()).anySatisfy(rule -> {
+            assertThat(rule.rule()).isEqualTo("MAX_SESSION_LOSS");
+            assertThat(rule.status()).isEqualTo("NOT_EVALUABLE");
+        });
+        Trade reversed = trade("09:40", "09:35", "-250", 1);
+        var invalid = evaluator.evaluate(commitment, List.of(reversed), ZoneId.of("America/New_York"));
+        assertThat(invalid.rules()).anySatisfy(rule -> {
+            assertThat(rule.rule()).isEqualTo("MAX_SESSION_LOSS");
+            assertThat(rule.status()).isEqualTo("NOT_EVALUABLE");
+        });
+    }
+
+    @Test void incompleteImportCannotBeReportedAsFollowedForAttemptExposurePauseOrWindow() {
+        NextSessionProtectionCommitment commitment = commitment();
+        commitment.setMaxAttempts(2);
+        commitment.setMaxNormalizedExposure(new BigDecimal("20"));
+        commitment.setPostLossPauseMinutes(15);
+        commitment.setAllowedWindowStart(LocalTime.of(9, 30));
+        commitment.setAllowedWindowEnd(LocalTime.of(11, 0));
+
+        Trade incomplete = trade("09:30", "09:35", "-50", 1);
+        incomplete.setExitTime(null);
+        var evaluated = evaluator.evaluate(commitment, List.of(incomplete), ZoneId.of("America/New_York"));
+        assertThat(evaluated.rules()).extracting(r -> r.rule() + ":" + r.status())
+                .contains("MAX_ATTEMPTS:NOT_EVALUABLE", "MAX_NORMALIZED_EXPOSURE:NOT_EVALUABLE",
+                        "POST_LOSS_PAUSE:NOT_EVALUABLE", "TRADING_WINDOW:NOT_EVALUABLE");
+        assertThat(evaluated.overallStatus()).isEqualTo(ProtectionCommitmentStatus.NOT_EVALUABLE);
+    }
+
+    @Test void missingQuantityOrPnlCannotBeReportedAsPassingExposureOrPostLossPause() {
+        NextSessionProtectionCommitment commitment = commitment();
+        commitment.setMaxNormalizedExposure(new BigDecimal("20"));
+        commitment.setPostLossPauseMinutes(10);
+        Trade missing = trade("09:30", "09:35", "-50", 1);
+        missing.setQuantity(null);
+        missing.setPnlAmount(null);
+        Trade later = trade("10:00", "10:05", "30", 1);
+        var evaluated = evaluator.evaluate(commitment, List.of(missing, later), ZoneId.of("America/New_York"));
+        assertThat(evaluated.rules()).extracting(r -> r.rule() + ":" + r.status())
+                .contains("MAX_NORMALIZED_EXPOSURE:NOT_EVALUABLE", "POST_LOSS_PAUSE:NOT_EVALUABLE");
+        assertThat(evaluated.overallStatus()).isEqualTo(ProtectionCommitmentStatus.NOT_EVALUABLE);
+    }
+
+    @Test void postLossPauseChecksEveryRealizedLossAndDoesNotTreatOneUntestedLossAsSuccess() {
         NextSessionProtectionCommitment commitment = commitment(); commitment.setPostLossPauseMinutes(20);
-        var broken = evaluator.evaluate(commitment, List.of(trade("09:30", "09:35", "-20", 1), trade("09:41", "09:50", "10", 1)), ZoneId.of("America/New_York"));
-        assertThat(broken.overallStatus()).isEqualTo(ProtectionCommitmentStatus.BROKEN);
         var untested = evaluator.evaluate(commitment, List.of(trade("09:30", "09:35", "-20", 1)), ZoneId.of("America/New_York"));
-        assertThat(untested.overallStatus()).isEqualTo(ProtectionCommitmentStatus.NOT_EVALUABLE);
+        assertThat(pauseRule(untested).status()).isEqualTo("NOT_EVALUABLE");
+
+        var broken = evaluator.evaluate(commitment, List.of(
+                trade("09:30", "09:35", "-20", 1), trade("09:41", "09:50", "10", 1)), ZoneId.of("America/New_York"));
+        assertThat(pauseRule(broken).status()).isEqualTo("BROKEN");
+        assertThat(pauseRule(broken).message()).contains("Every realized losing attempt");
+    }
+
+    @Test void postLossPauseChecksBothLossesInAConsecutiveLossSequence() {
+        NextSessionProtectionCommitment commitment = commitment(); commitment.setPostLossPauseMinutes(20);
+        var result = evaluator.evaluate(commitment, List.of(
+                trade("09:30", "09:35", "-20", 1),
+                trade("10:00", "10:05", "-10", 1),
+                trade("10:10", "10:20", "15", 1)), ZoneId.of("America/New_York"));
+        assertThat(pauseRule(result).status()).isEqualTo("BROKEN");
+        assertThat(pauseRule(result).observedValue()).isEqualTo("5 minutes");
+    }
+
+    @Test void postLossPauseDoesNotRequireAConsecutiveLossStreak() {
+        NextSessionProtectionCommitment commitment = commitment(); commitment.setPostLossPauseMinutes(20);
+        var result = evaluator.evaluate(commitment, List.of(
+                trade("09:30", "09:35", "-20", 1),
+                trade("10:00", "10:05", "10", 1),
+                trade("10:30", "10:35", "-15", 1),
+                trade("11:00", "11:05", "10", 1)), ZoneId.of("America/New_York"));
+        assertThat(pauseRule(result).status()).isEqualTo("FOLLOWED");
+        assertThat(pauseRule(result).observedValue()).isEqualTo("25 minutes");
+    }
+
+    @Test void postLossPauseIsNotEvaluableForOverlappingOrAmbiguousTimestamps() {
+        NextSessionProtectionCommitment commitment = commitment(); commitment.setPostLossPauseMinutes(20);
+        var overlapping = evaluator.evaluate(commitment, List.of(
+                trade("09:30", "09:45", "-20", 1), trade("09:40", "09:50", "10", 1)), ZoneId.of("America/New_York"));
+        assertThat(pauseRule(overlapping).status()).isEqualTo("NOT_EVALUABLE");
+
+        var tied = evaluator.evaluate(commitment, List.of(
+                trade("09:30", "09:45", "-20", 1), trade("09:45", "09:50", "10", 1)), ZoneId.of("America/New_York"));
+        assertThat(pauseRule(tied).status()).isEqualTo("NOT_EVALUABLE");
     }
 
     @Test void evaluatesSameDayAndOvernightWindowsWithInclusiveStartExclusiveEnd() {
@@ -61,5 +190,6 @@ class ProtectionCommitmentEvaluatorTests {
     }
 
     private NextSessionProtectionCommitment commitment() { NextSessionProtectionCommitment value = new NextSessionProtectionCommitment(); value.setEffectiveSessionDate(LocalDate.of(2026, 1, 1)); value.setStatus(ProtectionCommitmentStatus.ACCEPTED); return value; }
+    private com.tradepilot.survival.dto.CommitmentEvaluationResponse.RuleResult pauseRule(ProtectionCommitmentEvaluator.Evaluation result) { return result.rules().stream().filter(rule -> "POST_LOSS_PAUSE".equals(rule.rule())).findFirst().orElseThrow(); }
     private Trade trade(String entry, String exit, String pnl, int quantity) { LocalDate date = LocalDate.of(2026, 3, 8); return Trade.builder().symbol("NQ").market("FUTURES").tradeDate(date).entryTime(LocalDateTime.of(date, LocalTime.parse(entry))).exitTime(LocalDateTime.of(date, LocalTime.parse(exit))).side("LONG").session(SessionType.NY_AM).quantity(quantity).pnlAmount(new BigDecimal(pnl)).outcome(new BigDecimal(pnl).signum() < 0 ? OutcomeType.LOSS : OutcomeType.WIN).build(); }
 }

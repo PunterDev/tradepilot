@@ -45,7 +45,7 @@ const completedEvaluation = {
     { rule: "MAX_ATTEMPTS", status: "FOLLOWED", configuredValue: "3", observedValue: "2", message: "Two completed attempts were observed." },
     { rule: "MAX_NORMALIZED_EXPOSURE", status: "FOLLOWED", configuredValue: "20", observedValue: "10", message: "Maximum normalized exposure remained within the commitment." },
     { rule: "MAX_SESSION_LOSS", status: "BROKEN", configuredValue: "200", observedValue: "-250", message: "Realized session loss exceeded the configured maximum." },
-    { rule: "POST_LOSS_PAUSE", status: "FOLLOWED", configuredValue: "20", observedValue: "26", message: "The shortest post-loss pause was 26 minutes." },
+    { rule: "POST_LOSS_PAUSE", status: "FOLLOWED", configuredValue: "20", observedValue: "26", message: "Every realized losing attempt is checked against its next completed-attempt entry; the shortest observed pause is reported." },
     { rule: "TRADING_WINDOW", status: "FOLLOWED", configuredValue: "09:30–12:00", observedValue: "10:00", message: "All completed attempts opened inside the configured window." },
     { rule: "FRESH_CONFIRMATION", status: "NOT_EVALUABLE", configuredValue: "Enabled", observedValue: null, message: "Completed-trade data does not prove contemporaneous confirmation." },
   ],
@@ -87,6 +87,7 @@ async function installFixture(page: Page, options: FixtureOptions = {}) {
       }
       if (suffix.endsWith("/accept") && method === "POST") { commitment = { ...commitment, status: "ACCEPTED", acceptedAt: "2026-10-01T16:05:00" }; return fulfill(route, commitment); }
       if (suffix.endsWith("/evaluate") && method === "POST") { evaluation = completedEvaluation; return fulfill(route, completedEvaluation); }
+      if (suffix.endsWith("/evaluations")) { const available = Boolean(evaluation && (evaluation as { available?: boolean }).available); const broken = (evaluation as { overallStatus?: string }).overallStatus === "BROKEN"; return fulfill(route, { evaluations: available ? [evaluation] : [], reportingWindowSessions: 30, evaluatedSessions: available ? 1 : 0, followedSessions: 0, brokenSessions: broken ? 1 : 0, partiallyObservedSessions: 0, notEvaluableSessions: 0, fullyEvaluableSessions: broken ? 1 : 0, adherencePercent: broken ? 0 : null }); }
       if (suffix.endsWith("/evaluation")) {
         if (options.evaluationError) return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "evaluation unavailable" }) });
         return fulfill(route, evaluation);
@@ -143,7 +144,7 @@ test("Account Survival review completes the deterministic cross-account commitme
   await page.keyboard.press("Enter");
   await expect(evidenceButton).toHaveAttribute("aria-expanded", "true");
 
-  await page.getByRole("button", { name: "Edit commitment" }).click();
+  await page.getByRole("button", { name: "Edit draft commitment" }).click();
   await page.getByLabel("Maximum attempts").fill("3");
   await page.getByRole("button", { name: "Save commitment" }).click();
   await expect(page.getByRole("button", { name: "Accept commitment" })).toBeVisible();
@@ -186,7 +187,7 @@ test("Account Survival keeps profile and commitment visible when evaluation retr
   await openSessionReview(page);
   await expect(page.getByRole("alert")).toHaveText("Unable to load the commitment evaluation.");
   await expect(page.getByText("Remaining buffer")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit commitment" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit draft commitment" })).toBeVisible();
 });
 
 for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }]) {
@@ -197,8 +198,8 @@ for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }
     const evidenceButton = page.getByRole("button", { name: "Cross-account evidence" });
     await evidenceButton.click();
     await expect(evidenceButton.locator("xpath=..").getByText("Apex 50K B")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Edit commitment" })).toBeVisible();
-    await page.getByRole("button", { name: "Edit commitment" }).click();
+    await expect(page.getByRole("button", { name: "Edit draft commitment" })).toBeVisible();
+    await page.getByRole("button", { name: "Edit draft commitment" }).click();
     await expect(page.getByLabel("Maximum attempts")).toBeVisible();
     await expectNoHorizontalOverflow(page);
     if (viewport.width !== 390) await page.screenshot({ path: testInfo.outputPath(`account-survival-${viewport.width}.png`), fullPage: true });

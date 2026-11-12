@@ -8,6 +8,7 @@ export type SurvivalAssessment = { accountId: number; sessionDate?: string | nul
 export type ProtectionCommitment = { id: number; accountId: number; effectiveSessionDate: string; maxNormalizedExposure?: number | string | null; maxAttempts?: number | null; maxSessionLoss?: number | string | null; postLossPauseMinutes?: number | null; allowedWindowStart?: string | null; allowedWindowEnd?: string | null; requireFreshSetupConfirmation?: boolean | null; source: string; status: string; acceptedAt?: string | null };
 export type CommitmentRuleResult = { rule: string; status: "FOLLOWED" | "BROKEN" | "NOT_EVALUABLE"; configuredValue?: string | null; observedValue?: string | null; message: string };
 export type CommitmentEvaluation = { available: boolean; evaluatedSessionDate?: string | null; overallStatus: string; evaluationVersion?: string | null; rules: CommitmentRuleResult[]; limitation?: string | null };
+export type CommitmentEvaluationHistory = { evaluations: CommitmentEvaluation[]; reportingWindowSessions: number; evaluatedSessions: number; followedSessions: number; brokenSessions: number; partiallyObservedSessions: number; notEvaluableSessions: number; fullyEvaluableSessions: number; adherencePercent?: number | null };
 
 export const getRiskProfile = (accountId: number) => api.get<RiskProfile | null>(`/accounts/${accountId}/survival/profile`).then(r => r.data);
 export const saveRiskProfile = (accountId: number, payload: Partial<RiskProfile>) => api.put<RiskProfile>(`/accounts/${accountId}/survival/profile`, payload).then(r => r.data);
@@ -16,4 +17,5 @@ export const getProtectionCommitment = (accountId: number, date: string) => api.
 export const saveProtectionCommitment = (accountId: number, payload: Partial<ProtectionCommitment>) => api.put<ProtectionCommitment>(`/accounts/${accountId}/survival/commitment`, payload).then(r => r.data);
 export const acceptProtectionCommitment = (accountId: number, date: string) => api.post<ProtectionCommitment>(`/accounts/${accountId}/survival/commitment/${date}/accept`).then(r => r.data);
 export const getCommitmentEvaluation = (accountId: number, date: string) => api.get<CommitmentEvaluation>(`/accounts/${accountId}/survival/commitment/${date}/evaluation`).then(r => r.data);
+export const getCommitmentEvaluationHistory = (accountId: number, date: string) => api.get<CommitmentEvaluationHistory>(`/accounts/${accountId}/survival/commitment/${date}/evaluations`).then(r => r.data);
 export const evaluateProtectionCommitment = (accountId: number, date: string) => api.post<CommitmentEvaluation>(`/accounts/${accountId}/survival/commitment/${date}/evaluate`).then(r => r.data);

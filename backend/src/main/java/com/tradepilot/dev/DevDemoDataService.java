@@ -22,6 +22,7 @@ import com.tradepilot.tradingdna.entity.TradingDnaSnapshot;
 import com.tradepilot.tradingdna.repository.TradingDnaSnapshotRepository;
 import com.tradepilot.survival.ProtectionCommitmentSource;
 import com.tradepilot.survival.ProtectionCommitmentStatus;
+import com.tradepilot.survival.AccountSurvivalTimeSource;
 import com.tradepilot.survival.entity.NextSessionProtectionCommitment;
 import com.tradepilot.survival.repository.NextSessionProtectionCommitmentRepository;
 import com.tradepilot.security.JwtService;
@@ -147,19 +148,23 @@ public class DevDemoDataService {
     private final PasswordEncoder passwordEncoder;
     private final NextSessionProtectionCommitmentRepository protectionCommitmentRepository;
     private final JwtService jwtService;
+    private final AccountSurvivalTimeSource accountSurvivalTimeSource;
 
     @Transactional
     public Map<String, Object> prepareAccountSurvivalE2eData() {
         User owner = survivalUser("survival-e2e-owner@tradepilot.test", "Account Survival E2E Owner", PlanType.PRO);
-        User other = survivalUser("survival-e2e-other@tradepilot.test", "Account Survival E2E Other", PlanType.FREE);
+        User otherPro = survivalUser("survival-e2e-other-pro@tradepilot.test", "Account Survival E2E Other Pro", PlanType.PRO);
+        User free = survivalUser("survival-e2e-free@tradepilot.test", "Account Survival E2E Free", PlanType.FREE);
         TradingAccount source = survivalAccount(owner, "Topstep 50K A", PropFirmType.TOPSTEP, "SURVIVAL-E2E-A");
         TradingAccount later = survivalAccount(owner, "Apex 50K B", PropFirmType.OTHER, "SURVIVAL-E2E-B");
-        LocalDate first = LocalDate.of(2026, 10, 1); LocalDate second = first.plusDays(1);
+        TradingAccount freeAccount = survivalAccount(free, "Free E2E Account", PropFirmType.TOPSTEP, "SURVIVAL-E2E-FREE");
+        LocalDate first = LocalDate.of(2026, 10, 1);
+        accountSurvivalTimeSource.resetE2eDate(first);
         for (int day = 1; day <= 5; day++) tradeRepository.save(survivalTrade(owner, source, first.minusDays(day), "NQ", "SHORT", "10:00:05", "10:04:05", "-400", 2, "LOSS-" + day));
         tradeRepository.save(survivalTrade(owner, source, first, "NQ", "SHORT", "10:00:05", "10:04:05", "-240", 2, "SOURCE"));
         tradeRepository.save(survivalTrade(owner, later, first, "MNQ", "SHORT", "10:12:05", "10:18:05", "-540", 20, "LATER"));
-        tradeRepository.save(survivalTrade(owner, source, second, "NQ", "SHORT", "10:00:05", "10:04:05", "-250", 1, "EVAL-1"));
-        tradeRepository.save(survivalTrade(owner, source, second, "NQ", "SHORT", "10:30:05", "10:34:05", "0", 1, "EVAL-2"));
+        // The real-browser acceptance test imports its later evaluation session through
+        // the supported CSV endpoint, rather than bypassing the import pipeline here.
         NextSessionProtectionCommitment commitment = new NextSessionProtectionCommitment();
         commitment.setUser(owner); commitment.setAccount(source); commitment.setEffectiveSessionDate(first);
         commitment.setMaxNormalizedExposure(new BigDecimal("20")); commitment.setMaxAttempts(2);
@@ -168,7 +173,12 @@ public class DevDemoDataService {
         commitment.setRequireFreshSetupConfirmation(true); commitment.setSource(ProtectionCommitmentSource.SYSTEM_RECOMMENDED);
         commitment.setStatus(ProtectionCommitmentStatus.DRAFT);
         protectionCommitmentRepository.save(commitment);
-        return Map.of("ownerToken", jwtService.generateToken(owner), "otherToken", jwtService.generateToken(other), "owner", Map.of("id", owner.getId(), "name", owner.getName(), "email", owner.getEmail(), "plan", owner.getPlan().name(), "role", owner.getRole().name()), "sourceAccountId", source.getId(), "laterAccountId", later.getId(), "sessionDate", first.toString());
+        return Map.of("ownerToken", jwtService.generateToken(owner), "otherProToken", jwtService.generateToken(otherPro), "freeToken", jwtService.generateToken(free), "owner", Map.of("id", owner.getId(), "name", owner.getName(), "email", owner.getEmail(), "plan", owner.getPlan().name(), "role", owner.getRole().name()), "sourceAccountId", source.getId(), "laterAccountId", later.getId(), "freeAccountId", freeAccount.getId(), "sessionDate", first.toString());
+    }
+
+    public Map<String, Object> advanceAccountSurvivalE2eDate(LocalDate date) {
+        accountSurvivalTimeSource.advanceE2eDate(date);
+        return Map.of("date", date.toString());
     }
 
     private User survivalUser(String email, String name, PlanType plan) { return userRepository.save(User.builder().name(name).email(email.replace("@", "+" + UUID.randomUUID() + "@")).passwordHash(passwordEncoder.encode("test-only")).emailVerified(true).plan(plan).role(UserRole.USER).subscriptionStatus(SubscriptionStatus.ACTIVE).build()); }
@@ -941,7 +951,7 @@ public class DevDemoDataService {
     }
 
     @java.lang.SuppressWarnings("all")
-    public DevDemoDataService(final TradingAccountRepository accountRepository, final TradeRepository tradeRepository, final AiTradeReviewRepository reviewRepository, final AiTradeAnalysisRepository analysisRepository, final AiCoachSnapshotRepository coachSnapshotRepository, final TradingDnaSnapshotRepository tradingDnaSnapshotRepository, final AiSessionReviewRepository sessionReviewRepository, final TradeRuleViolationRepository violationRepository, final DailyDisciplineScoreRepository disciplineScoreRepository, final AiUsageEventRepository usageEventRepository, final FeatureUsageRepository featureUsageRepository, final UserRepository userRepository, final FuturesContractCalendar contractCalendar, final FuturesPointValueService pointValueService, final TradeReplayRepository tradeReplayRepository, final TradeReplayInsightRepository tradeReplayInsightRepository, final TradeMemoryRepository tradeMemoryRepository, final TradeMemoryIndexService tradeMemoryIndexService, final PasswordEncoder passwordEncoder, final NextSessionProtectionCommitmentRepository protectionCommitmentRepository, final JwtService jwtService) {
+    public DevDemoDataService(final TradingAccountRepository accountRepository, final TradeRepository tradeRepository, final AiTradeReviewRepository reviewRepository, final AiTradeAnalysisRepository analysisRepository, final AiCoachSnapshotRepository coachSnapshotRepository, final TradingDnaSnapshotRepository tradingDnaSnapshotRepository, final AiSessionReviewRepository sessionReviewRepository, final TradeRuleViolationRepository violationRepository, final DailyDisciplineScoreRepository disciplineScoreRepository, final AiUsageEventRepository usageEventRepository, final FeatureUsageRepository featureUsageRepository, final UserRepository userRepository, final FuturesContractCalendar contractCalendar, final FuturesPointValueService pointValueService, final TradeReplayRepository tradeReplayRepository, final TradeReplayInsightRepository tradeReplayInsightRepository, final TradeMemoryRepository tradeMemoryRepository, final TradeMemoryIndexService tradeMemoryIndexService, final PasswordEncoder passwordEncoder, final NextSessionProtectionCommitmentRepository protectionCommitmentRepository, final JwtService jwtService, final AccountSurvivalTimeSource accountSurvivalTimeSource) {
         this.accountRepository = accountRepository;
         this.tradeRepository = tradeRepository;
         this.reviewRepository = reviewRepository;
@@ -963,5 +973,6 @@ public class DevDemoDataService {
         this.passwordEncoder = passwordEncoder;
         this.protectionCommitmentRepository = protectionCommitmentRepository;
         this.jwtService = jwtService;
+        this.accountSurvivalTimeSource = accountSurvivalTimeSource;
     }
 }
