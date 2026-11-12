@@ -128,7 +128,16 @@ app:
     expiration-ms: ${JWT_EXPIRATION_MS:1800000}
   openai:
     api-key: ${OPENAI_API_KEY:}
-    model: ${OPENAI_MODEL:gpt-4.1-mini}
+    model: ${OPENAI_MODEL:gpt-6-luna}
+    reasoning-effort: ${OPENAI_REASONING_EFFORT:low}
+    max-output-tokens: ${OPENAI_MAX_OUTPUT_TOKENS:4096}
+    # Emergency rollback only. It retains the legacy endpoint and temperature behavior.
+    legacy-chat-completions-enabled: ${OPENAI_LEGACY_CHAT_COMPLETIONS_ENABLED:false}
+    legacy-temperature: ${OPENAI_LEGACY_TEMPERATURE:0.2}
+    # GPT-6 Luna published rates. Reasoning tokens are included in output_tokens and are not priced twice.
+    input-cost-per-million-tokens: ${OPENAI_INPUT_COST_PER_MILLION_TOKENS:0.10}
+    cached-input-cost-per-million-tokens: ${OPENAI_CACHED_INPUT_COST_PER_MILLION_TOKENS:0.01}
+    output-cost-per-million-tokens: ${OPENAI_OUTPUT_COST_PER_MILLION_TOKENS:0.50}
   google-search-console:
     enabled: ${GSC_ENABLED:false}
     property: ${GSC_PROPERTY:}

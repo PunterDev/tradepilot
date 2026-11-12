@@ -6,6 +6,7 @@ import com.tradepilot.billing.FeatureAccessException;
 import com.tradepilot.billing.StripeNotConfiguredException;
 import com.tradepilot.config.FeatureDisabledException;
 import com.tradepilot.marketdata.MarketDataException;
+import com.tradepilot.ai.openai.OpenAiUnavailableException;
 import com.tradepilot.playbook.exception.PlaybookAiReviewIneligibleException;
 import com.stripe.exception.StripeException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -134,6 +135,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MarketDataException.class)
     public ResponseEntity<Map<String, Object>> handleMarketData(MarketDataException ex, HttpServletRequest request) {
         return response(ex.getStatus(), ex.getCode(), ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(OpenAiUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleAiUnavailable(OpenAiUnavailableException ex, HttpServletRequest request) {
+        log.warn("AI provider unavailable. path={}, reason={}", request.getRequestURI(), ex.getClass().getSimpleName());
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "AI_PROVIDER_UNAVAILABLE", "AI analysis is temporarily unavailable. Please try again.", request);
     }
 
     @ExceptionHandler(StripeException.class)
