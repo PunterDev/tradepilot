@@ -1,0 +1,197 @@
+name: trusted-pr-dependency-check
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Open pull request number to scan
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  attestations: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  acquire-verified-nvd:
+    if: github.repository == 'PunterDev/tradepilot' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    outputs:
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      publisher_sha: ${{ steps.publisher.outputs.publisher_sha }}
+      publisher_run_id: ${{ steps.publisher.outputs.publisher_run_id }}
+      verifier_sha256: ${{ steps.verifier.outputs.sha256 }}
+    steps:
+      - name: Check out protected verifier source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Confirm protected workflow source
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REPOSITORY" = PunterDev/tradepilot
+          test "$GITHUB_REF" = refs/heads/master
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Bind the protected verifier source
+        id: verifier
+        run: |
+          set -Eeuo pipefail
+          test -f scripts/security/trusted_nvd_archive.py
+          cp scripts/security/trusted_nvd_archive.py "$RUNNER_TEMP/trusted-nvd-archive-verifier.py"
+          chmod 600 "$RUNNER_TEMP/trusted-nvd-archive-verifier.py"
+          sha256sum "$RUNNER_TEMP/trusted-nvd-archive-verifier.py" | awk '{print $1}' | tee "$RUNNER_TEMP/trusted-nvd-verifier.sha256"
+          printf 'sha256=%s\n' "$(cat "$RUNNER_TEMP/trusted-nvd-verifier.sha256")" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve an open master-targeting pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_PR: ${{ inputs.pull_request || github.event.pull_request.number }}
+        run: |
+          set -Eeuo pipefail
+          case "$REQUESTED_PR" in (''|*[!0-9]*) exit 1;; esac
+          pr="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$REQUESTED_PR")"
+          test "$(jq -r '.state' <<<"$pr")" = open
+          test "$(jq -r '.base.ref' <<<"$pr")" = master
+          test "$(jq -r '.base.repo.full_name' <<<"$pr")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r '.head.repo.full_name' <<<"$pr")" = "$GITHUB_REPOSITORY"
+          head_sha="$(jq -r '.head.sha' <<<"$pr")"
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]
+          printf 'head_sha=%s\n' "$head_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Download and verify trusted NVD package
+        id: publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRUSTED_WORKFLOW: .github/workflows/publish-verified-nvd.yml
+          PUBLISHER_WORKFLOW_FILE: publish-verified-nvd.yml
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/publisher" "$RUNNER_TEMP/verified-nvd-input"
+          workflow_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$PUBLISHER_WORKFLOW_FILE" --jq .id)"
+          run_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow_id/runs?branch=master&status=completed" --jq '[.workflow_runs[] | select(.conclusion == "success" and (.event == "schedule" or .event == "workflow_dispatch"))[0].id')"
+          test "$run_id" != null
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+          test "$(jq -r .repository.full_name <<<"$run")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r .workflow_id <<<"$run")" = "$workflow_id"
+          test "$(jq -r .status <<<"$run")" = completed
+          test "$(jq -r .conclusion <<<"$run")" = success
+          test "$(jq -r .head_branch <<<"$run")" = master
+          publisher_sha="$(jq -r .head_sha <<<"$run")"
+          [[ "$publisher_sha" =~ ^[0-9a-f]{40}$ ]]
+          artifact="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" --jq '[.artifacts[] | select(.expired == false and (.name | startswith("dependency-check-nvd-"))][0]')"
+          test "$artifact" != null
+          expected_digest="$(jq -r .digest <<<"$artifact")"
+          artifact_id="$(jq -r .id <<<"$artifact")"
+          test "$(jq -r .workflow_run.id <<<"$artifact")" = "$run_id"
+          [[ "$artifact_id" =~ ^[0-9]+$ ]]
+          [[ "$expected_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/publisher/package.zip"
+          test "sha256:$(sha256sum "$RUNNER_TEMP/publisher/package.zip" | awk '{print $1}')" = "$expected_digest"
+          python3 scripts/security/trusted_nvd_archive.py extract-publisher-package \
+            --archive "$RUNNER_TEMP/publisher/package.zip" --destination "$RUNNER_TEMP/publisher/extracted"
+          mv "$RUNNER_TEMP/publisher/extracted/"* "$RUNNER_TEMP/publisher/"
+          gh attestation verify "$RUNNER_TEMP/publisher/dependency-check-nvd.tar.gz" --repo "$GITHUB_REPOSITORY" --signer-workflow "$TRUSTED_WORKFLOW"
+          python3 scripts/security/trusted_nvd_archive.py verify \
+            --archive "$RUNNER_TEMP/publisher/dependency-check-nvd.tar.gz" \
+            --manifest "$RUNNER_TEMP/publisher/dependency-check-nvd.manifest.json" \
+            --destination "$RUNNER_TEMP/verified-nvd-input" \
+            --repository "$GITHUB_REPOSITORY" --publisher-workflow "$TRUSTED_WORKFLOW" --max-age-hours 24 \
+            --expected-source-revision "$publisher_sha" --expected-workflow-run-id "$run_id"
+          printf 'publisher_sha=%s\n' "$publisher_sha" >> "$GITHUB_OUTPUT"
+          printf 'publisher_run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Pass verified package to the credential-free scanner
+        run: |
+          set -Eeuo pipefail
+          mkdir "$RUNNER_TEMP/scan-input"
+          cp "$RUNNER_TEMP/publisher/dependency-check-nvd.tar.gz" "$RUNNER_TEMP/publisher/dependency-check-nvd.manifest.json" \
+            "$RUNNER_TEMP/trusted-nvd-verifier.sha256" "$RUNNER_TEMP/trusted-nvd-archive-verifier.py" "$RUNNER_TEMP/scan-input/"
+          chmod 600 "$RUNNER_TEMP/scan-input/"*
+
+      - name: Upload verified package for the credential-free scanner
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-nvd-input
+          path: ${{ runner.temp }}/scan-input
+          if-no-files-found: error
+          retention-days: 1
+
+  dependency-scan:
+    needs: acquire-verified-nvd
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download verified NVD input
+        uses: actions/download-artifact@v4
+        with:
+          name: verified-nvd-input
+          path: ${{ runner.temp }}/publisher
+
+      - name: Reverify the NVD input before PR checkout
+        run: |
+          set -Eeuo pipefail
+          test "$(sha256sum "$RUNNER_TEMP/publisher/trusted-nvd-archive-verifier.py" | awk '{print $1}')" = "${{ needs.acquire-verified-nvd.outputs.verifier_sha256 }}"
+          python3 "$RUNNER_TEMP/publisher/trusted-nvd-archive-verifier.py" verify \
+            --archive "$RUNNER_TEMP/publisher/dependency-check-nvd.tar.gz" \
+            --manifest "$RUNNER_TEMP/publisher/dependency-check-nvd.manifest.json" \
+            --destination "$RUNNER_TEMP/verified-nvd-input" \
+            --repository "$GITHUB_REPOSITORY" \
+            --publisher-workflow .github/workflows/publish-verified-nvd.yml --max-age-hours 24 \
+            --expected-source-revision "${{ needs.acquire-verified-nvd.outputs.publisher_sha }}" \
+            --expected-workflow-run-id "${{ needs.acquire-verified-nvd.outputs.publisher_run_id }}"
+
+      - name: Check out exact pull request source without credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.acquire-verified-nvd.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Run credential-free Dependency-Check
+        id: scan
+        working-directory: backend
+        env:
+          NVD_API_KEY: ''
+          GITHUB_TOKEN: ''
+          GH_TOKEN: ''
+          DEPENDENCY_CHECK_DATA: ${{ runner.temp }}/verified-nvd-input/data
+        run: |
+          set +e
+          mvn -B org.owasp:dependency-check-maven:12.2.2:check \
+            -DautoUpdate=false -DdataDirectory="$DEPENDENCY_CHECK_DATA" \
+            -Dformats=HTML,JSON,SARIF -DoutputDirectory="$RUNNER_TEMP/dependency-check-report" \
+            -DfailOnError=true -DfailBuildOnCVSS=8 -DfailBuildOnUnusedSuppressionRule=true
+          status=$?
+          set -e
+          test -s "$RUNNER_TEMP/dependency-check-report/dependency-check-report.json"
+          test -s "$RUNNER_TEMP/dependency-check-report/dependency-check-report.html"
+          test -s "$RUNNER_TEMP/dependency-check-report/dependency-check-report.sarif"
+          printf 'status=%s\n' "$status" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Dependency-Check reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trusted-dependency-check-report
+          path: ${{ runner.temp }}/dependency-check-report
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Preserve the real scan result
+        if: always()
+        run: exit "${{ steps.scan.outputs.status || 1 }}"

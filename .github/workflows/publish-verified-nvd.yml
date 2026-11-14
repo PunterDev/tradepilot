@@ -1,0 +1,59 @@
+name: publish-verified-nvd
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  attestations: write
+  id-token: write
+
+jobs:
+  publish:
+    if: github.repository == 'PunterDev/tradepilot' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: trusted-nvd-publisher
+    steps:
+      - name: Check out protected publisher source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Refresh and package Dependency-Check NVD data
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: >-
+          python3 scripts/security/trusted_nvd_archive.py refresh-and-build
+          --data-dir "$RUNNER_TEMP/nvd-data"
+          --archive "$RUNNER_TEMP/dependency-check-nvd.tar.gz"
+          --manifest "$RUNNER_TEMP/dependency-check-nvd.manifest.json"
+          --repository "$GITHUB_REPOSITORY"
+          --publisher-workflow ".github/workflows/publish-verified-nvd.yml"
+          --source-revision "$GITHUB_SHA"
+          --workflow-run-id "$GITHUB_RUN_ID"
+          --max-age-hours 24
+
+      - name: Upload verified NVD package
+        id: nvd-package
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-nvd-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/dependency-check-nvd.tar.gz
+            ${{ runner.temp }}/dependency-check-nvd.manifest.json
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Attest NVD package provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ runner.temp }}/dependency-check-nvd.tar.gz
