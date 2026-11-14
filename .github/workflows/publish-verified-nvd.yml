@@ -1,8 +1,6 @@
 name: publish-verified-nvd
 
 on:
-  schedule:
-    - cron: "17 */6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -17,7 +15,7 @@ jobs:
     environment: trusted-nvd-publisher
     steps:
       - name: Check out protected publisher source
-        uses: actions/checkout@7a6d8a8234af8eb26422e24e3006232cccaa061b # v4.6.0
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}
           persist-credentials: false

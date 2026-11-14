@@ -316,6 +316,8 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertIn("environment: trusted-nvd-publisher", publisher)
         self.assertIn("refresh-and-build", publisher)
         self.assertNotIn("pull_request:", publisher)
+        self.assertIn("workflow_dispatch:", publisher)
+        self.assertNotIn("schedule:", publisher)
         self.assertIn("pull_request_target:", consumer)
         self.assertIn("Check out protected verifier source", consumer)
         self.assertIn("Bind the protected verifier source", consumer)
@@ -343,7 +345,7 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertNotIn("-DnvdApiKey=", archive_tool)
         self.assertIn("-DnvdApiKeyEnvironmentVariable=NVD_API_KEY", archive_tool)
         for pin in (
-            "7a6d8a8234af8eb26422e24e3006232cccaa061b",
+            "11d5960a326750d5838078e36cf38b85af677262",
             "cf277c60eb25467037889841efdb72551f06f6c3",
             "ea165f8d65b6e75b540449e92b4886f43607fa02",
             "d3f86a106a0bac45b974a628896c90dbdf5c8093",

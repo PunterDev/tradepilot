@@ -32,7 +32,7 @@ jobs:
       verifier_sha256: ${{ steps.verifier.outputs.sha256 }}
     steps:
       - name: Check out protected verifier source
-        uses: actions/checkout@7a6d8a8234af8eb26422e24e3006232cccaa061b # v4.6.0
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -182,7 +182,7 @@ jobs:
             --expected-head "$EXPECTED_HEAD"
 
       - name: Check out exact pull request source without credentials
-        uses: actions/checkout@7a6d8a8234af8eb26422e24e3006232cccaa061b # v4.6.0
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.acquire-verified-nvd.outputs.head_sha }}
           persist-credentials: false
