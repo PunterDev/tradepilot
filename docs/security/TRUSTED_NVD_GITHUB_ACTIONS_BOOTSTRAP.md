@@ -25,6 +25,14 @@ binding before it checks out the exact PR head. The scanner job has no NVD key
 or GitHub token environment variables and uses `persist-credentials: false`;
 untrusted PR content cannot replace the verifier before verification finishes.
 
+The scanner captures the resolved internal PR head, compares it with the event
+payload when present, rechecks that identity immediately before checkout, and
+the separate trusted check-publisher job rechecks it after the scan. It creates
+the `trusted-dependency-check` check only on the exact scanned SHA. A changed,
+closed, retargeted, or external PR cannot receive a successful authoritative
+check. This is distinct from the base-branch-associated workflow result created
+by `pull_request_target`.
+
 The scanner always uses `autoUpdate=false`, `failOnError=true`,
 `failBuildOnCVSS=8`, and `failBuildOnUnusedSuppressionRule=true`. It requires
 HTML, JSON, and SARIF reports and restores the actual scanner exit code after
@@ -44,6 +52,10 @@ uploading them.
 6. Restrict manual publisher dispatch to protected `master`. The scanner rejects
    events that do not resolve to protected `master` before reading publisher
    metadata.
+7. Configure the future required check by both context and GitHub Actions app
+   identity after one hosted proof confirms the check is attached to the exact
+   PR head. Do not treat a `pull_request_target` workflow result alone as that
+   proof.
 
 The publisher artifact retention is two days, but scanner acceptance is limited
 to 24 hours. GitHub artifact digest validation, publisher-run identity, GitHub
@@ -57,6 +69,24 @@ Dependency-Check `12.2.2` receives the key only by the documented
 `nvdApiKeyEnvironmentVariable` setting. The key is not placed in a Maven
 command-line argument. A refresh must produce a non-trivial `odc.mv.db` and
 fail without a complete update before an artifact can be published.
+
+## Pinned Actions
+
+The workflows pin third-party actions to reviewed upstream commits: checkout
+v4.6.0 (`7a6d8a8234af8eb26422e24e3006232cccaa061b`), setup-java v4.9.1
+(`cf277c60eb25467037889841efdb72551f06f6c3`), upload-artifact v4.6.2
+(`ea165f8d65b6e75b540449e92b4886f43607fa02`), download-artifact v4.3.0
+(`d3f86a106a0bac45b974a628896c90dbdf5c8093`), and
+attest-build-provenance v2.4.0 (`e8998f949152b193b063cb0ec769d69d929409be`).
+
+## Environment cadence
+
+Use a `trusted-nvd-publisher` environment restricted to protected `master` and
+containing the NVD key only. A required reviewer can protect manual refreshes,
+but it would also queue every scheduled run. Start with the six-hour schedule
+only if a single owner can approve that operational cadence; otherwise use a
+daily scheduled refresh plus explicitly approved manual refreshes. In either
+case, the 24-hour scanner freshness limit remains authoritative.
 
 ## OWASP policy and bootstrap limitation
 

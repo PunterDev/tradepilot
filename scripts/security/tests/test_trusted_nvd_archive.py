@@ -215,6 +215,58 @@ class TrustedNvdArchiveTests(unittest.TestCase):
     def extract_publisher_package(self, package: Path, success: bool = True) -> None:
         self.invoke("extract-publisher-package", "--archive", package, "--destination", self.root / "publisher-out", success=success)
 
+    def validate_pr(self, payload: dict[str, object], success: bool = True, **overrides: str) -> None:
+        metadata = self.root / "pr.json"
+        metadata.write_text(json.dumps(payload))
+        arguments: list[object] = [
+            "validate-pr", "--metadata", metadata, "--repository", REPOSITORY,
+            "--expected-number", overrides.get("number", "17"),
+            "--expected-head", overrides.get("head", REVISION),
+        ]
+        if "event_head" in overrides:
+            arguments.extend(["--event-head", overrides["event_head"]])
+        self.invoke(*arguments, success=success)
+
+    @staticmethod
+    def pr_payload() -> dict[str, object]:
+        return {
+            "number": 17, "state": "open",
+            "base": {"ref": "master", "repo": {"full_name": REPOSITORY}},
+            "head": {"sha": REVISION, "repo": {"full_name": REPOSITORY}},
+        }
+
+    def test_current_internal_master_pr_is_accepted(self) -> None:
+        self.validate_pr(self.pr_payload(), event_head=REVISION)
+
+    def test_event_payload_head_mismatch_fails_closed(self) -> None:
+        self.validate_pr(self.pr_payload(), success=False, event_head="b" * 40)
+
+    def test_pr_head_change_before_or_during_scan_fails_closed(self) -> None:
+        payload = self.pr_payload()
+        payload["head"] = {"sha": "b" * 40, "repo": {"full_name": REPOSITORY}}
+        self.validate_pr(payload, success=False)
+
+    def test_pr_head_change_after_scan_fails_closed(self) -> None:
+        payload = self.pr_payload()
+        payload["head"] = {"sha": "c" * 40, "repo": {"full_name": REPOSITORY}}
+        self.validate_pr(payload, success=False)
+
+    def test_manual_dispatch_unexpected_commit_fails_closed(self) -> None:
+        self.validate_pr(self.pr_payload(), success=False, head="b" * 40)
+
+    def test_closed_or_retargeted_pr_fails_closed(self) -> None:
+        closed = self.pr_payload()
+        closed["state"] = "closed"
+        self.validate_pr(closed, success=False)
+        retargeted = self.pr_payload()
+        retargeted["base"] = {"ref": "main", "repo": {"full_name": REPOSITORY}}
+        self.validate_pr(retargeted, success=False)
+
+    def test_external_pr_repository_fails_closed(self) -> None:
+        payload = self.pr_payload()
+        payload["head"] = {"sha": REVISION, "repo": {"full_name": "other/tradepilot"}}
+        self.validate_pr(payload, success=False)
+
     def test_valid_publisher_package_extracts(self) -> None:
         package = self.publisher_package([
             ("dependency-check-nvd.tar.gz", self.archive.read_bytes()),
@@ -270,6 +322,11 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertIn("trusted-nvd-archive-verifier.py", consumer)
         self.assertIn("expected-workflow-run-id", consumer)
         self.assertIn("expected-source-revision", consumer)
+        self.assertIn("pull_request_head", consumer)
+        self.assertIn("Revalidate the exact PR head before checkout", consumer)
+        self.assertIn("publish-commit-specific-check", consumer)
+        self.assertIn("checks: write", consumer)
+        self.assertIn("name=trusted-dependency-check", consumer)
         self.assertIn("persist-credentials: false", consumer)
         self.assertIn("NVD_API_KEY: ''", consumer)
         self.assertIn("-DautoUpdate=false", consumer)
@@ -285,9 +342,23 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertNotIn("extractall", consumer)
         self.assertNotIn("-DnvdApiKey=", archive_tool)
         self.assertIn("-DnvdApiKeyEnvironmentVariable=NVD_API_KEY", archive_tool)
+        for pin in (
+            "7a6d8a8234af8eb26422e24e3006232cccaa061b",
+            "cf277c60eb25467037889841efdb72551f06f6c3",
+            "ea165f8d65b6e75b540449e92b4886f43607fa02",
+            "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+            "e8998f949152b193b063cb0ec769d69d929409be",
+        ):
+            self.assertIn(pin, publisher + consumer)
         self.assertLess(consumer.index("Download and verify trusted NVD package"), consumer.index("Check out exact pull request source"))
-        scanner = consumer.split("Run credential-free Dependency-Check", 1)[1]
+        scanner = consumer.split("Run credential-free Dependency-Check", 1)[1].split("publish-commit-specific-check", 1)[0]
         self.assertNotIn("${{ github.token }}", scanner)
+        self.assertNotIn("checks: write", scanner)
+        self.assertIn("Preserve the real scan result", scanner)
+        publisher_job = consumer.split("publish-commit-specific-check", 1)[1]
+        self.assertNotIn("actions/checkout", publisher_job)
+        self.assertIn("checks: write", publisher_job)
+        self.assertIn("test \"$conclusion\" = success", publisher_job)
 
 
 if __name__ == "__main__":

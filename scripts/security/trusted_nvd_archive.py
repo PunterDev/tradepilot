@@ -29,6 +29,39 @@ class ArchiveError(ValueError):
     """Raised when NVD archive provenance or content cannot be trusted."""
 
 
+def validate_pr_identity(
+    payload: object,
+    repository: str,
+    expected_number: str,
+    expected_head: str,
+    event_head: str | None = None,
+) -> None:
+    """Reject PR metadata that cannot identify one current internal master PR."""
+    if not isinstance(payload, dict):
+        raise ArchiveError("pull request metadata is invalid")
+    if not expected_number.isdigit() or not isinstance(payload.get("number"), int) or str(payload["number"]) != expected_number:
+        raise ArchiveError("pull request number mismatch")
+    head = payload.get("head")
+    base = payload.get("base")
+    if not isinstance(head, dict) or not isinstance(base, dict):
+        raise ArchiveError("pull request repository metadata is invalid")
+    head_repo = head.get("repo")
+    base_repo = base.get("repo")
+    if not isinstance(head_repo, dict) or not isinstance(base_repo, dict):
+        raise ArchiveError("pull request repository metadata is invalid")
+    if payload.get("state") != "open" or base.get("ref") != "master":
+        raise ArchiveError("pull request is not open against master")
+    if head_repo.get("full_name") != repository or base_repo.get("full_name") != repository:
+        raise ArchiveError("pull request repository mismatch")
+    actual_head = head.get("sha")
+    if not isinstance(actual_head, str) or not all(character in "0123456789abcdef" for character in actual_head) or len(actual_head) != 40:
+        raise ArchiveError("pull request head revision is invalid")
+    if actual_head != expected_head:
+        raise ArchiveError("pull request head revision changed")
+    if event_head is not None and actual_head != event_head:
+        raise ArchiveError("pull request event head revision mismatch")
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -343,6 +376,12 @@ def parser() -> argparse.ArgumentParser:
     package = commands.add_parser("extract-publisher-package")
     package.add_argument("--archive", type=Path, required=True)
     package.add_argument("--destination", type=Path, required=True)
+    identity = commands.add_parser("validate-pr")
+    identity.add_argument("--metadata", type=argparse.FileType("r"), required=True)
+    identity.add_argument("--repository", required=True)
+    identity.add_argument("--expected-number", required=True)
+    identity.add_argument("--expected-head", required=True)
+    identity.add_argument("--event-head")
     return root
 
 
@@ -355,9 +394,13 @@ def main() -> int:
             refresh_and_build(args)
         elif args.command == "verify":
             verify_and_extract(args)
-        else:
+        elif args.command == "extract-publisher-package":
             safe_extract_publisher_package(args.archive, args.destination)
-    except ArchiveError as error:
+        else:
+            validate_pr_identity(
+                json.load(args.metadata), args.repository, args.expected_number, args.expected_head, args.event_head,
+            )
+    except (ArchiveError, OSError, json.JSONDecodeError) as error:
         print(f"trusted NVD archive verification failed: {error}", file=sys.stderr)
         return 1
     return 0
