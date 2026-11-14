@@ -340,6 +340,25 @@ class TrustedNvdArchiveTests(unittest.TestCase):
 
 
 class WorkflowBoundaryTests(unittest.TestCase):
+    def test_publisher_run_filter_is_valid_and_selects_a_successful_manual_run(self) -> None:
+        consumer = (ROOT / ".github/workflows/trusted-pr-dependency-check.yml").read_text()
+        expression = (
+            '[.workflow_runs[] | select(.conclusion == "success" and '
+            '(.event == "schedule" or .event == "workflow_dispatch"))][0].id'
+        )
+        self.assertIn(expression, consumer)
+        result = subprocess.run(
+            ["jq", "-r", expression],
+            input=json.dumps({"workflow_runs": [
+                {"id": 1, "conclusion": "failure", "event": "workflow_dispatch"},
+                {"id": 2, "conclusion": "success", "event": "workflow_dispatch"},
+            ]}),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "2")
+
     def test_publisher_and_consumer_boundaries_are_explicit(self) -> None:
         publisher = (ROOT / ".github/workflows/publish-verified-nvd.yml").read_text()
         consumer = (ROOT / ".github/workflows/trusted-pr-dependency-check.yml").read_text()
