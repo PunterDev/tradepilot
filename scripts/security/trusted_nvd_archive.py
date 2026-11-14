@@ -19,6 +19,9 @@ from pathlib import Path, PurePosixPath
 SCANNER_VERSION = "12.2.2"
 DATABASE_PATH = PurePosixPath("data/odc.mv.db")
 MAX_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024
+MAX_MANIFEST_BYTES = 1024 * 1024
+MAX_EXTRACTED_BYTES = 4 * 1024 * 1024 * 1024
+MAX_EXPANSION_RATIO = 100
 MIN_DATABASE_BYTES = 1024 * 1024
 
 
@@ -32,6 +35,10 @@ def sha256(path: Path) -> str:
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def is_sha256(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
 def utc_now() -> datetime:
@@ -56,6 +63,59 @@ def relative_member(name: str) -> PurePosixPath:
     if not name or path.is_absolute() or ".." in path.parts or path.parts[0] != "data":
         raise ArchiveError("archive contains an unsafe path")
     return path
+
+
+def ensure_archive_limits(compressed_size: int, extracted_size: int) -> None:
+    if compressed_size <= 0 or compressed_size > MAX_ARCHIVE_BYTES:
+        raise ArchiveError("archive size is invalid")
+    if extracted_size < 0 or extracted_size > MAX_EXTRACTED_BYTES:
+        raise ArchiveError("archive expands beyond the permitted limit")
+    if extracted_size > compressed_size * MAX_EXPANSION_RATIO:
+        raise ArchiveError("archive expansion ratio exceeds the permitted limit")
+
+
+def safe_extract_publisher_package(archive_path: Path, destination: Path) -> None:
+    """Extract the GitHub artifact ZIP without trusting ZIP metadata or paths."""
+    import zipfile
+
+    if destination.exists():
+        raise ArchiveError("publisher package destination already exists")
+    expected = {
+        "dependency-check-nvd.tar.gz": MAX_ARCHIVE_BYTES,
+        "dependency-check-nvd.manifest.json": MAX_MANIFEST_BYTES,
+    }
+    try:
+        with zipfile.ZipFile(archive_path) as package:
+            entries = package.infolist()
+            names = [entry.filename for entry in entries]
+            if len(entries) != len(expected) or set(names) != set(expected) or len(set(names)) != len(names):
+                raise ArchiveError("publisher package inventory is invalid")
+            total = 0
+            for entry in entries:
+                path = PurePosixPath(entry.filename)
+                mode = entry.external_attr >> 16
+                if path.is_absolute() or ".." in path.parts or entry.is_dir() or (mode and (mode & 0o170000) == 0o120000):
+                    raise ArchiveError("publisher package contains an unsafe path")
+                if entry.file_size < 0 or entry.file_size > expected[entry.filename]:
+                    raise ArchiveError("publisher package entry is oversized")
+                ensure_archive_limits(max(entry.compress_size, 1), entry.file_size)
+                total += entry.file_size
+            ensure_archive_limits(max(archive_path.stat().st_size, 1), total)
+            destination.mkdir(mode=0o700)
+            for entry in entries:
+                target = destination / entry.filename
+                written = 0
+                with package.open(entry) as source, target.open("xb") as output:
+                    while block := source.read(1024 * 1024):
+                        written += len(block)
+                        if written > entry.file_size:
+                            raise ArchiveError("publisher package entry exceeds its declared size")
+                        output.write(block)
+                if written != entry.file_size:
+                    raise ArchiveError("publisher package entry is truncated")
+                os.chmod(target, 0o600)
+    except (OSError, zipfile.BadZipFile) as error:
+        raise ArchiveError("publisher package cannot be safely extracted") from error
 
 
 def archive_members(data_dir: Path) -> list[dict[str, object]]:
@@ -135,7 +195,7 @@ def validate_manifest(manifest: dict[str, object], args: argparse.Namespace) -> 
         raise ArchiveError("manifest publisher workflow mismatch")
     if manifest["scannerVersion"] != SCANNER_VERSION:
         raise ArchiveError("Dependency-Check scanner version mismatch")
-    if not isinstance(manifest["sourceRevision"], str) or len(manifest["sourceRevision"]) != 40:
+    if not isinstance(manifest["sourceRevision"], str) or len(manifest["sourceRevision"]) != 40 or not all(character in "0123456789abcdef" for character in manifest["sourceRevision"]):
         raise ArchiveError("manifest source revision is invalid")
     if args.expected_source_revision and manifest["sourceRevision"] != args.expected_source_revision:
         raise ArchiveError("manifest source revision does not match the publisher run")
@@ -148,6 +208,8 @@ def validate_manifest(manifest: dict[str, object], args: argparse.Namespace) -> 
     now = parse_timestamp(args.now, "now") if args.now else utc_now()
     if expires <= now or created > now or expires - created > timedelta(hours=args.max_age_hours):
         raise ArchiveError("NVD archive is expired or violates the maximum-age policy")
+    if not is_sha256(manifest["archiveSha256"]):
+        raise ArchiveError("manifest archive digest is invalid")
     if not isinstance(manifest["archiveSize"], int) or not 0 < manifest["archiveSize"] <= MAX_ARCHIVE_BYTES:
         raise ArchiveError("manifest archive size is invalid")
     files = manifest["files"]
@@ -161,7 +223,7 @@ def validate_manifest(manifest: dict[str, object], args: argparse.Namespace) -> 
         relative_member(str(item["path"]))
         if item["path"] in seen or not isinstance(item["size"], int) or item["size"] < 0:
             raise ArchiveError("manifest file inventory is invalid")
-        if not isinstance(item["sha256"], str) or len(item["sha256"]) != 64:
+        if not is_sha256(item["sha256"]):
             raise ArchiveError("manifest file digest is invalid")
         seen.add(item["path"])
         validated.append(item)
@@ -178,6 +240,7 @@ def verify_and_extract(args: argparse.Namespace) -> None:
     files = validate_manifest(manifest, args)
     if not args.archive.is_file() or args.archive.stat().st_size != manifest["archiveSize"]:
         raise ArchiveError("archive is missing or has an unexpected size")
+    ensure_archive_limits(args.archive.stat().st_size, sum(int(item["size"]) for item in files))
     if sha256(args.archive) != manifest["archiveSha256"]:
         raise ArchiveError("archive digest mismatch")
     if args.destination.exists():
@@ -186,14 +249,17 @@ def verify_and_extract(args: argparse.Namespace) -> None:
     try:
         with tarfile.open(args.archive, "r:gz") as archive:
             members = archive.getmembers()
-            actual = set()
+            actual: set[str] = set()
+            extracted_size = 0
             for member in members:
                 path = str(relative_member(member.name))
-                if not member.isfile() or path not in expected:
+                if not member.isfile() or path not in expected or path in actual:
                     raise ArchiveError("archive contains an unexpected or unsafe entry")
                 if member.size != expected[path]["size"]:
                     raise ArchiveError("archive member size mismatch")
                 actual.add(path)
+                extracted_size += member.size
+            ensure_archive_limits(args.archive.stat().st_size, extracted_size)
             if actual != set(expected):
                 raise ArchiveError("archive member inventory mismatch")
             args.destination.mkdir(mode=0o700)
@@ -274,6 +340,9 @@ def parser() -> argparse.ArgumentParser:
     verify.add_argument("--now")
     verify.add_argument("--expected-source-revision")
     verify.add_argument("--expected-workflow-run-id")
+    package = commands.add_parser("extract-publisher-package")
+    package.add_argument("--archive", type=Path, required=True)
+    package.add_argument("--destination", type=Path, required=True)
     return root
 
 
@@ -284,8 +353,10 @@ def main() -> int:
             write_manifest(args, create_archive(args.data_dir, args.archive))
         elif args.command == "refresh-and-build":
             refresh_and_build(args)
-        else:
+        elif args.command == "verify":
             verify_and_extract(args)
+        else:
+            safe_extract_publisher_package(args.archive, args.destination)
     except ArchiveError as error:
         print(f"trusted NVD archive verification failed: {error}", file=sys.stderr)
         return 1

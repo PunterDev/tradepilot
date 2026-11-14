@@ -11,6 +11,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -29,7 +30,7 @@ class TrustedNvdArchiveTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.data = self.root / "data"
         self.data.mkdir()
-        (self.data / "odc.mv.db").write_bytes(b"x" * (1024 * 1024 + 1))
+        (self.data / "odc.mv.db").write_bytes(os.urandom(1024 * 1024 + 1))
         self.archive = self.root / "nvd.tar.gz"
         self.manifest = self.root / "nvd.json"
         self.build()
@@ -106,6 +107,14 @@ class TrustedNvdArchiveTests(unittest.TestCase):
         self.rewrite_manifest(archiveSha256=hashlib.sha256(self.archive.read_bytes()).hexdigest(), archiveSize=self.archive.stat().st_size)
         self.verify(success=False)
 
+    def test_absolute_tar_path_fails_closed(self) -> None:
+        with tarfile.open(self.archive, "w:gz") as archive:
+            payload = self.root / "payload"
+            payload.write_text("bad")
+            archive.add(payload, arcname="/data/odc.mv.db")
+        self.rewrite_manifest(archiveSha256=hashlib.sha256(self.archive.read_bytes()).hexdigest(), archiveSize=self.archive.stat().st_size)
+        self.verify(success=False)
+
     def test_symlink_archive_entry_fails_closed(self) -> None:
         with tarfile.open(self.archive, "w:gz") as archive:
             info = tarfile.TarInfo("data/odc.mv.db")
@@ -122,6 +131,41 @@ class TrustedNvdArchiveTests(unittest.TestCase):
             info.linkname = "data/other"
             archive.addfile(info)
         self.rewrite_manifest(archiveSha256=hashlib.sha256(self.archive.read_bytes()).hexdigest(), archiveSize=self.archive.stat().st_size)
+        self.verify(success=False)
+
+    def test_duplicate_tar_entry_fails_closed(self) -> None:
+        with tarfile.open(self.archive, "w:gz") as archive:
+            payload = self.root / "payload"
+            payload.write_bytes(b"x" * (1024 * 1024 + 1))
+            archive.add(payload, arcname="data/odc.mv.db")
+            archive.add(payload, arcname="data/odc.mv.db")
+        self.rewrite_manifest(archiveSha256=hashlib.sha256(self.archive.read_bytes()).hexdigest(), archiveSize=self.archive.stat().st_size)
+        self.verify(success=False)
+
+    def test_special_tar_entry_fails_closed(self) -> None:
+        with tarfile.open(self.archive, "w:gz") as archive:
+            info = tarfile.TarInfo("data/odc.mv.db")
+            info.type = tarfile.CHRTYPE
+            archive.addfile(info)
+        self.rewrite_manifest(archiveSha256=hashlib.sha256(self.archive.read_bytes()).hexdigest(), archiveSize=self.archive.stat().st_size)
+        self.verify(success=False)
+
+    def test_truncated_archive_fails_closed(self) -> None:
+        self.archive.write_bytes(self.archive.read_bytes()[:20])
+        self.verify(success=False)
+
+    def test_incorrect_member_size_fails_closed(self) -> None:
+        with tarfile.open(self.archive, "w:gz") as archive:
+            payload = self.root / "payload"
+            payload.write_bytes(b"short")
+            archive.add(payload, arcname="data/odc.mv.db")
+        self.rewrite_manifest(archiveSha256=hashlib.sha256(self.archive.read_bytes()).hexdigest(), archiveSize=self.archive.stat().st_size)
+        self.verify(success=False)
+
+    def test_duplicate_manifest_entry_fails_closed(self) -> None:
+        manifest = json.loads(self.manifest.read_text())
+        manifest["files"].append(dict(manifest["files"][0]))
+        self.manifest.write_text(json.dumps(manifest))
         self.verify(success=False)
 
     def test_oversized_manifest_fails_closed(self) -> None:
@@ -161,16 +205,71 @@ class TrustedNvdArchiveTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertNotIn("NVD_API_KEY=", result.stderr)
 
+    def publisher_package(self, entries: list[tuple[str, bytes]]) -> Path:
+        package = self.root / "publisher.zip"
+        with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for name, content in entries:
+                archive.writestr(name, content)
+        return package
+
+    def extract_publisher_package(self, package: Path, success: bool = True) -> None:
+        self.invoke("extract-publisher-package", "--archive", package, "--destination", self.root / "publisher-out", success=success)
+
+    def test_valid_publisher_package_extracts(self) -> None:
+        package = self.publisher_package([
+            ("dependency-check-nvd.tar.gz", self.archive.read_bytes()),
+            ("dependency-check-nvd.manifest.json", self.manifest.read_bytes()),
+        ])
+        self.extract_publisher_package(package)
+        self.assertTrue((self.root / "publisher-out/dependency-check-nvd.tar.gz").is_file())
+
+    def test_duplicate_zip_entry_fails_closed(self) -> None:
+        package = self.publisher_package([
+            ("dependency-check-nvd.tar.gz", b"one"),
+            ("dependency-check-nvd.tar.gz", b"two"),
+            ("dependency-check-nvd.manifest.json", b"{}"),
+        ])
+        self.extract_publisher_package(package, success=False)
+
+    def test_unsafe_zip_path_fails_closed(self) -> None:
+        package = self.publisher_package([
+            ("../dependency-check-nvd.tar.gz", b"x"),
+            ("dependency-check-nvd.manifest.json", b"{}"),
+        ])
+        self.extract_publisher_package(package, success=False)
+
+    def test_symlink_zip_entry_fails_closed(self) -> None:
+        package = self.root / "publisher.zip"
+        link = zipfile.ZipInfo("dependency-check-nvd.tar.gz")
+        link.external_attr = 0o120777 << 16
+        with zipfile.ZipFile(package, "w") as archive:
+            archive.writestr(link, "target")
+            archive.writestr("dependency-check-nvd.manifest.json", "{}")
+        self.extract_publisher_package(package, success=False)
+
+    def test_unexpected_zip_file_fails_closed(self) -> None:
+        package = self.publisher_package([
+            ("dependency-check-nvd.tar.gz", b"x"),
+            ("dependency-check-nvd.manifest.json", b"{}"),
+            ("extra", b"x"),
+        ])
+        self.extract_publisher_package(package, success=False)
+
 
 class WorkflowBoundaryTests(unittest.TestCase):
     def test_publisher_and_consumer_boundaries_are_explicit(self) -> None:
         publisher = (ROOT / ".github/workflows/publish-verified-nvd.yml").read_text()
         consumer = (ROOT / ".github/workflows/trusted-pr-dependency-check.yml").read_text()
+        archive_tool = SCRIPT.read_text()
         self.assertIn("environment: trusted-nvd-publisher", publisher)
         self.assertIn("refresh-and-build", publisher)
         self.assertNotIn("pull_request:", publisher)
         self.assertIn("pull_request_target:", consumer)
         self.assertIn("Check out protected verifier source", consumer)
+        self.assertIn("Bind the protected verifier source", consumer)
+        self.assertIn("trusted-nvd-archive-verifier.py", consumer)
+        self.assertIn("expected-workflow-run-id", consumer)
+        self.assertIn("expected-source-revision", consumer)
         self.assertIn("persist-credentials: false", consumer)
         self.assertIn("NVD_API_KEY: ''", consumer)
         self.assertIn("-DautoUpdate=false", consumer)
@@ -183,6 +282,9 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertNotIn("docs/security/candidates", consumer)
         self.assertNotIn("actions/cache", publisher + consumer)
         self.assertNotIn("tar -C \"$RUNNER_TEMP\" -xzf", consumer)
+        self.assertNotIn("extractall", consumer)
+        self.assertNotIn("-DnvdApiKey=", archive_tool)
+        self.assertIn("-DnvdApiKeyEnvironmentVariable=NVD_API_KEY", archive_tool)
         self.assertLess(consumer.index("Download and verify trusted NVD package"), consumer.index("Check out exact pull request source"))
         scanner = consumer.split("Run credential-free Dependency-Check", 1)[1]
         self.assertNotIn("${{ github.token }}", scanner)
