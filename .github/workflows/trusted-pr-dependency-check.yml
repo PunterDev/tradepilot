@@ -55,6 +55,23 @@ jobs:
           sha256sum "$RUNNER_TEMP/trusted-nvd-archive-verifier.py" | awk '{print $1}' | tee "$RUNNER_TEMP/trusted-nvd-verifier.sha256"
           printf 'sha256=%s\n' "$(cat "$RUNNER_TEMP/trusted-nvd-verifier.sha256")" >> "$GITHUB_OUTPUT"
 
+      - name: Install patched GitHub CLI for attestation verification
+        env:
+          GH_VERSION: 2.103.3
+          GH_ARCHIVE_SHA256: 4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d
+        run: |
+          set -Eeuo pipefail
+          test "$(dpkg --print-architecture)" = amd64
+          archive="$RUNNER_TEMP/gh_${GH_VERSION}_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
+            "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$GH_ARCHIVE_SHA256" "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/gh_${GH_VERSION}_linux_amd64/bin/gh" "$RUNNER_TEMP/gh"
+          "$RUNNER_TEMP/gh" --version | grep -F "gh version $GH_VERSION "
+          printf '%s\n' "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
       - name: Resolve an open master-targeting pull request
         id: pr
         env:
@@ -90,6 +107,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TRUSTED_WORKFLOW: .github/workflows/publish-verified-nvd.yml
+          TRUSTED_SIGNER_WORKFLOW: PunterDev/tradepilot/.github/workflows/publish-verified-nvd.yml
           PUBLISHER_WORKFLOW_FILE: publish-verified-nvd.yml
         run: |
           set -Eeuo pipefail
@@ -117,7 +135,9 @@ jobs:
           python3 scripts/security/trusted_nvd_archive.py extract-publisher-package \
             --archive "$RUNNER_TEMP/publisher/package.zip" --destination "$RUNNER_TEMP/publisher/extracted"
           mv "$RUNNER_TEMP/publisher/extracted/"* "$RUNNER_TEMP/publisher/"
-          gh attestation verify "$RUNNER_TEMP/publisher/dependency-check-nvd.tar.gz" --repo "$GITHUB_REPOSITORY" --signer-workflow "$TRUSTED_WORKFLOW"
+          gh attestation verify "$RUNNER_TEMP/publisher/dependency-check-nvd.tar.gz" \
+            --repo "$GITHUB_REPOSITORY" --signer-workflow "$TRUSTED_SIGNER_WORKFLOW" \
+            --source-ref refs/heads/master --source-digest "$publisher_sha" --deny-self-hosted-runners
           python3 scripts/security/trusted_nvd_archive.py verify \
             --archive "$RUNNER_TEMP/publisher/dependency-check-nvd.tar.gz" \
             --manifest "$RUNNER_TEMP/publisher/dependency-check-nvd.manifest.json" \
