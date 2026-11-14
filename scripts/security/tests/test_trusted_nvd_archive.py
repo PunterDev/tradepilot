@@ -463,6 +463,23 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertIn("checks: write", publisher_job)
         self.assertIn("test \"$conclusion\" = success", publisher_job)
 
+    def test_attestation_verification_uses_patched_cli_and_exact_signer_identity(self) -> None:
+        consumer = self.WORKFLOW.read_text()
+        signer = "PunterDev/tradepilot/.github/workflows/publish-verified-nvd.yml"
+        self.assertIn("GH_VERSION: 2.103.3", consumer)
+        self.assertIn("GH_ARCHIVE_SHA256: 4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d", consumer)
+        self.assertIn('"https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"', consumer)
+        self.assertIn("sha256sum --check --status", consumer)
+        self.assertIn(f"TRUSTED_SIGNER_WORKFLOW: {signer}", consumer)
+        self.assertIn('--signer-workflow "$TRUSTED_SIGNER_WORKFLOW"', consumer)
+        self.assertIn('--source-ref refs/heads/master --source-digest "$publisher_sha"', consumer)
+        self.assertIn("--deny-self-hosted-runners", consumer)
+        self.assertNotIn("--insecure-ignore-tlog", consumer)
+        self.assertEqual(
+            f"https://github.com/{signer}@refs/heads/master",
+            "https://github.com/PunterDev/tradepilot/.github/workflows/publish-verified-nvd.yml@refs/heads/master",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
