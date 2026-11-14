@@ -175,7 +175,8 @@ def create_archive(data_dir: Path, archive_path: Path) -> list[dict[str, object]
     archive_path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive_path, "w:gz", format=tarfile.PAX_FORMAT) as archive:
         for item in members:
-            source = data_dir.parent / item["path"]
+            logical_path = PurePosixPath(str(item["path"]))
+            source = data_dir.joinpath(*logical_path.relative_to("data").parts)
             info = archive.gettarinfo(str(source), arcname=str(item["path"]))
             info.uid = info.gid = 0
             info.uname = info.gname = ""
