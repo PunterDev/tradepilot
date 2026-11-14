@@ -28,9 +28,11 @@ class TrustedNvdArchiveTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.data = self.root / "data"
+        self.data = self.root / "nvd-data"
         self.data.mkdir()
         (self.data / "odc.mv.db").write_bytes(os.urandom(1024 * 1024 + 1))
+        (self.data / "cache").mkdir()
+        (self.data / "cache/CENTRAL.data").write_bytes(b"synthetic-cache")
         self.archive = self.root / "nvd.tar.gz"
         self.manifest = self.root / "nvd.json"
         self.build()
@@ -76,6 +78,35 @@ class TrustedNvdArchiveTests(unittest.TestCase):
     def test_valid_archive_extracts_before_untrusted_checkout(self) -> None:
         self.verify()
         self.assertTrue((self.root / "out/data/odc.mv.db").is_file())
+
+    def test_custom_source_directory_uses_logical_data_prefix(self) -> None:
+        manifest = json.loads(self.manifest.read_text())
+        expected = {"data/odc.mv.db", "data/cache/CENTRAL.data"}
+        self.assertEqual({item["path"] for item in manifest["files"]}, expected)
+        with tarfile.open(self.archive, "r:gz") as archive:
+            self.assertEqual(set(archive.getnames()), expected)
+        self.verify()
+        self.assertTrue((self.root / "out/data/cache/CENTRAL.data").is_file())
+
+    def test_missing_archive_member_fails_closed(self) -> None:
+        with tarfile.open(self.archive, "w:gz") as archive:
+            archive.add(self.data / "odc.mv.db", arcname="data/odc.mv.db")
+        self.rewrite_manifest(
+            archiveSha256=hashlib.sha256(self.archive.read_bytes()).hexdigest(),
+            archiveSize=self.archive.stat().st_size,
+        )
+        self.verify(success=False)
+
+    def test_non_regular_source_file_fails_closed(self) -> None:
+        cache = self.data / "cache/CENTRAL.data"
+        cache.unlink()
+        cache.symlink_to(self.data / "odc.mv.db")
+        self.invoke(
+            "build", "--data-dir", self.data, "--archive", self.root / "invalid.tar.gz",
+            "--manifest", self.root / "invalid.json", "--repository", REPOSITORY,
+            "--publisher-workflow", WORKFLOW, "--source-revision", REVISION,
+            "--workflow-run-id", "123", "--max-age-hours", "24", success=False,
+        )
 
     def test_wrong_repository_fails_closed(self) -> None:
         self.verify(success=False, repository="PunterDev/other")
