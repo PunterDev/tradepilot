@@ -1,0 +1,58 @@
+{
+  "status": "PENDING",
+  "scope": "expanded-sixteen-dec15",
+  "reviewedCommit": "",
+  "preparedBaselineCommit": "666ce192bc8191586409fea2f2afe090637e5ce0",
+  "expiry": "2026-12-15T23:59:59Z",
+  "decisionTimestamp": "",
+  "originalApproval": {
+    "status": "HISTORICAL_ACTIVE_SCOPE",
+    "commentId": "6620183351",
+    "candidateSha256": "f9b964c787c906e6ba780ce675f00a409021b5efd54785e0430cf35872bfa3eb"
+  },
+  "repositoryOwner": {
+    "name": "",
+    "decision": "PENDING",
+    "approvedAt": ""
+  },
+  "securityRiskOwner": {
+    "name": "",
+    "decision": "PENDING",
+    "approvedAt": ""
+  },
+  "productionConfiguration": {
+    "status": "OWNER_ATTESTED_WITH_LIMITATIONS",
+    "evidenceReference": "October 31 Render owner attestation; historical PR #6 comment 6620183351",
+    "limitations": [
+      "LIVE_CONTAINER_FILES_NOT_INDEPENDENTLY_VERIFIED",
+      "HOSTED_JVM_PROPERTIES_NOT_INDEPENDENTLY_VERIFIED",
+      "FUTURE_CONFIGURATION_DRIFT_NOT_INDEPENDENTLY_VERIFIED"
+    ]
+  },
+  "governance": {
+    "mode": "SOLO_FOUNDER",
+    "soloFounder": {
+      "policyAdoption": "ADOPTED",
+      "githubLogin": "",
+      "commentId": ""
+    }
+  },
+  "approvalEvidence": {
+    "repository": "PunterDev/tradepilot",
+    "pullRequest": null,
+    "reviewedPullRequestHeadSha": "",
+    "candidateSha256": "",
+    "repositoryOwner": {
+      "githubLogin": "",
+      "commentId": ""
+    },
+    "securityRiskOwner": {
+      "githubLogin": "",
+      "commentId": ""
+    },
+    "productionConfigurationAttestor": {
+      "githubLogin": "",
+      "commentId": ""
+    }
+  }
+}
