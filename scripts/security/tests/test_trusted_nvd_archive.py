@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tarfile
@@ -340,24 +341,74 @@ class TrustedNvdArchiveTests(unittest.TestCase):
 
 
 class WorkflowBoundaryTests(unittest.TestCase):
-    def test_publisher_run_filter_is_valid_and_selects_a_successful_manual_run(self) -> None:
-        consumer = (ROOT / ".github/workflows/trusted-pr-dependency-check.yml").read_text()
-        expression = (
-            '[.workflow_runs[] | select(.conclusion == "success" and '
-            '(.event == "schedule" or .event == "workflow_dispatch"))][0].id'
+    WORKFLOW = ROOT / ".github/workflows/trusted-pr-dependency-check.yml"
+    JQ_EXPRESSION = re.compile(r"(?:--jq|jq -r)\s+(?:'([^']+)'|(\.[A-Za-z0-9_.]+))")
+
+    def workflow_jq_expressions(self) -> list[str]:
+        return [quoted or bare for quoted, bare in self.JQ_EXPRESSION.findall(self.WORKFLOW.read_text())]
+
+    @staticmethod
+    def run_jq(expression: str, payload: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["jq", "-er", expression], input=json.dumps(payload), capture_output=True, text=True,
         )
-        self.assertIn(expression, consumer)
-        result = subprocess.run(
-            ["jq", "-r", expression],
-            input=json.dumps({"workflow_runs": [
+
+    def test_all_workflow_jq_expressions_are_extracted_and_executable(self) -> None:
+        expressions = self.workflow_jq_expressions()
+        self.assertEqual(len(expressions), 18)
+        self.assertEqual(sum("workflow_runs" in expression for expression in expressions), 1)
+        self.assertEqual(sum("artifacts" in expression for expression in expressions), 1)
+        self.assertGreaterEqual(sum(expression.startswith(".head") for expression in expressions), 3)
+        self.assertGreaterEqual(sum(expression.startswith(".base") for expression in expressions), 2)
+        payload = {
+            "id": 2,
+            "workflow_runs": [
                 {"id": 1, "conclusion": "failure", "event": "workflow_dispatch"},
                 {"id": 2, "conclusion": "success", "event": "workflow_dispatch"},
-            ]}),
-            capture_output=True,
-            text=True,
-        )
+            ],
+            "artifacts": [
+                {"id": 3, "expired": True, "name": "dependency-check-nvd-expired"},
+                {"id": 4, "expired": False, "name": "other-artifact"},
+                {"id": 5, "expired": False, "name": "dependency-check-nvd-verified"},
+            ],
+            "repository": {"full_name": REPOSITORY},
+            "workflow_id": 2,
+            "status": "completed",
+            "conclusion": "success",
+            "head_branch": "master",
+            "head_sha": REVISION,
+            "digest": "sha256:" + "b" * 64,
+            "workflow_run": {"id": 2},
+            "state": "open",
+            "base": {"ref": "master", "repo": {"full_name": REPOSITORY}},
+            "head": {"sha": REVISION, "repo": {"full_name": REPOSITORY}},
+        }
+        for expression in expressions:
+            result = self.run_jq(expression, payload)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotEqual(result.stdout.strip(), "")
+
+    def test_artifact_filter_selects_only_a_current_trusted_package(self) -> None:
+        expression = next(expression for expression in self.workflow_jq_expressions() if ".artifacts[]" in expression)
+        result = self.run_jq(expression, {"artifacts": [
+            {"id": 1, "expired": True, "name": "dependency-check-nvd-expired"},
+            {"id": 2, "expired": False, "name": "not-nvd"},
+            {"id": 3, "expired": False, "name": "dependency-check-nvd-verified"},
+        ]})
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "2")
+        self.assertEqual(json.loads(result.stdout), {
+            "id": 3, "expired": False, "name": "dependency-check-nvd-verified",
+        })
+
+    def test_artifact_filter_rejects_no_match_expired_and_malformed_payloads(self) -> None:
+        expression = next(expression for expression in self.workflow_jq_expressions() if ".artifacts[]" in expression)
+        for payload in (
+            {"artifacts": []},
+            {"artifacts": [{"id": 1, "expired": True, "name": "dependency-check-nvd-expired"}]},
+            {},
+        ):
+            result = self.run_jq(expression, payload)
+            self.assertNotEqual(result.returncode, 0)
 
     def test_publisher_and_consumer_boundaries_are_explicit(self) -> None:
         publisher = (ROOT / ".github/workflows/publish-verified-nvd.yml").read_text()

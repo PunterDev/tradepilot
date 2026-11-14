@@ -105,7 +105,7 @@ jobs:
           test "$(jq -r .head_branch <<<"$run")" = master
           publisher_sha="$(jq -r .head_sha <<<"$run")"
           [[ "$publisher_sha" =~ ^[0-9a-f]{40}$ ]]
-          artifact="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" --jq '[.artifacts[] | select(.expired == false and (.name | startswith("dependency-check-nvd-"))][0]')"
+          artifact="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" --jq '[.artifacts[] | select(.expired == false and (.name | startswith("dependency-check-nvd-")))][0]')"
           test "$artifact" != null
           expected_digest="$(jq -r .digest <<<"$artifact")"
           artifact_id="$(jq -r .id <<<"$artifact")"
