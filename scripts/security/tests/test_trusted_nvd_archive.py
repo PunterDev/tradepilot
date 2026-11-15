@@ -80,6 +80,10 @@ class TrustedNvdArchiveTests(unittest.TestCase):
         self.verify()
         self.assertTrue((self.root / "out/data/odc.mv.db").is_file())
 
+    def test_existing_verification_destination_fails_closed(self) -> None:
+        (self.root / "out").mkdir()
+        self.verify(success=False)
+
     def test_custom_source_directory_uses_logical_data_prefix(self) -> None:
         manifest = json.loads(self.manifest.read_text())
         expected = {"data/odc.mv.db", "data/cache/CENTRAL.data"}
@@ -436,6 +440,11 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertIn("-DfailOnError=true", consumer)
         self.assertIn("-DfailBuildOnCVSS=8", consumer)
         self.assertIn("-DfailBuildOnUnusedSuppressionRule=true", consumer)
+        self.assertIn('-Dodc.outputDirectory="$RUNNER_TEMP/dependency-check-report"', consumer)
+        self.assertNotIn('-DoutputDirectory="$RUNNER_TEMP/dependency-check-report"', consumer)
+        self.assertIn('test -s "$RUNNER_TEMP/dependency-check-report/dependency-check-report.json"', consumer)
+        self.assertIn('test -s "$RUNNER_TEMP/dependency-check-report/dependency-check-report.html"', consumer)
+        self.assertIn('test -s "$RUNNER_TEMP/dependency-check-report/dependency-check-report.sarif"', consumer)
         self.assertIn("HTML,JSON,SARIF", consumer)
         self.assertIn("dependency-check-report.html", consumer)
         self.assertIn("dependency-check-report.sarif", consumer)
@@ -462,6 +471,15 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertNotIn("actions/checkout", publisher_job)
         self.assertIn("checks: write", publisher_job)
         self.assertIn("test \"$conclusion\" = success", publisher_job)
+
+    def test_workflow_leaves_verification_destinations_for_the_verifier(self) -> None:
+        consumer = self.WORKFLOW.read_text()
+        self.assertIn('mkdir -p "$RUNNER_TEMP/publisher"', consumer)
+        self.assertNotIn('mkdir -p "$RUNNER_TEMP/publisher" "$RUNNER_TEMP/verified-nvd-input"', consumer)
+        acquisition = consumer.split("Download and verify trusted NVD package", 1)[1].split("Pass verified package", 1)[0]
+        self.assertNotIn('mkdir -p "$RUNNER_TEMP/verified-nvd-input"', acquisition)
+        scanner = consumer.split("Reverify the NVD input before PR checkout", 1)[1].split("Revalidate the exact PR head", 1)[0]
+        self.assertNotIn('mkdir -p "$RUNNER_TEMP/verified-nvd-input"', scanner)
 
     def test_attestation_verification_uses_patched_cli_and_exact_signer_identity(self) -> None:
         consumer = self.WORKFLOW.read_text()
