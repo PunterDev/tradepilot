@@ -24,6 +24,12 @@ This review is limited to PR #16 commit
   The evidence concerns the `tradepilot` service in Render `My Workspace`
   (`tea-d800tatckfvc73f0vro0`) and is limited to configuration names and
   deployment metadata; no values or secrets were recorded.
+* The trusted GitHub-hosted scanner independently validated its artifact,
+  provenance, manifest, safe extraction, report upload, and exact-head check
+  publication in [run 43681654206](https://github.com/PunterDev/tradepilot/actions/runs/43681654206).
+  Its report artifact `14148448460` recorded the same eight CVSS >= 8 CVEs on
+  this PR head. The intentional failure is evidence that the blocking gate is
+  operating, not a successful release result.
 
 The JSON report is authoritative: it contains **eight blocking instances,
 eight unique CVEs, and three affected PURLs**. The HTML report also lists
@@ -128,9 +134,10 @@ exact-CVE/exact-PURL, SHA-bound to the candidate, expire no later than
 3. **Deferred compatibility work:** a supported Boot/Spring/Kotlin upgrade in a
    dedicated release, tested with Java 17, email delivery, backend, PostgreSQL
    Flyway, and a fresh Dependency-Check scan.
-4. **Scanner implementation:** PR #21 still needs hosted verification of
-   artifact upload and GitHub check-run publication. Its local tests cover
-   archive acquisition, report generation, and exact-head revalidation.
+4. **Scanner implementation:** hosted run `43681654206` verified trusted
+   archive acquisition, provenance, report upload, and a failing
+   `trusted-dependency-check` check bound to this exact PR head. It does not
+   approve the eight findings or make PR #16 releasable.
 
 ## Final release recommendation
 
