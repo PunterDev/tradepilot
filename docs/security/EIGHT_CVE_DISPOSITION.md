@@ -19,10 +19,22 @@ This review is limited to PR #16 commit
 * Full-repository search of source, checked-in configuration, and Maven
   dependencies for each advisory prerequisite.
 * Official Kotlin and Spring advisories linked below.
+* Owner-supplied Render production inventory reviewed 2026-10-31 and again
+  2026-11-04, with owner confirmation on 2026-11-14 that it is unchanged.
+  The evidence concerns the `tradepilot` service in Render `My Workspace`
+  (`tea-d800tatckfvc73f0vro0`) and is limited to configuration names and
+  deployment metadata; no values or secrets were recorded.
 
 The JSON report is authoritative: it contains **eight blocking instances,
 eight unique CVEs, and three affected PURLs**. The HTML report also lists
 lower-severity advisories and is not the CVSS >= 8 count.
+
+The current Render deployment is commit
+`c767b87e439f5bc95cfd8ff9f9bb58617b581163` and uses Spring Boot `3.3.5`.
+It is production evidence for configuration names and the `production` startup
+profile, but it is **not** the same dependency set as PR #16's proposed Spring
+Boot `3.5.16` release. No conclusion about the PR #16 packages is inferred
+from that difference.
 
 ## Provenance
 
@@ -45,6 +57,26 @@ lower-severity advisories and is not the CVSS >= 8 count.
 | `CVE-2026-59283` / `spring-core:6.2.19` / 9.1 | Requires `SimpleEvaluationContext` and SpEL compilation through `spring.expression.compiler.mode` or `SpelParserConfiguration`. No matching code or checked-in compiler mode found. Runtime system properties and externally injected configuration cannot be proved from source. | Same Spring upgrade limits. **REQUIRES ADDITIONAL EVIDENCE:** owner must verify production and shared environments do not enable compiled SpEL with `SimpleEvaluationContext`. |
 | `CVE-2026-59270` / `spring-security-core:6.5.11` / 9.1 | Requires `UnboundIdContainer` or `spring.ldap.embedded.*` and a reachable LDAP listener. No UnboundID/LDAP dependency, container, configuration, or listener is resolved or checked in. | Spring Security `6.5.12` is affected-line Enterprise Support Only; OSS remediation is a major framework upgrade. **VERIFIED INAPPLICABLE** in the reviewed application; owner must confirm no deployment-time LDAP profile exists. |
 
+## Read-only runtime evidence matrix
+
+The Render inventory did not identify `SPRING_EXPRESSION_COMPILER_MODE`, any
+`SPRING_LDAP_EMBEDDED_*` name, XSLT/view-resolver configuration name, or
+WebFlux/SSE-related configuration name. No Render Environment Group or Secret
+File was attached. Startup logs previously identified the `production` profile;
+the inventory's redacted or blank `SPRING_PROFILES_ACTIVE` value is not used as
+profile evidence.
+
+| CVE | Exploit prerequisite | Source/dependency evidence | Render inventory and owner confirmation | Remaining uncertainty | Final disposition | Eligible for separate owner approval |
+| --- | --- | --- | --- | --- | --- | --- |
+| `53914` | Kotlin Gradle build-cache metadata | Runtime stdlib only; no Kotlin Gradle plugin/cache | Not applicable to the runtime configuration; inventory unchanged 2026-11-14 | Future build tooling could change this | VERIFIED FALSE POSITIVE | Yes, exact PURL/CVE only |
+| `47884` | XSLT view, implicit `/**` view rendering | No XSLT/view resolver/`ModelAndView` path | No XSLT or view-resolver configuration name; inventory unchanged | External view customization or runtime module is not proved absent | REQUIRES ADDITIONAL EVIDENCE | No |
+| `47890` | SSE view fragments | No SSE, WebFlux, or view fragments | No WebFlux/SSE configuration name; inventory unchanged | Future feature/module changes | VERIFIED INAPPLICABLE | Yes, exact PURL/CVE only |
+| `47891` | WebFlux, Aalto XML, `Jaxb2Decoder` | Servlet web starter; no WebFlux/Aalto/decoder | No contradictory configuration name; inventory unchanged | Runtime module/classpath additions outside review | VERIFIED INAPPLICABLE | Yes, exact PURL/CVE only |
+| `47892` | WebFlux functional route with affected predicate | No WebFlux or `RouterFunction` | No contradictory configuration name; inventory unchanged | Runtime module/classpath additions outside review | VERIFIED INAPPLICABLE | Yes, exact PURL/CVE only |
+| `59313` | MVC functional SSE and untrusted plain-text stream | No functional route, SSE, or streamed path | No WebFlux/SSE configuration name; inventory unchanged | Future feature/module changes | VERIFIED INAPPLICABLE | Yes, exact PURL/CVE only |
+| `59283` | `SimpleEvaluationContext` plus compiled SpEL | No matching code or checked-in compiler mode | `SPRING_EXPRESSION_COMPILER_MODE` absent; inventory unchanged | JVM system properties, programmatic parser setup, and external imports are not verified | REQUIRES ADDITIONAL EVIDENCE | No |
+| `59270` | UnboundID embedded LDAP listener | No UnboundID/LDAP dependency, container, or listener | No `SPRING_LDAP_EMBEDDED_*` name; no groups or secret files; inventory unchanged | Deployment-time profile/module outside reviewed inventory | VERIFIED INAPPLICABLE | Yes, exact PURL/CVE only |
+
 The specific Spring prerequisites and fixed-version availability are documented
 by [CVE-2026-59283](https://spring.io/security/cve-2026-59283/),
 [CVE-2026-59313](https://spring.io/security/cve-2026-59313/), and
@@ -61,10 +93,12 @@ properties, untracked profiles, or external Spring configuration. Before an
 exception is approved, the owner must record a value-free review for production
 and each shared environment that serves this code:
 
-1. No XSLT view resolver or implicit `/**` view rendering.
-2. No `spring.expression.compiler.mode=IMMEDIATE` or `MIXED`, and no runtime
-   `SimpleEvaluationContext` customization.
-3. No `spring.ldap.embedded.*`, LDAP profile, or UnboundID listener.
+1. No externally injected XSLT view resolver or implicit `/**` view rendering.
+2. No JVM system property, external configuration import, or programmatic
+   parser enables `IMMEDIATE` or `MIXED` compilation with
+   `SimpleEvaluationContext`.
+3. No runtime-only profile/module supplies embedded LDAP or an UnboundID
+   listener.
 4. No runtime module adds WebFlux, functional SSE, or the related components.
 
 ## Inactive December candidate
@@ -77,11 +111,11 @@ and exactly match the eight report tuples above. Its eight additional entries
 are not instances in this report. The candidate is **inactive**, is not an
 approval record, and expires 2026-12-15.
 
-After the runtime review, the following exact entries may be submitted for
-separate owner approval: Kotlin `53914`; Spring Core `47890`, `47891`, `47892`,
-and `59313`; and Spring Security `59270`. Their compensating controls are the
-documented absence of the prerequisite application paths. `47884` and `59283`
-remain blocked pending the external runtime review. Every approval must remain
+The owner-confirmed Render inventory reduces uncertainty for the eligible exact
+entries but is **not** approval to activate them. Kotlin `53914`; Spring Core
+`47890`, `47891`, `47892`, and `59313`; and Spring Security `59270` may be
+submitted for separate owner approval. `47884` and `59283` remain blocked until
+the specified external-runtime review is recorded. Every approval must remain
 exact-CVE/exact-PURL, SHA-bound to the candidate, expire no later than
 2026-12-15, and reject unused or mismatched suppressions.
 
