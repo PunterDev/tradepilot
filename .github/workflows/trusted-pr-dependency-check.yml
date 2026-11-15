@@ -111,7 +111,7 @@ jobs:
           PUBLISHER_WORKFLOW_FILE: publish-verified-nvd.yml
         run: |
           set -Eeuo pipefail
-          mkdir -p "$RUNNER_TEMP/publisher" "$RUNNER_TEMP/verified-nvd-input"
+          mkdir -p "$RUNNER_TEMP/publisher"
           workflow_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$PUBLISHER_WORKFLOW_FILE" --jq .id)"
           run_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow_id/runs?branch=master&status=completed" --jq '[.workflow_runs[] | select(.conclusion == "success" and (.event == "schedule" or .event == "workflow_dispatch"))][0].id')"
           test "$run_id" != null
@@ -225,7 +225,7 @@ jobs:
           set +e
           mvn -B org.owasp:dependency-check-maven:12.2.2:check \
             -DautoUpdate=false -DdataDirectory="$DEPENDENCY_CHECK_DATA" \
-            -Dformats=HTML,JSON,SARIF -DoutputDirectory="$RUNNER_TEMP/dependency-check-report" \
+            -Dformats=HTML,JSON,SARIF -Dodc.outputDirectory="$RUNNER_TEMP/dependency-check-report" \
             -DfailOnError=true -DfailBuildOnCVSS=8 -DfailBuildOnUnusedSuppressionRule=true
           status=$?
           set -e
