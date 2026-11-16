@@ -54,11 +54,17 @@ of the Production environment and confirmed all of the following as absent:
 
 No secret values were requested, recorded, or reviewed in this disposition.
 This is **owner-confirmed Production evidence**, not an independent runtime
-reproduction. The connected Render inventory previously listed one `tradepilot`
-service, but that observation does not prove that no other shared environment
-can run the proposed backend. The owner must separately confirm that Production
-is the only relevant release environment or provide the same value-free
-attestation for every additional environment.
+reproduction.
+
+### Owner-confirmed release-environment scope
+
+On 2026-11-15, the owner additionally confirmed: **"Yes, Production only."**
+For this release, the Render `tradepilot` Production service is the only
+persistent/shared Java backend environment that will run PR #16. This closes
+the environment-coverage question for the two findings whose applicability
+depends on the reviewed runtime configuration. It does not claim that the PR
+#16 build has already been deployed, and it must be reassessed if the deployment
+topology changes.
 
 ## Provenance
 
@@ -73,12 +79,12 @@ attestation for every additional environment.
 | CVE / package / CVSS | Prerequisites and observed evidence | Remediation and disposition |
 | --- | --- | --- |
 | `CVE-2026-53914` / `kotlin-stdlib:1.9.25` / 9.8 | The [official GHSA](https://github.com/advisories/GHSA-r937-wjx7-w2jp) identifies `kotlin-gradle-plugin`, unsafe **Gradle build-cache** metadata deserialization, and does not identify `kotlin-stdlib`. TradePilot does not use the Kotlin Gradle plugin or a Kotlin build cache; the stdlib is a runtime transitive only. Dependency-Check inherits the issue through the broad `jetbrains:kotlin` CPE. | The fixed Kotlin line is `2.4.20+`, which is a major 1.9-to-2.4 change. **VERIFIED FALSE POSITIVE** for this exact PURL/CVE pair; an exact exception still requires owner approval. |
-| `CVE-2026-47884` / `spring-core:6.2.19` / 9.8 | Requires `XsltView`, implicit `/**` MVC view rendering, and no explicit view name. No XSLT view, view resolver, `ModelAndView`, server-side view mapping, or XSLT configuration appears in the reviewed tree. The owner confirmed external XSLT/view-resolver configuration absent in Production on 2026-11-15. | Spring `6.2.20` is the affected-line fix but Enterprise Support Only; `7.0.9` is OSS and requires a Boot 4 migration. **CONDITIONALLY ELIGIBLE:** inapplicable in the reviewed Production configuration, pending shared-environment scope confirmation. Invalidated by XSLT/view customization, affected MVC routing, dependency change, or PR-head change. |
+| `CVE-2026-47884` / `spring-core:6.2.19` / 9.8 | Requires `XsltView`, implicit `/**` MVC view rendering, and no explicit view name. No XSLT view, view resolver, `ModelAndView`, server-side view mapping, or XSLT configuration appears in the reviewed tree. The owner confirmed external XSLT/view-resolver configuration absent in Production on 2026-11-15, and confirmed Production is the only persistent/shared Java backend environment for this release. | Spring `6.2.20` is the affected-line fix but Enterprise Support Only; `7.0.9` is OSS and requires a Boot 4 migration. **ELIGIBLE FOR FINAL OWNER RISK-ACCEPTANCE CONSIDERATION:** inapplicable under the reviewed release conditions, but not formally accepted. Invalidated by XSLT/view customization, affected MVC routing, dependency change, runtime configuration change, deployment-topology change, or PR-head change. |
 | `CVE-2026-47890` / `spring-core:6.2.19` / 9.8 | Requires MVC/WebFlux SSE with view fragments. No `SseEmitter`, `ServerSentEvent`, `text/event-stream`, WebFlux, or view fragments found. | Same Spring upgrade limits. **VERIFIED INAPPLICABLE** in the reviewed application; revisit if SSE or view fragments are added. |
 | `CVE-2026-47891` / `spring-core:6.2.19` / 9.8 | Requires WebFlux, Aalto XML, and `Jaxb2Decoder`. TradePilot uses servlet `spring-boot-starter-web`; no WebFlux dependency, Aalto, or XML decoder/configuration exists. | Same Spring upgrade limits. **VERIFIED INAPPLICABLE.** |
 | `CVE-2026-47892` / `spring-core:6.2.19` / 9.8 | Requires WebFlux functional endpoints with `DispatcherServlet` and the affected header predicate. No WebFlux dependency or `RouterFunction` endpoint found. | Same Spring upgrade limits. **VERIFIED INAPPLICABLE.** |
 | `CVE-2026-59313` / `spring-core:6.2.19` / 9.8 | Requires MVC functional `RouterFunction`, `ServerResponse.sse()`, SSE, plain-text events, and attacker-controlled streamed data. None exists in the reviewed application. | Same Spring upgrade limits. **VERIFIED INAPPLICABLE.** |
-| `CVE-2026-59283` / `spring-core:6.2.19` / 9.1 | Requires `SimpleEvaluationContext` and SpEL compilation through `spring.expression.compiler.mode` or `SpelParserConfiguration`. No matching code or checked-in compiler mode found. The owner confirmed the affected runtime configuration absent in Production on 2026-11-15. | Same Spring upgrade limits. **CONDITIONALLY ELIGIBLE:** inapplicable in the reviewed Production configuration, pending shared-environment scope confirmation. Invalidated by a compiler property, programmatic parser, `SimpleEvaluationContext` use, external configuration, dependency change, or PR-head change. |
+| `CVE-2026-59283` / `spring-core:6.2.19` / 9.1 | Requires `SimpleEvaluationContext` and SpEL compilation through `spring.expression.compiler.mode` or `SpelParserConfiguration`. No matching code or checked-in compiler mode found. The owner confirmed the affected runtime configuration absent in Production on 2026-11-15, and confirmed Production is the only persistent/shared Java backend environment for this release. | Same Spring upgrade limits. **ELIGIBLE FOR FINAL OWNER RISK-ACCEPTANCE CONSIDERATION:** inapplicable under the reviewed release conditions, but not formally accepted. Invalidated by a compiler property, programmatic parser, `SimpleEvaluationContext` use, external configuration, dependency change, runtime configuration change, deployment-topology change, or PR-head change. |
 | `CVE-2026-59270` / `spring-security-core:6.5.11` / 9.1 | Requires `UnboundIdContainer` or `spring.ldap.embedded.*` and a reachable LDAP listener. No UnboundID/LDAP dependency, container, configuration, or listener is resolved or checked in. | Spring Security `6.5.12` is affected-line Enterprise Support Only; OSS remediation is a major framework upgrade. **VERIFIED INAPPLICABLE** in the reviewed application; owner must confirm no deployment-time LDAP profile exists. |
 
 ## Read-only runtime evidence matrix
@@ -93,12 +99,12 @@ profile evidence.
 | CVE | Exploit prerequisite | Source/dependency evidence | Render inventory and owner confirmation | Remaining uncertainty | Final disposition | Eligible for separate owner approval |
 | --- | --- | --- | --- | --- | --- | --- |
 | `53914` | Kotlin Gradle build-cache metadata | Runtime stdlib only; no Kotlin Gradle plugin/cache | Not applicable to the runtime configuration; inventory unchanged 2026-11-14 | Future build tooling could change this | VERIFIED FALSE POSITIVE | Yes, exact PURL/CVE only |
-| `47884` | XSLT view, implicit `/**` view rendering | No XSLT/view resolver/`ModelAndView` path | Owner-confirmed absent in Production on 2026-11-15 | Shared-environment coverage is not established | CONDITIONALLY ELIGIBLE | After shared scope confirmation and exact approval only |
+| `47884` | XSLT view, implicit `/**` view rendering | No XSLT/view resolver/`ModelAndView` path | Owner-confirmed absent in Production on 2026-11-15; owner confirmed Production-only scope | Future XSLT/view routing, runtime configuration, dependency, topology, or PR-head changes | ELIGIBLE FOR FINAL OWNER RISK-ACCEPTANCE CONSIDERATION | Yes, exact PURL/CVE approval only |
 | `47890` | SSE view fragments | No SSE, WebFlux, or view fragments | No WebFlux/SSE configuration name; inventory unchanged | Future feature/module changes | VERIFIED INAPPLICABLE | Yes, exact PURL/CVE only |
 | `47891` | WebFlux, Aalto XML, `Jaxb2Decoder` | Servlet web starter; no WebFlux/Aalto/decoder | No contradictory configuration name; inventory unchanged | Runtime module/classpath additions outside review | VERIFIED INAPPLICABLE | Yes, exact PURL/CVE only |
 | `47892` | WebFlux functional route with affected predicate | No WebFlux or `RouterFunction` | No contradictory configuration name; inventory unchanged | Runtime module/classpath additions outside review | VERIFIED INAPPLICABLE | Yes, exact PURL/CVE only |
 | `59313` | MVC functional SSE and untrusted plain-text stream | No functional route, SSE, or streamed path | No WebFlux/SSE configuration name; inventory unchanged | Future feature/module changes | VERIFIED INAPPLICABLE | Yes, exact PURL/CVE only |
-| `59283` | `SimpleEvaluationContext` plus compiled SpEL | No matching code or checked-in compiler mode | Owner-confirmed absent in Production on 2026-11-15 | Shared-environment coverage is not established | CONDITIONALLY ELIGIBLE | After shared scope confirmation and exact approval only |
+| `59283` | `SimpleEvaluationContext` plus compiled SpEL | No matching code or checked-in compiler mode | Owner-confirmed absent in Production on 2026-11-15; owner confirmed Production-only scope | Future compiler/parser/runtime configuration, dependency, topology, or PR-head changes | ELIGIBLE FOR FINAL OWNER RISK-ACCEPTANCE CONSIDERATION | Yes, exact PURL/CVE approval only |
 | `59270` | UnboundID embedded LDAP listener | No UnboundID/LDAP dependency, container, or listener | No `SPRING_LDAP_EMBEDDED_*` name; no groups or secret files; inventory unchanged | Deployment-time profile/module outside reviewed inventory | VERIFIED INAPPLICABLE | Yes, exact PURL/CVE only |
 
 The specific Spring prerequisites and fixed-version availability are documented
@@ -112,13 +118,30 @@ Spring Core advisory links are: [47884](https://spring.io/security/cve-2026-4788
 
 ## Remaining runtime evidence
 
-The owner-confirmed review resolves the XSLT and compiled-SpEL questions for
-Production only. Before an exception can cover the release, the owner must
-make one narrow, value-free decision: Production is the only environment that
-can run the proposed backend, or each additional shared environment has the
-same confirmed-absent review. Repository review remains unable to prove values
-injected through a provider, JVM system properties, untracked profiles, or
-external Spring configuration.
+The owner-confirmed Production review and Production-only release-scope
+confirmation resolve the environment-coverage blocker for `47884` and `59283`.
+Repository review still cannot make permanent claims about future provider
+settings, JVM system properties, untracked profiles, external configuration,
+or deployment topology. Those are explicit invalidation triggers, not evidence
+that either CVE has been accepted.
+
+## Final exact-tuple owner decision matrix
+
+Every row below is tied to the reported CVSS >= 8 scan result for PR #16 commit
+`bfa203b7938b3a15ac0babb9ab78b87c2e004e3c`. **All approval statuses are NOT
+APPROVED.** Any future activation must bind new approval to the final reviewed
+release head and a hash-verified candidate artifact.
+
+| CVE / exact PURL / CVSS | Evidence-based disposition and justification | Runtime evidence | Residual risk and invalidation | Proposed expiry | Owner approval |
+| --- | --- | --- | --- | --- | --- |
+| `CVE-2026-53914` / `pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.25` / 9.8 | **VERIFIED FALSE POSITIVE.** The advisory concerns Kotlin Gradle-plugin build-cache metadata deserialization, not this runtime stdlib PURL; no Kotlin Gradle plugin or build cache is used. | Not runtime-config dependent. | Future Kotlin build tooling, dependency, or PR-head change requires review. | No later than 2026-12-15. | **NOT APPROVED** |
+| `CVE-2026-47884` / `pkg:maven/org.springframework/spring-core@6.2.19` / 9.8 | **ELIGIBLE FOR FINAL OWNER RISK-ACCEPTANCE CONSIDERATION.** No affected XSLT/view path in source; no external XSLT/view customization in reviewed Production. | Owner-confirmed Production review and Production-only scope, 2026-11-15. | XSLT/view routing, runtime configuration, dependency, topology, or PR-head change invalidates this evidence. | No later than 2026-12-15. | **NOT APPROVED** |
+| `CVE-2026-47890` / `pkg:maven/org.springframework/spring-core@6.2.19` / 9.8 | **VERIFIED INAPPLICABLE.** No MVC/WebFlux SSE view-fragment path. | No contrary runtime configuration identified. | Adding SSE, WebFlux, or view fragments requires review. | No later than 2026-12-15. | **NOT APPROVED** |
+| `CVE-2026-47891` / `pkg:maven/org.springframework/spring-core@6.2.19` / 9.8 | **VERIFIED INAPPLICABLE.** Servlet web stack; no WebFlux, Aalto XML, or `Jaxb2Decoder`. | No contrary runtime configuration identified. | Adding the affected stack or changing dependencies requires review. | No later than 2026-12-15. | **NOT APPROVED** |
+| `CVE-2026-47892` / `pkg:maven/org.springframework/spring-core@6.2.19` / 9.8 | **VERIFIED INAPPLICABLE.** No WebFlux functional route or affected predicate. | No contrary runtime configuration identified. | Adding functional WebFlux routing, runtime modules, or dependency changes requires review. | No later than 2026-12-15. | **NOT APPROVED** |
+| `CVE-2026-59313` / `pkg:maven/org.springframework/spring-core@6.2.19` / 9.8 | **VERIFIED INAPPLICABLE.** No MVC functional SSE route, plain-text event stream, or attacker-controlled streamed path. | No contrary runtime configuration identified. | Adding SSE/streaming, functional routing, or dependency changes requires review. | No later than 2026-12-15. | **NOT APPROVED** |
+| `CVE-2026-59283` / `pkg:maven/org.springframework/spring-core@6.2.19` / 9.1 | **ELIGIBLE FOR FINAL OWNER RISK-ACCEPTANCE CONSIDERATION.** No `SimpleEvaluationContext`/compiled-SpEL path; compiled-SpEL configuration absent in reviewed Production. | Owner-confirmed Production review and Production-only scope, 2026-11-15. | Compiler settings, parser behavior, framework usage, runtime configuration, dependency, topology, or PR-head change invalidates this evidence. | No later than 2026-12-15. | **NOT APPROVED** |
+| `CVE-2026-59270` / `pkg:maven/org.springframework.security/spring-security-core@6.5.11` / 9.1 | **VERIFIED INAPPLICABLE** under previously reviewed embedded-LDAP evidence: no UnboundID/LDAP dependency, configuration, container, or listener. | Previous value-free embedded-LDAP review; no contradictory inventory name observed. | Any LDAP profile, listener, runtime module, dependency, or PR-head change requires review. | No later than 2026-12-15. | **NOT APPROVED** |
 
 ## Inactive December candidate
 
@@ -130,13 +153,41 @@ and exactly match the eight report tuples above. Its eight additional entries
 are not instances in this report. The candidate is **inactive**, is not an
 approval record, and expires 2026-12-15.
 
-The owner-confirmed evidence does not approve activation. Kotlin `53914`; Spring
-Core `47890`, `47891`, `47892`, and `59313`; and Spring Security `59270` are
-technically eligible for separate owner review. Spring Core `47884` and `59283`
-are conditionally eligible only after the shared-environment scope decision.
-Every approval must remain exact-CVE/exact-PURL, bind the future reviewed
-activation head and candidate hash, expire no later than 2026-12-15, and reject
-unused or mismatched suppressions.
+A separate temporary review artifact named
+`dependency-check-eight-cve-candidate.xml` was prepared outside this repository
+with the eight exact tuples in this matrix. Its reported review identifier is
+SHA-256 `ce8ac95116e3ed8718f8ce20367cd0720d4300edfbe63be37bae382b9c9cf3bb` and
+its status is **INACTIVE — NOT APPROVED — NOT FOR ACTIVATION**. This document
+records that reported identifier only; it does not independently verify the
+temporary file, copy it into the repository, or authorize it.
+
+The owner-confirmed evidence does not approve activation. All eight tuples are
+technically ready for separate, individual owner consideration; the
+Production-only scope confirmation resolved the prior environment-coverage
+condition for `47884` and `59283`. Every approval must remain exact-CVE/exact-
+PURL, bind the future reviewed activation head and candidate hash, expire no
+later than 2026-12-15, and reject unused or mismatched suppressions.
+
+## Final approval requirements
+
+Before any candidate can be activated, require all of the following:
+
+1. Explicit owner approval for each exact CVE/PURL tuple.
+2. Approval bound to a reviewed, hash-verified candidate artifact and the final
+   release source/dependency graph.
+3. An expiration no later than 2026-12-15 and renewal after any PR-head,
+   dependency, security-configuration, runtime, or topology change.
+4. No extra or unused suppression rules; preserve
+   `failBuildOnUnusedSuppressionRule=true`.
+5. Preserved CVSS >= 8 enforcement and `failOnError=true`.
+6. Fresh trusted NVD input and a successful exact-head hosted security
+   validation after the final activation commit.
+7. Appropriate required-check branch protection before release.
+
+A passing scan is not a replacement for explicit owner authorization. Because
+an eventual activation commit changes PR #16's head, the historic scan evidence
+and every approval must be reviewed and renewed as necessary for that final
+commit.
 
 ## Remediation plan
 
@@ -154,8 +205,10 @@ unused or mismatched suppressions.
 
 ## Final release recommendation
 
+**Environment coverage: COMPLETE. Eight-CVE technical review: READY FOR OWNER
+CONSIDERATION. Eight-CVE risk approval: PENDING. Suppressions: INACTIVE.**
+
 Do not merge PR #16 while the eight findings block Dependency-Check. The next
-owner decision is whether Production is the only relevant release environment
-or which additional environments require the same value-free review, followed
-by explicit approval of each exact tuple. No broad suppression, CVSS reduction,
-or scanner bypass is authorized.
+owner decision is explicit approval or rejection of each exact tuple against a
+final reviewed head and hash-verified candidate. No broad suppression, CVSS
+reduction, or scanner bypass is authorized.
