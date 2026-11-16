@@ -53,6 +53,17 @@ SCOPE_POLICIES = {
         "reviewed_commit": "5d6b05af6a2c7234ec3d666d8cabc3d45f020a35",
         "approval_pr": HISTORICAL_APPROVAL_PR,
     },
+    "original-eight-dec15": {
+        "approved": ORIGINAL_EIGHT,
+        "suppression_expiry": "2026-12-15",
+        "approval_expiry": "2026-12-15T23:59:59Z",
+        # This is a new proposal for PR #16's reviewed source baseline. It
+        # cannot inherit PR #6's approval and must bind a future activation to
+        # its final reviewed PR head.
+        "requires_new_pr_binding": True,
+        "prepared_baseline_commit": "bfa203b7938b3a15ac0babb9ab78b87c2e004e3c",
+        "disallowed_approval_prs": frozenset({HISTORICAL_APPROVAL_PR}),
+    },
     # Historical, never-approved November amendment retained for audit evidence.
     "expanded-sixteen": {
         "approved": EXPANDED_SIXTEEN,

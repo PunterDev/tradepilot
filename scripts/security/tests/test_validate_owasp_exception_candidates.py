@@ -6,7 +6,9 @@ import runpy
 import subprocess
 import tempfile
 import unittest
+import copy
 from pathlib import Path
+import xml.etree.ElementTree as element_tree
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -16,6 +18,7 @@ EXPANDED_CANDIDATE = ROOT / "docs/security/candidates/dependency-check-final-six
 DECEMBER_EXPANDED_CANDIDATE = ROOT / "docs/security/candidates/dependency-check-expanded-sixteen-dec15-candidate.xml"
 PENDING_APPROVAL = ROOT / "docs/security/candidates/owasp-final-eight-approval.template.json"
 DECEMBER_EXPANDED_APPROVAL = ROOT / "docs/security/candidates/owasp-expanded-sixteen-dec15-approval.template.json"
+DECEMBER_ORIGINAL_APPROVAL = ROOT / "docs/security/candidates/owasp-original-eight-dec15-approval.template.json"
 APPROVED_FINDINGS = [
     {"cve": "CVE-2026-53914", "purl": "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.25", "cvss": 9.8},
     {"cve": "CVE-2026-47884", "purl": "pkg:maven/org.springframework/spring-core@6.2.19", "cvss": 9.8},
@@ -60,6 +63,12 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
             self.addCleanup(findings_path.unlink, missing_ok=True)
             command.extend(("--findings", str(findings_path)))
         return subprocess.run(command, text=True, capture_output=True, check=False)
+
+    @staticmethod
+    def december_original_candidate(directory: Path) -> Path:
+        candidate = directory / "original-eight-dec15.xml"
+        candidate.write_text(CANDIDATE.read_text().replace("2026-11-30", "2026-12-15"))
+        return candidate
 
     def approved_record(self, directory: Path, *, candidate: Path = CANDIDATE, scope: str = "original-eight") -> Path:
         policy = VALIDATOR_MODULE["SCOPE_POLICIES"][scope]
@@ -177,6 +186,81 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
             as_of="2026-12-01T00:00:00Z",
         )
         self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_december_original_candidate_passes_proposal_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            result = self.run_validator(
+                suppression=self.december_original_candidate(Path(temp)),
+                approval=DECEMBER_ORIGINAL_APPROVAL,
+                scope="original-eight-dec15",
+                as_of="2026-11-15T00:00:00Z",
+            )
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_december_original_scope_rejects_historical_or_expanded_candidates(self) -> None:
+        for candidate in (CANDIDATE, DECEMBER_EXPANDED_CANDIDATE):
+            with self.subTest(candidate=candidate.name):
+                result = self.run_validator(
+                    suppression=candidate,
+                    approval=DECEMBER_ORIGINAL_APPROVAL,
+                    scope="original-eight-dec15",
+                    as_of="2026-11-15T00:00:00Z",
+                )
+                self.assertNotEqual(0, result.returncode)
+
+    def test_december_original_candidate_rejects_scope_and_matcher_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            candidate = self.december_original_candidate(directory)
+            root = element_tree.parse(candidate).getroot()
+            namespace = "{https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd}"
+
+            mutations = {
+                "missing": lambda value: value.remove(value[0]),
+                "duplicate": lambda value: value.append(copy.deepcopy(value[0])),
+                "broad": lambda value: setattr(value[0].find(f"{namespace}packageUrl"), "text", ".*"),
+                "wrong-expiry": lambda value: value[0].set("until", "2026-12-31"),
+            }
+            for name, mutate in mutations.items():
+                with self.subTest(mutation=name):
+                    changed_root = copy.deepcopy(root)
+                    mutate(changed_root)
+                    changed = directory / f"{name}.xml"
+                    element_tree.ElementTree(changed_root).write(
+                        changed, encoding="utf-8", xml_declaration=True
+                    )
+                    result = self.run_validator(
+                        suppression=changed,
+                        approval=DECEMBER_ORIGINAL_APPROVAL,
+                        scope="original-eight-dec15",
+                        as_of="2026-11-15T00:00:00Z",
+                    )
+                    self.assertNotEqual(0, result.returncode, f"{name}: {result.stderr}")
+
+            changed_purl = directory / "changed-purl.xml"
+            changed_purl.write_text(
+                candidate.read_text().replace(
+                    "kotlin\\-stdlib@1\\.9\\.25", "kotlin\\-stdlib@1\\.9\\.26", 1
+                )
+            )
+            result = self.run_validator(
+                suppression=changed_purl,
+                approval=DECEMBER_ORIGINAL_APPROVAL,
+                scope="original-eight-dec15",
+                as_of="2026-11-15T00:00:00Z",
+            )
+            self.assertNotEqual(0, result.returncode)
+
+    def test_december_original_candidate_expires_after_december_fifteenth(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            result = self.run_validator(
+                suppression=self.december_original_candidate(Path(temp)),
+                approval=DECEMBER_ORIGINAL_APPROVAL,
+                scope="original-eight-dec15",
+                as_of="2026-12-16T00:00:00Z",
+            )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("expired", result.stderr)
 
     def test_pending_december_proposal_rejects_a_prebound_pull_request(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -522,6 +606,69 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
         approval["approvalEvidence"]["pullRequest"] = 6
         with self.assertRaisesRegex(VALIDATOR_MODULE["PolicyError"], "historical PR approval"):
             VALIDATOR_MODULE["validate_approval"](approval, "expanded-sixteen-dec15")
+
+    def test_december_original_renewal_rejects_historical_pr_six(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            candidate = self.december_original_candidate(Path(temp))
+            approval = json.loads(self.approved_record(
+                Path(temp), candidate=candidate, scope="original-eight-dec15"
+            ).read_text())
+        approval["approvalEvidence"]["pullRequest"] = 6
+        with self.assertRaisesRegex(VALIDATOR_MODULE["PolicyError"], "historical PR approval"):
+            VALIDATOR_MODULE["validate_approval"](approval, "original-eight-dec15")
+
+    def test_december_original_renewal_rejects_incomplete_or_mismatched_approval(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            candidate = self.december_original_candidate(Path(temp))
+            approval = json.loads(self.approved_record(
+                Path(temp), candidate=candidate, scope="original-eight-dec15"
+            ).read_text())
+            incomplete = copy.deepcopy(approval)
+            incomplete["repositoryOwner"]["approvedAt"] = ""
+            with self.assertRaisesRegex(VALIDATOR_MODULE["PolicyError"], "approval is incomplete"):
+                VALIDATOR_MODULE["validate_approval"](incomplete, "original-eight-dec15")
+
+            missing_binding = copy.deepcopy(approval)
+            missing_binding["reviewedCommit"] = ""
+            with self.assertRaisesRegex(VALIDATOR_MODULE["PolicyError"], "new PR head commit"):
+                VALIDATOR_MODULE["validate_approval"](missing_binding, "original-eight-dec15")
+
+            mismatched_candidate = copy.deepcopy(approval)
+            mismatched_candidate["approvalEvidence"]["candidateSha256"] = "0" * 64
+            with self.assertRaisesRegex(VALIDATOR_MODULE["PolicyError"], "does not bind"):
+                VALIDATOR_MODULE["verify_github_approvals"](
+                    mismatched_candidate,
+                    candidate,
+                    VALIDATOR_MODULE["ORIGINAL_EIGHT"],
+                    lambda _repository, _comment_id: self.comment("founder", ""),
+                )
+
+            with self.assertRaisesRegex(VALIDATOR_MODULE["PolicyError"], "author does not match"):
+                VALIDATOR_MODULE["verify_github_approvals"](
+                    approval,
+                    candidate,
+                    VALIDATOR_MODULE["ORIGINAL_EIGHT"],
+                    lambda _repository, _comment_id: self.comment(
+                        "impostor", "OWNER_AUTHORIZATION: APPROVE", pull_request=SYNTHETIC_DECEMBER_PR
+                    ),
+                    lambda _repository, pull_request: {
+                        "number": pull_request,
+                        "base": {"ref": "master"},
+                        "head": {"sha": SYNTHETIC_DECEMBER_HEAD},
+                    },
+                )
+
+    def test_pending_december_original_approval_cannot_activate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            result = self.run_validator(
+                suppression=self.december_original_candidate(Path(temp)),
+                approval=DECEMBER_ORIGINAL_APPROVAL,
+                mode="activation",
+                scope="original-eight-dec15",
+                as_of="2026-11-15T00:00:00Z",
+            )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("not APPROVED", result.stderr)
 
     def test_december_renewal_rejects_mismatched_pr_head(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
