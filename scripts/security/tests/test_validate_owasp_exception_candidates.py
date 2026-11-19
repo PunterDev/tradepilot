@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 import copy
+from datetime import datetime, timezone
 from pathlib import Path
 import xml.etree.ElementTree as element_tree
 
@@ -19,6 +20,9 @@ DECEMBER_EXPANDED_CANDIDATE = ROOT / "docs/security/candidates/dependency-check-
 PENDING_APPROVAL = ROOT / "docs/security/candidates/owasp-final-eight-approval.template.json"
 DECEMBER_EXPANDED_APPROVAL = ROOT / "docs/security/candidates/owasp-expanded-sixteen-dec15-approval.template.json"
 DECEMBER_ORIGINAL_APPROVAL = ROOT / "docs/security/candidates/owasp-original-eight-dec15-approval.template.json"
+ACTIVATION_CANDIDATE = ROOT / "docs/security/candidates/dependency-check-original-eight-dec15-candidate.xml"
+ACTIVATION_APPROVAL = ROOT / "docs/security/candidates/owasp-original-eight-dec15-approval.json"
+ACTIVATION_CANDIDATE_SHA256 = "ce8ac95116e3ed8718f8ce20367cd0720d4300edfbe63be37bae382b9c9cf3bb"
 APPROVED_FINDINGS = [
     {"cve": "CVE-2026-53914", "purl": "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.25", "cvss": 9.8},
     {"cve": "CVE-2026-47884", "purl": "pkg:maven/org.springframework/spring-core@6.2.19", "cvss": 9.8},
@@ -54,6 +58,23 @@ ATTESTATION_LIMITATIONS = [
 
 
 class OwaspExceptionPolicyTests(unittest.TestCase):
+    def test_original_eight_december_activation_artifacts_are_exact_and_bound(self) -> None:
+        self.assertEqual(
+            ACTIVATION_CANDIDATE_SHA256,
+            hashlib.sha256(ACTIVATION_CANDIDATE.read_bytes()).hexdigest(),
+        )
+        approval = json.loads(ACTIVATION_APPROVAL.read_text())
+        self.assertEqual("APPROVED", approval["status"])
+        self.assertEqual("original-eight-dec15", approval["scope"])
+        self.assertEqual(ACTIVATION_CANDIDATE_SHA256, approval["approvalEvidence"]["candidateSha256"])
+        VALIDATOR_MODULE["validate_approval"](approval, "original-eight-dec15")
+        self.assertEqual(VALIDATOR_MODULE["ORIGINAL_EIGHT"], VALIDATOR_MODULE["validate_suppressions"](
+            ACTIVATION_CANDIDATE,
+            datetime(2026, 11, 17, tzinfo=timezone.utc),
+            VALIDATOR_MODULE["ORIGINAL_EIGHT"],
+            "2026-12-15",
+        ))
+
     def run_validator(self, suppression: Path = CANDIDATE, approval: Path = PENDING_APPROVAL, findings: list[dict] | None = None, *, mode: str = "proposal", as_of: str = "2026-11-03T00:00:00Z", scope: str = "original-eight") -> subprocess.CompletedProcess[str]:
         command = ["python3", str(VALIDATOR), "--suppression", str(suppression), "--approval-record", str(approval), "--mode", mode, "--as-of", as_of, "--scope", scope]
         if findings is not None:
@@ -848,6 +869,21 @@ class OwaspExceptionPolicyTests(unittest.TestCase):
         result = self.run_validator(mode="activation")
         self.assertNotEqual(0, result.returncode)
         self.assertIn("not APPROVED", result.stderr)
+
+    def test_missing_suppression_file_fails_closed(self) -> None:
+        result = self.run_validator(suppression=ROOT / "missing-suppression.xml")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("cannot parse suppression XML", result.stderr)
+
+    def test_sixteen_rule_candidate_cannot_satisfy_original_eight_december_scope(self) -> None:
+        result = self.run_validator(
+            suppression=DECEMBER_EXPANDED_CANDIDATE,
+            approval=DECEMBER_ORIGINAL_APPROVAL,
+            scope="original-eight-dec15",
+            as_of="2026-11-17T00:00:00Z",
+        )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("unapproved CVE/PURL tuple", result.stderr)
 
     def test_missing_production_attestation_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
