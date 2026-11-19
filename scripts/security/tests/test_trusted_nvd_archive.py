@@ -359,9 +359,10 @@ class WorkflowBoundaryTests(unittest.TestCase):
 
     def test_all_workflow_jq_expressions_are_extracted_and_executable(self) -> None:
         expressions = self.workflow_jq_expressions()
-        self.assertEqual(len(expressions), 18)
+        self.assertEqual(len(expressions), 20)
         self.assertEqual(sum("workflow_runs" in expression for expression in expressions), 1)
         self.assertEqual(sum("artifacts" in expression for expression in expressions), 1)
+        self.assertEqual(expressions.count(".content"), 2)
         self.assertGreaterEqual(sum(expression.startswith(".head") for expression in expressions), 3)
         self.assertGreaterEqual(sum(expression.startswith(".base") for expression in expressions), 2)
         payload = {
@@ -381,6 +382,7 @@ class WorkflowBoundaryTests(unittest.TestCase):
             "conclusion": "success",
             "head_branch": "master",
             "head_sha": REVISION,
+            "content": "c3ludGhldGlj",
             "digest": "sha256:" + "b" * 64,
             "workflow_run": {"id": 2},
             "state": "open",
@@ -427,6 +429,17 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertIn("Check out protected verifier source", consumer)
         self.assertIn("Bind the protected verifier source", consumer)
         self.assertIn("trusted-nvd-archive-verifier.py", consumer)
+        self.assertIn("validate_original_eight_dec15_activation.py", consumer)
+        self.assertIn("Acquire and validate the exact owner-approved suppression", consumer)
+        self.assertIn("original-eight-dec15-untrusted", consumer)
+        self.assertIn("validated-original-eight-dec15-suppression", consumer)
+        self.assertIn("Reverify the validated suppression before PR checkout", consumer)
+        self.assertIn("-DsuppressionFile=", consumer)
+        self.assertIn("suppression_required", consumer)
+        self.assertIn("steps.pr.outputs.suppression_required == 'true'", consumer)
+        self.assertIn("needs.acquire-verified-nvd.outputs.suppression_required == 'true'", consumer)
+        self.assertIn("compare/$REVIEWED_COMMIT...$PULL_REQUEST_HEAD", consumer)
+        self.assertIn("issues/comments/6938531951", consumer)
         self.assertIn("expected-workflow-run-id", consumer)
         self.assertIn("expected-source-revision", consumer)
         self.assertIn("pull_request_head", consumer)
@@ -448,7 +461,7 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertIn("HTML,JSON,SARIF", consumer)
         self.assertIn("dependency-check-report.html", consumer)
         self.assertIn("dependency-check-report.sarif", consumer)
-        self.assertNotIn("docs/security/candidates", consumer)
+        self.assertNotIn("actions/checkout@${{ needs.acquire-verified-nvd.outputs.head_sha }}", consumer)
         self.assertNotIn("actions/cache", publisher + consumer)
         self.assertNotIn("tar -C \"$RUNNER_TEMP\" -xzf", consumer)
         self.assertNotIn("extractall", consumer)
@@ -466,11 +479,33 @@ class WorkflowBoundaryTests(unittest.TestCase):
         scanner = consumer.split("Run credential-free Dependency-Check", 1)[1].split("publish-commit-specific-check", 1)[0]
         self.assertNotIn("${{ github.token }}", scanner)
         self.assertNotIn("checks: write", scanner)
-        self.assertIn("Preserve the real scan result", scanner)
+        self.assertIn("Require a successful real scan result", scanner)
+        self.assertIn('run: test "${{ steps.scan.outputs.status }}" = "0"', scanner)
+        self.assertNotIn('run: exit "${{ steps.scan.outputs.status || 1 }}"', scanner)
         publisher_job = consumer.split("publish-commit-specific-check", 1)[1]
         self.assertNotIn("actions/checkout", publisher_job)
         self.assertIn("checks: write", publisher_job)
         self.assertIn("test \"$conclusion\" = success", publisher_job)
+
+    def test_exception_handoff_is_validated_before_untrusted_checkout(self) -> None:
+        consumer = self.WORKFLOW.read_text()
+        acquisition = consumer.split("Acquire and validate the exact owner-approved suppression", 1)[1]
+        scanner = consumer.split("Run credential-free Dependency-Check", 1)[1]
+        self.assertIn("contents/$CANDIDATE_PATH?ref=$PULL_REQUEST_HEAD", acquisition)
+        self.assertIn("contents/$APPROVAL_PATH?ref=$PULL_REQUEST_HEAD", acquisition)
+        self.assertIn('python3 "$RUNNER_TEMP/original-eight-dec15-verifier.py" validate', acquisition)
+        self.assertLess(
+            consumer.index("Acquire and validate the exact owner-approved suppression"),
+            consumer.index("Check out exact pull request source without credentials"),
+        )
+        self.assertIn("NVD_API_KEY: ''", scanner)
+        self.assertIn("GITHUB_TOKEN: ''", scanner)
+        self.assertIn("GH_TOKEN: ''", scanner)
+        self.assertIn('"${suppression_argument[@]}"', scanner)
+        self.assertIn(
+            'suppression_argument+=("-DsuppressionFile=$RUNNER_TEMP/suppression/original-eight-dec15-validated/original-eight-dec15.xml")',
+            scanner,
+        )
 
     def test_workflow_leaves_verification_destinations_for_the_verifier(self) -> None:
         consumer = self.WORKFLOW.read_text()
