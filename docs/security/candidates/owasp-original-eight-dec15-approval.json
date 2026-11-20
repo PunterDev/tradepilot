@@ -1,0 +1,53 @@
+{
+  "status": "APPROVED",
+  "scope": "original-eight-dec15",
+  "reviewedCommit": "45931748c1551a3bf77d6070f9f37e9fae0c344d",
+  "preparedBaselineCommit": "bfa203b7938b3a15ac0babb9ab78b87c2e004e3c",
+  "expiry": "2026-12-15T23:59:59Z",
+  "decisionTimestamp": "2026-11-17T04:39:29Z",
+  "repositoryOwner": {
+    "name": "PunterDev",
+    "decision": "APPROVE",
+    "approvedAt": "2026-11-17T04:39:29Z"
+  },
+  "securityRiskOwner": {
+    "name": "PunterDev",
+    "decision": "APPROVE",
+    "approvedAt": "2026-11-17T04:39:29Z"
+  },
+  "productionConfiguration": {
+    "status": "OWNER_ATTESTED_WITH_LIMITATIONS",
+    "evidenceReference": "November 15 Production-only owner attestation",
+    "limitations": [
+      "LIVE_CONTAINER_FILES_NOT_INDEPENDENTLY_VERIFIED",
+      "HOSTED_JVM_PROPERTIES_NOT_INDEPENDENTLY_VERIFIED",
+      "FUTURE_CONFIGURATION_DRIFT_NOT_INDEPENDENTLY_VERIFIED"
+    ]
+  },
+  "governance": {
+    "mode": "SOLO_FOUNDER",
+    "soloFounder": {
+      "policyAdoption": "ADOPTED",
+      "githubLogin": "PunterDev",
+      "commentId": "6938531951"
+    }
+  },
+  "approvalEvidence": {
+    "repository": "PunterDev/tradepilot",
+    "pullRequest": 16,
+    "reviewedPullRequestHeadSha": "45931748c1551a3bf77d6070f9f37e9fae0c344d",
+    "candidateSha256": "ce8ac95116e3ed8718f8ce20367cd0720d4300edfbe63be37bae382b9c9cf3bb",
+    "repositoryOwner": {
+      "githubLogin": "PunterDev",
+      "commentId": "6938531951"
+    },
+    "securityRiskOwner": {
+      "githubLogin": "PunterDev",
+      "commentId": "6938531951"
+    },
+    "productionConfigurationAttestor": {
+      "githubLogin": "PunterDev",
+      "commentId": "6938531951"
+    }
+  }
+}

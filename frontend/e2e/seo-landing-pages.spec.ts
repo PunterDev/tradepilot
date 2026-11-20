@@ -934,7 +934,7 @@ test("trading expectancy calculator preserves fees and monthly calculations", as
   await page.goto(`${expectancyCalculatorPath}?winRate=55&avgWin=250&avgLoss=150&trades=40&fees=4.50`);
 
   await expect(page.locator(".expectancy-primary-result")).toHaveText("+$65.50");
-  await expect(page.getByText("Gross Expectancy: +$70 before fees")).toBeVisible();
+  await expect(page.getByText("Gross Expectancy: +$70.00 before fees")).toBeVisible();
   await expect(page.getByText("+$2,620/month")).toBeVisible();
   await expect(page.getByText("-$4.50/trade")).toBeVisible();
 });

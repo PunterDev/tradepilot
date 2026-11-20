@@ -4,10 +4,14 @@ on:
   pull_request:
   push:
     branches:
-      - main
       - master
-      - "codex/**"
-  workflow_dispatch:
+
+# A new commit to a pull request supersedes older scans for that same pull
+# request. Protected-branch pushes use their own group and are never mixed
+# with pull-request runs.
+concurrency:
+  group: security-scans-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -41,16 +45,33 @@ jobs:
           java-version: "17"
           cache: maven
 
+      - name: Backend dependency check
+        working-directory: backend
+        # This intentionally fails closed until a separately reviewed verified
+        # NVD archive is available to this credential-free job. Never add NVD
+        # credentials or an unauthenticated update fallback to PR execution.
+        run: >-
+          mvn -B org.owasp:dependency-check-maven:12.2.2:check
+          -DautoUpdate=false
+          -DdataDirectory="$RUNNER_TEMP/tradepilot-verified-nvd-data"
+          -DfailBuildOnCVSS=8
+          -DfailOnError=true
+
+  frontend-audit:
+    name: frontend-audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Backend dependency check
-        working-directory: backend
-        run: mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8
 
       - name: Frontend dependency audit
         working-directory: frontend
