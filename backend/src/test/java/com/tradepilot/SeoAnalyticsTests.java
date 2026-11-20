@@ -140,8 +140,10 @@ class SeoAnalyticsTests {
         postEvent(UUID.randomUUID().toString(), "signup_started_from_seo", anonymousId, "/tools/revenge-trading-calculator", "revenge_trading");
 
         assertThat(eventRepository.findAll().stream().filter(event -> anonymousId.equals(event.getAnonymousId())).count()).isEqualTo(5);
-        LocalDate startDate = LocalDate.now().minusDays(1);
-        LocalDate endDate = LocalDate.now();
+        // Keep the conversion across midnight and include every seeded milestone in the report.
+        LocalDateTime signupAt = LocalDate.now().minusDays(1).atTime(23, 40);
+        LocalDate startDate = signupAt.toLocalDate();
+        LocalDate endDate = signupAt.plusMinutes(40).toLocalDate();
         eventRepository.findAll().stream()
                 .filter(event -> anonymousId.equals(event.getAnonymousId()))
                 .forEach(event -> assertThat(event.getOccurredAt()).isBetween(startDate.atStartOfDay(), endDate.plusDays(1).atStartOfDay()));
@@ -175,7 +177,9 @@ class SeoAnalyticsTests {
                 .isEqualTo(5);
 
         seoAnalyticsService.recordSignup(normal, attribution(anonymousId, "/tools/revenge-trading-calculator", "google", "organic", "revenge"));
-        LocalDateTime signupAt = LocalDateTime.now();
+        var persistedAttribution = attributionRepository.findByUserId(normal.getId()).orElseThrow();
+        persistedAttribution.setSignupCompletedAt(signupAt);
+        attributionRepository.save(persistedAttribution);
         saveFeature(normal, FeatureUsageAction.FIRST_IMPORT_COMPLETED, signupAt.plusMinutes(8));
         seoAnalyticsService.markFirstImportCompleted(normal, signupAt.plusMinutes(8));
         saveFeature(normal, FeatureUsageAction.FIRST_INSIGHT_GENERATED, signupAt.plusMinutes(20));
@@ -280,13 +284,13 @@ class SeoAnalyticsTests {
         assertThat(attribution.getFirstInsightGeneratedAt()).isNull();
         assertThat(attribution.getProConvertedAt()).isNull();
 
-        LocalDateTime firstImport = LocalDateTime.now().plusMinutes(10);
+        LocalDateTime firstImport = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS).plusMinutes(10);
         LocalDateTime laterImport = firstImport.plusHours(1);
         seoAnalyticsService.markFirstImportCompleted(user, firstImport);
         seoAnalyticsService.markFirstImportCompleted(user, laterImport);
         assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getFirstImportCompletedAt()).isEqualTo(firstImport);
 
-        LocalDateTime firstInsight = LocalDateTime.now().plusMinutes(20);
+        LocalDateTime firstInsight = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS).plusMinutes(20);
         seoAnalyticsService.markFirstInsightGenerated(user, firstInsight);
         seoAnalyticsService.markFirstInsightGenerated(user, firstInsight.plusHours(2));
         assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getFirstInsightGeneratedAt()).isEqualTo(firstInsight);

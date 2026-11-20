@@ -1,0 +1,46 @@
+{
+  "status": "PENDING",
+  "reviewedCommit": "5d6b05af6a2c7234ec3d666d8cabc3d45f020a35",
+  "expiry": "2026-11-30T23:59:59Z",
+  "decisionTimestamp": "",
+  "repositoryOwner": {
+    "name": "",
+    "decision": "PENDING",
+    "approvedAt": ""
+  },
+  "securityRiskOwner": {
+    "name": "",
+    "decision": "PENDING",
+    "approvedAt": ""
+  },
+  "productionConfiguration": {
+    "status": "PENDING",
+    "evidenceReference": "",
+    "limitations": []
+  },
+  "governance": {
+    "mode": "PENDING",
+    "soloFounder": {
+      "policyAdoption": "PENDING",
+      "githubLogin": "",
+      "commentId": ""
+    }
+  },
+  "approvalEvidence": {
+    "repository": "PunterDev/tradepilot",
+    "pullRequest": 6,
+    "candidateSha256": "",
+    "repositoryOwner": {
+      "githubLogin": "",
+      "commentId": ""
+    },
+    "securityRiskOwner": {
+      "githubLogin": "",
+      "commentId": ""
+    },
+    "productionConfigurationAttestor": {
+      "githubLogin": "",
+      "commentId": ""
+    }
+  }
+}
