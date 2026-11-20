@@ -8,6 +8,9 @@ import hashlib
 import json
 import re
 import runpy
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -181,6 +184,40 @@ class SecondEightDecemberActivationTests(unittest.TestCase):
         MODULE["write_handoff"](self.original_candidate, self.second_candidate, handoff, self.head)
         return handoff
 
+    def protected_layout(self) -> Path:
+        layout = self.root / "protected-layout"
+        layout.mkdir()
+        original = layout / "validate_original_eight_dec15_activation.py"
+        second = layout / "validate_second_eight_dec15_activation.py"
+        shutil.copy2(ROOT / "scripts/security/validate_original_eight_dec15_activation.py", original)
+        shutil.copy2(ROOT / "scripts/security/validate_second_eight_dec15_activation.py", second)
+        original.write_text(original.read_text().replace(
+            self.original_hash, self.digest(self.original_candidate),
+        ))
+        second.write_text(second.read_text().replace(
+            self.second_hash, self.policy["SECOND_CANDIDATE_SHA256"],
+        ))
+        return layout
+
+    def command(self, script: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(script), *arguments], capture_output=True, text=True,
+        )
+
+    def command_inputs(self, original_head: str | None = None) -> dict[str, Path]:
+        original_pr = self.pull_request()
+        original_pr["head"]["sha"] = original_head or MODULE["ORIGINAL_ACTIVATION_COMMIT"]
+        return {
+            "original_approval": self.write("original-approval.json", self.original_approval()),
+            "original_comment": self.write("original-comment.json", self.original_comment()),
+            "original_pr": self.write("original-pr.json", original_pr),
+            "stage_a": self.write("stage-a.json", self.stage_a_comparison()),
+            "second_approval": self.write("second-approval.json", self.second_approval()),
+            "second_comment": self.write("second-comment.json", self.second_comment()),
+            "second_pr": self.write("second-pr.json", self.pull_request()),
+            "stage_b": self.write("stage-b.json", self.stage_b_comparison()),
+        }
+
     def test_exact_two_scope_handoff_is_bound_and_reverifiable(self) -> None:
         handoff = self.validate()
         MODULE["verify_handoff"](handoff, self.head, self.now)
@@ -277,6 +314,93 @@ class SecondEightDecemberActivationTests(unittest.TestCase):
         self.assertEqual(MODULE["SECOND_COMMENT_ID"], 7031996454)
         self.assertEqual(MODULE["ORIGINAL_ACTIVATION_COMMIT"], "33706d9db11b120df8c20071617b7857704e35ee")
         self.assertRegex(self.second_hash, r"^[0-9a-f]{64}$")
+
+    def test_copied_canonical_scripts_execute_both_handoff_cli_paths(self) -> None:
+        layout = self.protected_layout()
+        inputs = self.command_inputs()
+        original_handoff = self.root / "original-cli-handoff"
+        result = self.command(
+            layout / "validate_original_eight_dec15_activation.py", "validate",
+            "--candidate", str(self.original_candidate), "--approval", str(inputs["original_approval"]),
+            "--comment", str(inputs["original_comment"]), "--pull-request", str(inputs["original_pr"]),
+            "--comparison", str(inputs["stage_a"]), "--expected-head", MODULE["ORIGINAL_ACTIVATION_COMMIT"],
+            "--handoff-dir", str(original_handoff), "--now", "2026-11-20T00:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.command(
+            layout / "validate_original_eight_dec15_activation.py", "verify-handoff",
+            "--handoff-dir", str(original_handoff), "--expected-head", MODULE["ORIGINAL_ACTIVATION_COMMIT"],
+            "--now", "2026-11-20T00:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        second_handoff = self.root / "second-cli-handoff"
+        result = self.command(
+            layout / "validate_second_eight_dec15_activation.py", "validate",
+            "--original-candidate", str(self.original_candidate), "--original-approval", str(inputs["original_approval"]),
+            "--original-comment", str(inputs["original_comment"]), "--stage-a-comparison", str(inputs["stage_a"]),
+            "--second-candidate", str(self.second_candidate), "--second-approval", str(inputs["second_approval"]),
+            "--second-comment", str(inputs["second_comment"]), "--pull-request", str(inputs["second_pr"]),
+            "--stage-b-comparison", str(inputs["stage_b"]), "--expected-head", self.head,
+            "--handoff-dir", str(second_handoff), "--now", "2026-11-20T00:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.command(
+            layout / "validate_second_eight_dec15_activation.py", "verify-handoff",
+            "--handoff-dir", str(second_handoff), "--expected-head", self.head,
+            "--now", "2026-11-20T00:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_copied_cli_rejects_untrusted_layout_and_handoff_failures(self) -> None:
+        layout = self.protected_layout()
+        inputs = self.command_inputs()
+        original = layout / "validate_original_eight_dec15_activation.py"
+        original.rename(layout / "original-eight-dec15-verifier.py")
+        result = self.command(layout / "validate_second_eight_dec15_activation.py", "verify-handoff", "--handoff-dir", str(self.root / "missing"), "--expected-head", self.head)
+        self.assertNotEqual(result.returncode, 0)
+        layout = self.protected_layout() if not layout.exists() else self.root / "recreated-layout"
+        if not layout.exists():
+            layout.mkdir()
+            shutil.copy2(ROOT / "scripts/security/validate_original_eight_dec15_activation.py", layout / "validate_original_eight_dec15_activation.py")
+            shutil.copy2(ROOT / "scripts/security/validate_second_eight_dec15_activation.py", layout / "validate_second_eight_dec15_activation.py")
+        else:
+            self.skipTest("unexpected temporary layout state")
+        original = layout / "validate_original_eight_dec15_activation.py"
+        second = layout / "validate_second_eight_dec15_activation.py"
+        original.write_text(original.read_text().replace(self.original_hash, self.digest(self.original_candidate)))
+        second.write_text(second.read_text().replace(self.second_hash, self.digest(self.second_candidate)))
+        trusted_digest = self.digest(second)
+        second.write_text(second.read_text() + "\n# synthetic tamper\n")
+        self.assertNotEqual(self.digest(second), trusted_digest)
+        second.write_text(second.read_text().replace("\n# synthetic tamper\n", ""))
+        result = self.command(second, "verify-handoff", "--handoff-dir", str(self.root / "missing"), "--expected-head", self.head)
+        self.assertNotEqual(result.returncode, 0)
+        handoff = self.root / "cli-handoff"
+        result = self.command(
+            second, "validate", "--original-candidate", str(self.original_candidate), "--original-approval", str(inputs["original_approval"]),
+            "--original-comment", str(inputs["original_comment"]), "--stage-a-comparison", str(inputs["stage_a"]),
+            "--second-candidate", str(self.second_candidate), "--second-approval", str(inputs["second_approval"]),
+            "--second-comment", str(inputs["second_comment"]), "--pull-request", str(inputs["second_pr"]),
+            "--stage-b-comparison", str(inputs["stage_b"]), "--expected-head", self.head,
+            "--handoff-dir", str(handoff), "--now", "2026-11-20T00:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (handoff / MODULE["HANDOFF_XML"]).write_text("altered")
+        result = self.command(second, "verify-handoff", "--handoff-dir", str(handoff), "--expected-head", self.head, "--now", "2026-11-20T00:00:00Z")
+        self.assertNotEqual(result.returncode, 0)
+        (handoff / MODULE["HANDOFF_XML"]).write_bytes(MODULE["combined_xml"](self.original_candidate, self.second_candidate))
+        manifest = json.loads((handoff / MODULE["HANDOFF_MANIFEST"]).read_text())
+        manifest["pullRequestHead"] = "d" * 40
+        (handoff / MODULE["HANDOFF_MANIFEST"]).write_text(json.dumps(manifest))
+        result = self.command(second, "verify-handoff", "--handoff-dir", str(handoff), "--expected-head", self.head, "--now", "2026-11-20T00:00:00Z")
+        self.assertNotEqual(result.returncode, 0)
+        MODULE["write_handoff"](self.original_candidate, self.second_candidate, self.root / "replacement-handoff", self.head)
+        shutil.rmtree(handoff)
+        shutil.move(str(self.root / "replacement-handoff"), handoff)
+        result = self.command(second, "verify-handoff", "--handoff-dir", str(handoff), "--expected-head", "d" * 40, "--now", "2026-11-20T00:00:00Z")
+        self.assertNotEqual(result.returncode, 0)
+        result = self.command(second, "verify-handoff", "--handoff-dir", str(handoff), "--expected-head", self.head, "--now", "2026-12-16T00:00:00Z")
+        self.assertNotEqual(result.returncode, 0)
 
 
 if __name__ == "__main__":

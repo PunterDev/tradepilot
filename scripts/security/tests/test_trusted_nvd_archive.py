@@ -497,8 +497,8 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertIn("contents/$ORIGINAL_CANDIDATE_PATH?ref=$PULL_REQUEST_HEAD", acquisition)
         self.assertIn("contents/$SECOND_CANDIDATE_PATH?ref=$PULL_REQUEST_HEAD", acquisition)
         self.assertIn("contents/$SECOND_APPROVAL_PATH?ref=$PULL_REQUEST_HEAD", acquisition)
-        self.assertIn('python3 "$RUNNER_TEMP/original-eight-dec15-verifier.py" validate', acquisition)
-        self.assertIn('python3 "$RUNNER_TEMP/second-eight-transitive-dec15-verifier.py" validate', acquisition)
+        self.assertIn('python3 "$RUNNER_TEMP/validate_original_eight_dec15_activation.py" validate', acquisition)
+        self.assertIn('python3 "$RUNNER_TEMP/validate_second_eight_dec15_activation.py" validate', acquisition)
         self.assertLess(
             consumer.index("Acquire and validate the exact owner-approved suppression packages"),
             consumer.index("Check out exact pull request source without credentials"),
@@ -508,6 +508,20 @@ class WorkflowBoundaryTests(unittest.TestCase):
         self.assertIn("GH_TOKEN: ''", scanner)
         self.assertIn('"${suppression_argument[@]}"', scanner)
         self.assertIn('suppression_argument+=("-DsuppressionFile=$VALIDATED_SUPPRESSION_FILE")', scanner)
+
+    def test_suppression_verifier_digest_is_checked_before_execution(self) -> None:
+        consumer = self.WORKFLOW.read_text()
+        revalidation = consumer.split("Reverify the validated suppression before PR checkout", 1)[1].split(
+            "Check out exact pull request source without credentials", 1,
+        )[0]
+        digest = 'test "$(sha256sum "$verifier" | awk \'{print $1}\')" = "${{ needs.acquire-verified-nvd.outputs.suppression_verifier_sha256 }}"'
+        execute = 'python3 "$verifier" verify-handoff'
+        self.assertIn('case "${{ needs.acquire-verified-nvd.outputs.suppression_mode }}"', revalidation)
+        self.assertIn("validate_original_eight_dec15_activation.py", revalidation)
+        self.assertIn("validate_second_eight_dec15_activation.py", revalidation)
+        self.assertIn(digest, revalidation)
+        self.assertIn(execute, revalidation)
+        self.assertLess(revalidation.index(digest), revalidation.index(execute))
 
     def test_workflow_leaves_verification_destinations_for_the_verifier(self) -> None:
         consumer = self.WORKFLOW.read_text()

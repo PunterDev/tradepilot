@@ -59,11 +59,11 @@ jobs:
           sha256sum "$RUNNER_TEMP/trusted-nvd-archive-verifier.py" | awk '{print $1}' | tee "$RUNNER_TEMP/trusted-nvd-verifier.sha256"
           printf 'sha256=%s\n' "$(cat "$RUNNER_TEMP/trusted-nvd-verifier.sha256")" >> "$GITHUB_OUTPUT"
           test -f scripts/security/validate_original_eight_dec15_activation.py
-          cp scripts/security/validate_original_eight_dec15_activation.py "$RUNNER_TEMP/original-eight-dec15-verifier.py"
-          chmod 600 "$RUNNER_TEMP/original-eight-dec15-verifier.py"
+          cp scripts/security/validate_original_eight_dec15_activation.py "$RUNNER_TEMP/validate_original_eight_dec15_activation.py"
+          chmod 600 "$RUNNER_TEMP/validate_original_eight_dec15_activation.py"
           test -f scripts/security/validate_second_eight_dec15_activation.py
-          cp scripts/security/validate_second_eight_dec15_activation.py "$RUNNER_TEMP/second-eight-transitive-dec15-verifier.py"
-          chmod 600 "$RUNNER_TEMP/second-eight-transitive-dec15-verifier.py"
+          cp scripts/security/validate_second_eight_dec15_activation.py "$RUNNER_TEMP/validate_second_eight_dec15_activation.py"
+          chmod 600 "$RUNNER_TEMP/validate_second_eight_dec15_activation.py"
 
       - name: Install patched GitHub CLI for attestation verification
         env:
@@ -145,13 +145,13 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/issues/comments/6938531951" > "$staging/original-comment.json"
             gh api "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST" > "$staging/pull-request.json"
             gh api "repos/$GITHUB_REPOSITORY/compare/$ORIGINAL_REVIEWED_COMMIT...$PULL_REQUEST_HEAD" > "$staging/original-comparison.json"
-            python3 "$RUNNER_TEMP/original-eight-dec15-verifier.py" validate \
+            python3 "$RUNNER_TEMP/validate_original_eight_dec15_activation.py" validate \
               --candidate "$staging/original-candidate.xml" --approval "$staging/original-approval.json" \
               --comment "$staging/original-comment.json" --pull-request "$staging/pull-request.json" \
               --comparison "$staging/original-comparison.json" --expected-head "$PULL_REQUEST_HEAD" \
               --handoff-dir "$handoff"
             candidate="$handoff/original-eight-dec15.xml"
-            verifier="$RUNNER_TEMP/original-eight-dec15-verifier.py"
+            verifier="$RUNNER_TEMP/validate_original_eight_dec15_activation.py"
             mode=original
           else
             gh api "repos/$GITHUB_REPOSITORY/contents/$ORIGINAL_CANDIDATE_PATH?ref=$ORIGINAL_ACTIVATION_COMMIT" --jq .content | base64 --decode > "$staging/original-candidate.xml"
@@ -163,7 +163,7 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/issues/comments/7031996454" > "$staging/second-comment.json"
             gh api "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST" > "$staging/pull-request.json"
             gh api "repos/$GITHUB_REPOSITORY/compare/$ORIGINAL_ACTIVATION_COMMIT...$PULL_REQUEST_HEAD" > "$staging/second-comparison.json"
-            python3 "$RUNNER_TEMP/second-eight-transitive-dec15-verifier.py" validate \
+            python3 "$RUNNER_TEMP/validate_second_eight_dec15_activation.py" validate \
               --original-candidate "$staging/original-candidate.xml" --original-approval "$staging/original-approval.json" \
               --original-comment "$staging/original-comment.json" --stage-a-comparison "$staging/original-comparison.json" \
               --second-candidate "$staging/second-candidate.xml" --second-approval "$staging/second-approval.json" \
@@ -171,7 +171,7 @@ jobs:
               --stage-b-comparison "$staging/second-comparison.json" --expected-head "$PULL_REQUEST_HEAD" \
               --handoff-dir "$handoff"
             candidate="$handoff/second-eight-transitive-dec15.xml"
-            verifier="$RUNNER_TEMP/second-eight-transitive-dec15-verifier.py"
+            verifier="$RUNNER_TEMP/validate_second_eight_dec15_activation.py"
             mode=second
           fi
           {
@@ -238,10 +238,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir "$RUNNER_TEMP/suppression-input"
-          cp "$RUNNER_TEMP/original-eight-dec15-verifier.py" "$RUNNER_TEMP/suppression-input/"
-          cp "$RUNNER_TEMP/second-eight-transitive-dec15-verifier.py" "$RUNNER_TEMP/suppression-input/"
+          cp "$RUNNER_TEMP/validate_original_eight_dec15_activation.py" "$RUNNER_TEMP/suppression-input/"
+          cp "$RUNNER_TEMP/validate_second_eight_dec15_activation.py" "$RUNNER_TEMP/suppression-input/"
           cp -R "$RUNNER_TEMP/pr16-suppression-validated" "$RUNNER_TEMP/suppression-input/validated"
-          chmod 600 "$RUNNER_TEMP/suppression-input/original-eight-dec15-verifier.py" "$RUNNER_TEMP/suppression-input/second-eight-transitive-dec15-verifier.py" "$RUNNER_TEMP/suppression-input/validated/"*
+          chmod 600 "$RUNNER_TEMP/suppression-input/validate_original_eight_dec15_activation.py" "$RUNNER_TEMP/suppression-input/validate_second_eight_dec15_activation.py" "$RUNNER_TEMP/suppression-input/validated/"*
 
       - name: Upload verified package for the credential-free scanner
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -311,20 +311,18 @@ jobs:
           set -Eeuo pipefail
           case "${{ needs.acquire-verified-nvd.outputs.suppression_mode }}" in
             original)
-              verifier="$RUNNER_TEMP/suppression/original-eight-dec15-verifier.py"
+              verifier="$RUNNER_TEMP/suppression/validate_original_eight_dec15_activation.py"
               candidate="$RUNNER_TEMP/suppression/validated/original-eight-dec15.xml"
-              python3 "$verifier" verify-handoff --handoff-dir "$RUNNER_TEMP/suppression/validated" \
-                --expected-head "${{ needs.acquire-verified-nvd.outputs.head_sha }}"
               ;;
             second)
-              verifier="$RUNNER_TEMP/suppression/second-eight-transitive-dec15-verifier.py"
+              verifier="$RUNNER_TEMP/suppression/validate_second_eight_dec15_activation.py"
               candidate="$RUNNER_TEMP/suppression/validated/second-eight-transitive-dec15.xml"
-              python3 "$verifier" verify-handoff --handoff-dir "$RUNNER_TEMP/suppression/validated" \
-                --expected-head "${{ needs.acquire-verified-nvd.outputs.head_sha }}"
               ;;
             *) exit 1;;
           esac
           test "$(sha256sum "$verifier" | awk '{print $1}')" = "${{ needs.acquire-verified-nvd.outputs.suppression_verifier_sha256 }}"
+          python3 "$verifier" verify-handoff --handoff-dir "$RUNNER_TEMP/suppression/validated" \
+            --expected-head "${{ needs.acquire-verified-nvd.outputs.head_sha }}"
           test "$(sha256sum "$candidate" | awk '{print $1}')" = "${{ needs.acquire-verified-nvd.outputs.suppression_sha256 }}"
           printf 'VALIDATED_SUPPRESSION_FILE=%s\n' "$candidate" >> "$GITHUB_ENV"
 
