@@ -7,6 +7,7 @@ import com.tradepilot.billing.StripeNotConfiguredException;
 import com.tradepilot.config.FeatureDisabledException;
 import com.tradepilot.marketdata.MarketDataException;
 import com.tradepilot.playbook.exception.PlaybookAiReviewIneligibleException;
+import com.tradepilot.survival.ProtectionCommitmentLifecycleException;
 import com.stripe.exception.StripeException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -66,6 +67,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "BAD_REQUEST", safeMessage(ex.getMessage(), "Request could not be processed."), request);
+    }
+
+    @ExceptionHandler(ProtectionCommitmentLifecycleException.class)
+    public ResponseEntity<Map<String, Object>> handleProtectionCommitmentLifecycle(ProtectionCommitmentLifecycleException ex, HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "COMMITMENT_STATE_CONFLICT", safeMessage(ex.getMessage(), "Commitment state conflicts with this request."), request);
     }
 
     @ExceptionHandler(BadCredentialsException.class)
