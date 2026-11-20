@@ -1,0 +1,128 @@
+name: Production PostgreSQL Backup
+
+on:
+  schedule:
+    # 09:17 UTC is 03:17 CST or 04:17 CDT in America/Chicago.
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+    inputs:
+      confirm_production_backup:
+        description: "Set true only after the protected production-backup environment is approved."
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-postgresql-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    # Schedules run only from the default branch. This explicit guard also prevents
+    # manual backup execution from feature branches and keeps automation disabled
+    # until the owner turns on the repository variable after release approval.
+    if: >-
+      github.ref == 'refs/heads/master' &&
+      vars.TRADEPILOT_PRODUCTION_BACKUP_ENABLED == 'true' &&
+      (github.event_name == 'schedule' || inputs.confirm_production_backup == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-backup
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 17 client and backup tooling
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo install -d -m 0755 /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc >/dev/null
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client-17 age awscli
+          pg_dump --version | grep -q '17.'
+          age --version
+
+      - name: Verify previous backup freshness
+        id: freshness-before
+        continue-on-error: true
+        env:
+          TRADEPILOT_BACKUP_S3_BUCKET: ${{ secrets.TRADEPILOT_BACKUP_S3_BUCKET }}
+          TRADEPILOT_BACKUP_S3_PREFIX: ${{ vars.TRADEPILOT_BACKUP_S3_PREFIX }}
+          TRADEPILOT_BACKUP_S3_REGION: ${{ vars.TRADEPILOT_BACKUP_S3_REGION }}
+          TRADEPILOT_BACKUP_S3_ENDPOINT_URL: ${{ vars.TRADEPILOT_BACKUP_S3_ENDPOINT_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TRADEPILOT_BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TRADEPILOT_BACKUP_S3_SECRET_ACCESS_KEY }}
+        run: scripts/backup/check-backup-freshness.sh
+
+      - name: Warn when the previous backup is stale
+        if: steps.freshness-before.outcome != 'success'
+        run: echo "::warning::No verified encrypted backup newer than 36 hours was found before this run."
+
+      - name: Create encrypted custom-format backup
+        env:
+          TRADEPILOT_BACKUP_OUTPUT_DIR: ${{ runner.temp }}/tradepilot-db-backup
+          TRADEPILOT_BACKUP_PGHOST: ${{ secrets.TRADEPILOT_BACKUP_PGHOST }}
+          TRADEPILOT_BACKUP_PGPORT: ${{ secrets.TRADEPILOT_BACKUP_PGPORT }}
+          TRADEPILOT_BACKUP_PGDATABASE: ${{ secrets.TRADEPILOT_BACKUP_PGDATABASE }}
+          TRADEPILOT_BACKUP_PGUSER: ${{ secrets.TRADEPILOT_BACKUP_PGUSER }}
+          TRADEPILOT_BACKUP_PGPASSWORD: ${{ secrets.TRADEPILOT_BACKUP_PGPASSWORD }}
+          TRADEPILOT_BACKUP_PGSSLMODE: verify-full
+          TRADEPILOT_BACKUP_PGCONNECT_TIMEOUT: "15"
+          TRADEPILOT_BACKUP_PGSSLROOTCERT_BASE64: ${{ secrets.TRADEPILOT_BACKUP_PGSSLROOTCERT_BASE64 }}
+          TRADEPILOT_BACKUP_AGE_RECIPIENT: ${{ secrets.TRADEPILOT_BACKUP_AGE_RECIPIENT }}
+        run: scripts/backup/backup-production-db.sh
+
+      - name: Upload and verify encrypted backup
+        env:
+          TRADEPILOT_BACKUP_OUTPUT_DIR: ${{ runner.temp }}/tradepilot-db-backup
+          TRADEPILOT_BACKUP_S3_BUCKET: ${{ secrets.TRADEPILOT_BACKUP_S3_BUCKET }}
+          TRADEPILOT_BACKUP_S3_PREFIX: ${{ vars.TRADEPILOT_BACKUP_S3_PREFIX }}
+          TRADEPILOT_BACKUP_S3_REGION: ${{ vars.TRADEPILOT_BACKUP_S3_REGION }}
+          TRADEPILOT_BACKUP_S3_ENDPOINT_URL: ${{ vars.TRADEPILOT_BACKUP_S3_ENDPOINT_URL }}
+          TRADEPILOT_BACKUP_RETENTION_DAYS: "21"
+          AWS_ACCESS_KEY_ID: ${{ secrets.TRADEPILOT_BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TRADEPILOT_BACKUP_S3_SECRET_ACCESS_KEY }}
+        run: |
+          set -Eeuo pipefail
+          artifact="$(find "$TRADEPILOT_BACKUP_OUTPUT_DIR" -maxdepth 1 -type f -name '*.dump.age' -print -quit)"
+          test -n "$artifact"
+          scripts/backup/upload-s3-backup.sh "$artifact"
+
+      - name: Require current backup freshness
+        env:
+          TRADEPILOT_BACKUP_S3_BUCKET: ${{ secrets.TRADEPILOT_BACKUP_S3_BUCKET }}
+          TRADEPILOT_BACKUP_S3_PREFIX: ${{ vars.TRADEPILOT_BACKUP_S3_PREFIX }}
+          TRADEPILOT_BACKUP_S3_REGION: ${{ vars.TRADEPILOT_BACKUP_S3_REGION }}
+          TRADEPILOT_BACKUP_S3_ENDPOINT_URL: ${{ vars.TRADEPILOT_BACKUP_S3_ENDPOINT_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TRADEPILOT_BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TRADEPILOT_BACKUP_S3_SECRET_ACCESS_KEY }}
+        run: scripts/backup/check-backup-freshness.sh
+
+      - name: Independently download and verify encrypted backup
+        env:
+          TRADEPILOT_BACKUP_OUTPUT_DIR: ${{ runner.temp }}/tradepilot-db-backup
+          TRADEPILOT_BACKUP_S3_BUCKET: ${{ secrets.TRADEPILOT_BACKUP_S3_BUCKET }}
+          TRADEPILOT_BACKUP_S3_PREFIX: ${{ vars.TRADEPILOT_BACKUP_S3_PREFIX }}
+          TRADEPILOT_BACKUP_S3_REGION: ${{ vars.TRADEPILOT_BACKUP_S3_REGION }}
+          TRADEPILOT_BACKUP_S3_ENDPOINT_URL: ${{ vars.TRADEPILOT_BACKUP_S3_ENDPOINT_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TRADEPILOT_BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TRADEPILOT_BACKUP_S3_SECRET_ACCESS_KEY }}
+        run: |
+          set -Eeuo pipefail
+          artifact="$(find "$TRADEPILOT_BACKUP_OUTPUT_DIR" -maxdepth 1 -type f -name '*.dump.age' -print -quit)"
+          test -n "$artifact"
+          TRADEPILOT_BACKUP_OBJECT_KEY="${TRADEPILOT_BACKUP_S3_PREFIX}/$(basename "$artifact")" \
+            scripts/backup/verify-uploaded-encrypted-backup.sh
+
+      - name: Report verified encrypted backup
+        if: success()
+        run: |
+          {
+            echo "## Production database backup"
+            echo "Encrypted PostgreSQL custom-format artifact uploaded and verified."
+            echo "No raw database archive was uploaded as a GitHub artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
