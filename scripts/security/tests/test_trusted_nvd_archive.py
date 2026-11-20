@@ -514,13 +514,17 @@ class WorkflowBoundaryTests(unittest.TestCase):
         revalidation = consumer.split("Reverify the validated suppression before PR checkout", 1)[1].split(
             "Check out exact pull request source without credentials", 1,
         )[0]
+        original_digest = 'test "$(sha256sum "$original_verifier" | awk \'{print $1}\')" = "${{ needs.acquire-verified-nvd.outputs.original_suppression_verifier_sha256 }}"'
         digest = 'test "$(sha256sum "$verifier" | awk \'{print $1}\')" = "${{ needs.acquire-verified-nvd.outputs.suppression_verifier_sha256 }}"'
         execute = 'python3 "$verifier" verify-handoff'
         self.assertIn('case "${{ needs.acquire-verified-nvd.outputs.suppression_mode }}"', revalidation)
         self.assertIn("validate_original_eight_dec15_activation.py", revalidation)
         self.assertIn("validate_second_eight_dec15_activation.py", revalidation)
+        self.assertIn("original_suppression_verifier_sha256", consumer)
+        self.assertIn(original_digest, revalidation)
         self.assertIn(digest, revalidation)
         self.assertIn(execute, revalidation)
+        self.assertLess(revalidation.index(original_digest), revalidation.index(digest))
         self.assertLess(revalidation.index(digest), revalidation.index(execute))
 
     def test_workflow_leaves_verification_destinations_for_the_verifier(self) -> None:

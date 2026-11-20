@@ -32,6 +32,7 @@ jobs:
       verifier_sha256: ${{ steps.verifier.outputs.sha256 }}
       suppression_required: ${{ steps.pr.outputs.suppression_required }}
       suppression_mode: ${{ steps.suppression.outputs.mode }}
+      original_suppression_verifier_sha256: ${{ steps.verifier.outputs.original_suppression_sha256 }}
       suppression_verifier_sha256: ${{ steps.suppression.outputs.verifier_sha256 }}
       suppression_sha256: ${{ steps.suppression.outputs.sha256 }}
     steps:
@@ -59,6 +60,7 @@ jobs:
           sha256sum "$RUNNER_TEMP/trusted-nvd-archive-verifier.py" | awk '{print $1}' | tee "$RUNNER_TEMP/trusted-nvd-verifier.sha256"
           printf 'sha256=%s\n' "$(cat "$RUNNER_TEMP/trusted-nvd-verifier.sha256")" >> "$GITHUB_OUTPUT"
           test -f scripts/security/validate_original_eight_dec15_activation.py
+          printf 'original_suppression_sha256=%s\n' "$(sha256sum scripts/security/validate_original_eight_dec15_activation.py | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           cp scripts/security/validate_original_eight_dec15_activation.py "$RUNNER_TEMP/validate_original_eight_dec15_activation.py"
           chmod 600 "$RUNNER_TEMP/validate_original_eight_dec15_activation.py"
           test -f scripts/security/validate_second_eight_dec15_activation.py
@@ -320,6 +322,10 @@ jobs:
               ;;
             *) exit 1;;
           esac
+          original_verifier="$RUNNER_TEMP/suppression/validate_original_eight_dec15_activation.py"
+          test -f "$original_verifier" && test ! -L "$original_verifier"
+          test "$(sha256sum "$original_verifier" | awk '{print $1}')" = "${{ needs.acquire-verified-nvd.outputs.original_suppression_verifier_sha256 }}"
+          test -f "$verifier" && test ! -L "$verifier"
           test "$(sha256sum "$verifier" | awk '{print $1}')" = "${{ needs.acquire-verified-nvd.outputs.suppression_verifier_sha256 }}"
           python3 "$verifier" verify-handoff --handoff-dir "$RUNNER_TEMP/suppression/validated" \
             --expected-head "${{ needs.acquire-verified-nvd.outputs.head_sha }}"

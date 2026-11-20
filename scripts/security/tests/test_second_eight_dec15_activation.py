@@ -204,6 +204,28 @@ class SecondEightDecemberActivationTests(unittest.TestCase):
             [sys.executable, str(script), *arguments], capture_output=True, text=True,
         )
 
+    def shell_reverify(
+        self, mode: str, layout: Path, handoff: Path, original_digest: str, selected_digest: str, head: str,
+    ) -> subprocess.CompletedProcess[str]:
+        script = """set -Eeuo pipefail
+case "$1" in
+  original) verifier="$2/validate_original_eight_dec15_activation.py"; candidate="$3/original-eight-dec15.xml";;
+  second) verifier="$2/validate_second_eight_dec15_activation.py"; candidate="$3/second-eight-transitive-dec15.xml";;
+  *) exit 1;;
+esac
+original_verifier="$2/validate_original_eight_dec15_activation.py"
+test -f "$original_verifier" && test ! -L "$original_verifier"
+test "$(sha256sum "$original_verifier" | awk '{print $1}')" = "$4"
+test -f "$verifier" && test ! -L "$verifier"
+test "$(sha256sum "$verifier" | awk '{print $1}')" = "$5"
+python3 "$verifier" verify-handoff --handoff-dir "$3" --expected-head "$6" --now 2026-11-20T00:00:00Z
+test -f "$candidate" && test ! -L "$candidate"
+"""
+        return subprocess.run(
+            ["bash", "-c", script, "reverify", mode, str(layout), str(handoff), original_digest, selected_digest, head],
+            capture_output=True, text=True,
+        )
+
     def command_inputs(self, original_head: str | None = None) -> dict[str, Path]:
         original_pr = self.pull_request()
         original_pr["head"]["sha"] = original_head or MODULE["ORIGINAL_ACTIVATION_COMMIT"]
@@ -333,6 +355,11 @@ class SecondEightDecemberActivationTests(unittest.TestCase):
             "--now", "2026-11-20T00:00:00Z",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.shell_reverify(
+            "original", layout, original_handoff, self.digest(layout / "validate_original_eight_dec15_activation.py"),
+            self.digest(layout / "validate_original_eight_dec15_activation.py"), MODULE["ORIGINAL_ACTIVATION_COMMIT"],
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
         second_handoff = self.root / "second-cli-handoff"
         result = self.command(
             layout / "validate_second_eight_dec15_activation.py", "validate",
@@ -342,6 +369,11 @@ class SecondEightDecemberActivationTests(unittest.TestCase):
             "--second-comment", str(inputs["second_comment"]), "--pull-request", str(inputs["second_pr"]),
             "--stage-b-comparison", str(inputs["stage_b"]), "--expected-head", self.head,
             "--handoff-dir", str(second_handoff), "--now", "2026-11-20T00:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.shell_reverify(
+            "second", layout, second_handoff, self.digest(layout / "validate_original_eight_dec15_activation.py"),
+            self.digest(layout / "validate_second_eight_dec15_activation.py"), self.head,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         result = self.command(
@@ -385,6 +417,18 @@ class SecondEightDecemberActivationTests(unittest.TestCase):
             "--handoff-dir", str(handoff), "--now", "2026-11-20T00:00:00Z",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        original_digest = self.digest(original)
+        selected_digest = self.digest(second)
+        result = self.shell_reverify("second", layout, handoff, original_digest, selected_digest, self.head)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        original.write_text(original.read_text() + "\n# synthetic original tamper\n")
+        result = self.shell_reverify("second", layout, handoff, original_digest, selected_digest, self.head)
+        self.assertNotEqual(result.returncode, 0)
+        original.write_text(original.read_text().replace("\n# synthetic original tamper\n", ""))
+        second.write_text(second.read_text() + "\n# synthetic selected tamper\n")
+        result = self.shell_reverify("second", layout, handoff, original_digest, selected_digest, self.head)
+        self.assertNotEqual(result.returncode, 0)
+        second.write_text(second.read_text().replace("\n# synthetic selected tamper\n", ""))
         (handoff / MODULE["HANDOFF_XML"]).write_text("altered")
         result = self.command(second, "verify-handoff", "--handoff-dir", str(handoff), "--expected-head", self.head, "--now", "2026-11-20T00:00:00Z")
         self.assertNotEqual(result.returncode, 0)
