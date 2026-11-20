@@ -31,7 +31,9 @@ jobs:
       publisher_run_id: ${{ steps.publisher.outputs.publisher_run_id }}
       verifier_sha256: ${{ steps.verifier.outputs.sha256 }}
       suppression_required: ${{ steps.pr.outputs.suppression_required }}
-      suppression_verifier_sha256: ${{ steps.verifier.outputs.suppression_sha256 }}
+      suppression_mode: ${{ steps.suppression.outputs.mode }}
+      original_suppression_verifier_sha256: ${{ steps.verifier.outputs.original_suppression_sha256 }}
+      suppression_verifier_sha256: ${{ steps.suppression.outputs.verifier_sha256 }}
       suppression_sha256: ${{ steps.suppression.outputs.sha256 }}
     steps:
       - name: Check out protected verifier source
@@ -58,9 +60,12 @@ jobs:
           sha256sum "$RUNNER_TEMP/trusted-nvd-archive-verifier.py" | awk '{print $1}' | tee "$RUNNER_TEMP/trusted-nvd-verifier.sha256"
           printf 'sha256=%s\n' "$(cat "$RUNNER_TEMP/trusted-nvd-verifier.sha256")" >> "$GITHUB_OUTPUT"
           test -f scripts/security/validate_original_eight_dec15_activation.py
-          cp scripts/security/validate_original_eight_dec15_activation.py "$RUNNER_TEMP/original-eight-dec15-verifier.py"
-          chmod 600 "$RUNNER_TEMP/original-eight-dec15-verifier.py"
-          printf 'suppression_sha256=%s\n' "$(sha256sum "$RUNNER_TEMP/original-eight-dec15-verifier.py" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          printf 'original_suppression_sha256=%s\n' "$(sha256sum scripts/security/validate_original_eight_dec15_activation.py | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          cp scripts/security/validate_original_eight_dec15_activation.py "$RUNNER_TEMP/validate_original_eight_dec15_activation.py"
+          chmod 600 "$RUNNER_TEMP/validate_original_eight_dec15_activation.py"
+          test -f scripts/security/validate_second_eight_dec15_activation.py
+          cp scripts/security/validate_second_eight_dec15_activation.py "$RUNNER_TEMP/validate_second_eight_dec15_activation.py"
+          chmod 600 "$RUNNER_TEMP/validate_second_eight_dec15_activation.py"
 
       - name: Install patched GitHub CLI for attestation verification
         env:
@@ -106,42 +111,76 @@ jobs:
               --expected-head "$REQUESTED_HEAD"
           fi
           head_sha="$(jq -r '.head.sha' <<<"$pr")"
-          printf 'head_sha=%s\n' "$head_sha" >> "$GITHUB_OUTPUT"
-          printf 'pull_request=%s\n' "$REQUESTED_PR" >> "$GITHUB_OUTPUT"
-          if test "$REQUESTED_PR" = 16; then
-            printf 'suppression_required=true\n' >> "$GITHUB_OUTPUT"
-          else
-            printf 'suppression_required=false\n' >> "$GITHUB_OUTPUT"
-          fi
+          {
+            printf 'head_sha=%s\n' "$head_sha"
+            printf 'pull_request=%s\n' "$REQUESTED_PR"
+            if test "$REQUESTED_PR" = 16; then
+              printf 'suppression_required=true\n'
+            else
+              printf 'suppression_required=false\n'
+            fi
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Acquire and validate the exact owner-approved suppression
+      - name: Acquire and validate the exact owner-approved suppression packages
         if: steps.pr.outputs.suppression_required == 'true'
         id: suppression
         env:
           GH_TOKEN: ${{ github.token }}
           PULL_REQUEST: ${{ steps.pr.outputs.pull_request }}
           PULL_REQUEST_HEAD: ${{ steps.pr.outputs.head_sha }}
-          REVIEWED_COMMIT: 45931748c1551a3bf77d6070f9f37e9fae0c344d
-          CANDIDATE_PATH: docs/security/candidates/dependency-check-original-eight-dec15-candidate.xml
-          APPROVAL_PATH: docs/security/candidates/owasp-original-eight-dec15-approval.json
+          ORIGINAL_REVIEWED_COMMIT: 45931748c1551a3bf77d6070f9f37e9fae0c344d
+          ORIGINAL_ACTIVATION_COMMIT: 33706d9db11b120df8c20071617b7857704e35ee
+          ORIGINAL_CANDIDATE_PATH: docs/security/candidates/dependency-check-original-eight-dec15-candidate.xml
+          ORIGINAL_APPROVAL_PATH: docs/security/candidates/owasp-original-eight-dec15-approval.json
+          SECOND_CANDIDATE_PATH: docs/security/candidates/dependency-check-second-eight-transitive-dec15-candidate.xml
+          SECOND_APPROVAL_PATH: docs/security/candidates/owasp-second-eight-transitive-dec15-approval.json
         run: |
           set -Eeuo pipefail
           umask 077
-          staging="$RUNNER_TEMP/original-eight-dec15-untrusted"
-          handoff="$RUNNER_TEMP/original-eight-dec15-validated"
+          staging="$RUNNER_TEMP/pr16-suppression-untrusted"
+          handoff="$RUNNER_TEMP/pr16-suppression-validated"
           test ! -e "$staging" && test ! -e "$handoff"
           mkdir -m 700 "$staging"
-          gh api "repos/$GITHUB_REPOSITORY/contents/$CANDIDATE_PATH?ref=$PULL_REQUEST_HEAD" --jq .content | base64 --decode > "$staging/candidate.xml"
-          gh api "repos/$GITHUB_REPOSITORY/contents/$APPROVAL_PATH?ref=$PULL_REQUEST_HEAD" --jq .content | base64 --decode > "$staging/approval.json"
-          gh api "repos/$GITHUB_REPOSITORY/issues/comments/6938531951" > "$staging/comment.json"
-          gh api "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST" > "$staging/pull-request.json"
-          gh api "repos/$GITHUB_REPOSITORY/compare/$REVIEWED_COMMIT...$PULL_REQUEST_HEAD" > "$staging/comparison.json"
-          python3 "$RUNNER_TEMP/original-eight-dec15-verifier.py" validate \
-            --candidate "$staging/candidate.xml" --approval "$staging/approval.json" \
-            --comment "$staging/comment.json" --pull-request "$staging/pull-request.json" \
-            --comparison "$staging/comparison.json" --expected-head "$PULL_REQUEST_HEAD" \
-            --handoff-dir "$handoff"
-          printf 'sha256=%s\n' "$(sha256sum "$handoff/original-eight-dec15.xml" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          if test "$PULL_REQUEST_HEAD" = "$ORIGINAL_ACTIVATION_COMMIT"; then
+            gh api "repos/$GITHUB_REPOSITORY/contents/$ORIGINAL_CANDIDATE_PATH?ref=$PULL_REQUEST_HEAD" --jq .content | base64 --decode > "$staging/original-candidate.xml"
+            gh api "repos/$GITHUB_REPOSITORY/contents/$ORIGINAL_APPROVAL_PATH?ref=$PULL_REQUEST_HEAD" --jq .content | base64 --decode > "$staging/original-approval.json"
+            gh api "repos/$GITHUB_REPOSITORY/issues/comments/6938531951" > "$staging/original-comment.json"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST" > "$staging/pull-request.json"
+            gh api "repos/$GITHUB_REPOSITORY/compare/$ORIGINAL_REVIEWED_COMMIT...$PULL_REQUEST_HEAD" > "$staging/original-comparison.json"
+            python3 "$RUNNER_TEMP/validate_original_eight_dec15_activation.py" validate \
+              --candidate "$staging/original-candidate.xml" --approval "$staging/original-approval.json" \
+              --comment "$staging/original-comment.json" --pull-request "$staging/pull-request.json" \
+              --comparison "$staging/original-comparison.json" --expected-head "$PULL_REQUEST_HEAD" \
+              --handoff-dir "$handoff"
+            candidate="$handoff/original-eight-dec15.xml"
+            verifier="$RUNNER_TEMP/validate_original_eight_dec15_activation.py"
+            mode=original
+          else
+            gh api "repos/$GITHUB_REPOSITORY/contents/$ORIGINAL_CANDIDATE_PATH?ref=$ORIGINAL_ACTIVATION_COMMIT" --jq .content | base64 --decode > "$staging/original-candidate.xml"
+            gh api "repos/$GITHUB_REPOSITORY/contents/$ORIGINAL_APPROVAL_PATH?ref=$ORIGINAL_ACTIVATION_COMMIT" --jq .content | base64 --decode > "$staging/original-approval.json"
+            gh api "repos/$GITHUB_REPOSITORY/issues/comments/6938531951" > "$staging/original-comment.json"
+            gh api "repos/$GITHUB_REPOSITORY/compare/$ORIGINAL_REVIEWED_COMMIT...$ORIGINAL_ACTIVATION_COMMIT" > "$staging/original-comparison.json"
+            gh api "repos/$GITHUB_REPOSITORY/contents/$SECOND_CANDIDATE_PATH?ref=$PULL_REQUEST_HEAD" --jq .content | base64 --decode > "$staging/second-candidate.xml"
+            gh api "repos/$GITHUB_REPOSITORY/contents/$SECOND_APPROVAL_PATH?ref=$PULL_REQUEST_HEAD" --jq .content | base64 --decode > "$staging/second-approval.json"
+            gh api "repos/$GITHUB_REPOSITORY/issues/comments/7031996454" > "$staging/second-comment.json"
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST" > "$staging/pull-request.json"
+            gh api "repos/$GITHUB_REPOSITORY/compare/$ORIGINAL_ACTIVATION_COMMIT...$PULL_REQUEST_HEAD" > "$staging/second-comparison.json"
+            python3 "$RUNNER_TEMP/validate_second_eight_dec15_activation.py" validate \
+              --original-candidate "$staging/original-candidate.xml" --original-approval "$staging/original-approval.json" \
+              --original-comment "$staging/original-comment.json" --stage-a-comparison "$staging/original-comparison.json" \
+              --second-candidate "$staging/second-candidate.xml" --second-approval "$staging/second-approval.json" \
+              --second-comment "$staging/second-comment.json" --pull-request "$staging/pull-request.json" \
+              --stage-b-comparison "$staging/second-comparison.json" --expected-head "$PULL_REQUEST_HEAD" \
+              --handoff-dir "$handoff"
+            candidate="$handoff/second-eight-transitive-dec15.xml"
+            verifier="$RUNNER_TEMP/validate_second_eight_dec15_activation.py"
+            mode=second
+          fi
+          {
+            printf 'mode=%s\n' "$mode"
+            printf 'verifier_sha256=%s\n' "$(sha256sum "$verifier" | awk '{print $1}')"
+            printf 'sha256=%s\n' "$(sha256sum "$candidate" | awk '{print $1}')"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Download and verify trusted NVD package
         id: publisher
@@ -201,9 +240,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir "$RUNNER_TEMP/suppression-input"
-          cp "$RUNNER_TEMP/original-eight-dec15-verifier.py" "$RUNNER_TEMP/suppression-input/"
-          cp -R "$RUNNER_TEMP/original-eight-dec15-validated" "$RUNNER_TEMP/suppression-input/original-eight-dec15-validated"
-          chmod 600 "$RUNNER_TEMP/suppression-input/original-eight-dec15-verifier.py" "$RUNNER_TEMP/suppression-input/original-eight-dec15-validated/"*
+          cp "$RUNNER_TEMP/validate_original_eight_dec15_activation.py" "$RUNNER_TEMP/suppression-input/"
+          cp "$RUNNER_TEMP/validate_second_eight_dec15_activation.py" "$RUNNER_TEMP/suppression-input/"
+          cp -R "$RUNNER_TEMP/pr16-suppression-validated" "$RUNNER_TEMP/suppression-input/validated"
+          chmod 600 "$RUNNER_TEMP/suppression-input/validate_original_eight_dec15_activation.py" "$RUNNER_TEMP/suppression-input/validate_second_eight_dec15_activation.py" "$RUNNER_TEMP/suppression-input/validated/"*
 
       - name: Upload verified package for the credential-free scanner
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -217,7 +257,7 @@ jobs:
         if: steps.pr.outputs.suppression_required == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: validated-original-eight-dec15-suppression
+          name: validated-pr16-suppression
           path: ${{ runner.temp }}/suppression-input
           if-no-files-found: error
           retention-days: 1
@@ -239,7 +279,7 @@ jobs:
         if: needs.acquire-verified-nvd.outputs.suppression_required == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: validated-original-eight-dec15-suppression
+          name: validated-pr16-suppression
           path: ${{ runner.temp }}/suppression
 
       - name: Reverify the NVD input before PR checkout
@@ -271,11 +311,26 @@ jobs:
         if: needs.acquire-verified-nvd.outputs.suppression_required == 'true'
         run: |
           set -Eeuo pipefail
-          test "$(sha256sum "$RUNNER_TEMP/suppression/original-eight-dec15-verifier.py" | awk '{print $1}')" = "${{ needs.acquire-verified-nvd.outputs.suppression_verifier_sha256 }}"
-          python3 "$RUNNER_TEMP/suppression/original-eight-dec15-verifier.py" verify-handoff \
-            --handoff-dir "$RUNNER_TEMP/suppression/original-eight-dec15-validated" \
+          case "${{ needs.acquire-verified-nvd.outputs.suppression_mode }}" in
+            original)
+              verifier="$RUNNER_TEMP/suppression/validate_original_eight_dec15_activation.py"
+              candidate="$RUNNER_TEMP/suppression/validated/original-eight-dec15.xml"
+              ;;
+            second)
+              verifier="$RUNNER_TEMP/suppression/validate_second_eight_dec15_activation.py"
+              candidate="$RUNNER_TEMP/suppression/validated/second-eight-transitive-dec15.xml"
+              ;;
+            *) exit 1;;
+          esac
+          original_verifier="$RUNNER_TEMP/suppression/validate_original_eight_dec15_activation.py"
+          test -f "$original_verifier" && test ! -L "$original_verifier"
+          test "$(sha256sum "$original_verifier" | awk '{print $1}')" = "${{ needs.acquire-verified-nvd.outputs.original_suppression_verifier_sha256 }}"
+          test -f "$verifier" && test ! -L "$verifier"
+          test "$(sha256sum "$verifier" | awk '{print $1}')" = "${{ needs.acquire-verified-nvd.outputs.suppression_verifier_sha256 }}"
+          python3 "$verifier" verify-handoff --handoff-dir "$RUNNER_TEMP/suppression/validated" \
             --expected-head "${{ needs.acquire-verified-nvd.outputs.head_sha }}"
-          test "$(sha256sum "$RUNNER_TEMP/suppression/original-eight-dec15-validated/original-eight-dec15.xml" | awk '{print $1}')" = "${{ needs.acquire-verified-nvd.outputs.suppression_sha256 }}"
+          test "$(sha256sum "$candidate" | awk '{print $1}')" = "${{ needs.acquire-verified-nvd.outputs.suppression_sha256 }}"
+          printf 'VALIDATED_SUPPRESSION_FILE=%s\n' "$candidate" >> "$GITHUB_ENV"
 
       - name: Check out exact pull request source without credentials
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -301,7 +356,8 @@ jobs:
           set +e
           suppression_argument=()
           if test "${{ needs.acquire-verified-nvd.outputs.suppression_required }}" = true; then
-            suppression_argument+=("-DsuppressionFile=$RUNNER_TEMP/suppression/original-eight-dec15-validated/original-eight-dec15.xml")
+            test -n "$VALIDATED_SUPPRESSION_FILE"
+            suppression_argument+=("-DsuppressionFile=$VALIDATED_SUPPRESSION_FILE")
           fi
           mvn -B org.owasp:dependency-check-maven:12.2.2:check \
             -DautoUpdate=false -DdataDirectory="$DEPENDENCY_CHECK_DATA" \
