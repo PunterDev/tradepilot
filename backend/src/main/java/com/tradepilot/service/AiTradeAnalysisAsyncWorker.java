@@ -28,7 +28,7 @@ public class AiTradeAnalysisAsyncWorker {
         try {
             log.info("Async AI trade analysis started. analysisId={}, tradeId={}", analysisId, request.getTradeId());
             AiTradeAnalysis entity = repository.findById(analysisId).orElseThrow(() -> new IllegalStateException("AI analysis not found: " + analysisId));
-            AiTradeAnalysisResponse response = generatorService.generate(request, imageBytes, mimeType);
+            AiTradeAnalysisResponse response = generatorService.generate(entity.getUserId(), request, imageBytes, mimeType);
             DailyAggregate dailyAggregate = getDailyAggregate(entity.getUserId(), request);
             DisciplineEvaluationResponse discipline = disciplineEngineService.evaluateAndPersist(entity.getUserId(), request.getTradeId(), request.getTrade(), response, dailyAggregate.tradeCount(), dailyAggregate.pnl());
             response.setDisciplineScore(discipline.getDisciplineScore());

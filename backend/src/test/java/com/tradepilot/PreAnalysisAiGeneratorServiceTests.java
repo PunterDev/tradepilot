@@ -1,8 +1,9 @@
 package com.tradepilot;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradepilot.config.OpenAiProperties;
-import com.tradepilot.observability.ObservabilityService;
+import com.tradepilot.ai.openai.OpenAiGeneratedResponse;
+import com.tradepilot.ai.openai.OpenAiResponsesClient;
+import com.tradepilot.ai.openai.OpenAiUsage;
 import com.tradepilot.preanalysis.dto.PreAnalysisDtos.PreAnalysisAiResult;
 import com.tradepilot.preanalysis.dto.TradingPlaybookDto;
 import com.tradepilot.preanalysis.entity.SetupStatus;
@@ -18,47 +19,31 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.RestTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PreAnalysisAiGeneratorServiceTests {
-    @Mock RestTemplate restTemplate;
-    @Mock ObservabilityService observabilityService;
+    @Mock OpenAiResponsesClient openAiResponsesClient;
     PreAnalysisAiGeneratorService service;
 
     @BeforeEach
     void setUp() {
         ObjectMapper objectMapper = new ObjectMapper();
-        OpenAiProperties openAiProperties = new OpenAiProperties();
-        openAiProperties.setApiKey("test-key");
-        openAiProperties.setModel("gpt-test");
         service = new PreAnalysisAiGeneratorService(
-                restTemplate,
                 objectMapper,
-                openAiProperties,
+                openAiResponsesClient,
                 new PreAnalysisPromptBuilder(objectMapper),
-                observabilityService,
                 new PreAnalysisDecisionService()
         );
+        when(openAiResponsesClient.isConfigured()).thenReturn(true);
     }
 
     @Test
     void unknownAiSetupStatusIsIgnoredWithoutRetryingOrThrowing() throws Exception {
-        when(restTemplate.exchange(
-                eq("https://api.openai.com/v1/chat/completions"),
-                eq(HttpMethod.POST),
-                any(HttpEntity.class),
-                eq(String.class)
-        )).thenReturn(ResponseEntity.ok(openAiEnvelope(aiResultJsonWithInvalidSetupStatus())));
+        when(openAiResponsesClient.generateJson(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(new OpenAiGeneratedResponse(aiResultJsonWithInvalidSetupStatus(), new OpenAiUsage(1, 0, 1, 0, 2)));
 
         PreAnalysisAiResult result = service.generate(42L, playbook(), PreAnalysisMarket.ES, PreAnalysisTimeframe.M5, "", new byte[] {1, 2, 3}, "image/png");
 
@@ -66,22 +51,12 @@ class PreAnalysisAiGeneratorServiceTests {
         assertThat(result.setupStatus()).isEqualTo(SetupStatus.WAITING_FOR_RETRACE);
         assertThat(result.setupAlignmentScore()).isEqualTo(67);
 
-        verify(restTemplate).exchange(
-                eq("https://api.openai.com/v1/chat/completions"),
-                eq(HttpMethod.POST),
-                any(HttpEntity.class),
-                eq(String.class)
-        );
     }
 
     @Test
     void structurallyUnusableAiResponseFallsBackWithoutRetrying() throws Exception {
-        when(restTemplate.exchange(
-                eq("https://api.openai.com/v1/chat/completions"),
-                eq(HttpMethod.POST),
-                any(HttpEntity.class),
-                eq(String.class)
-        )).thenReturn(ResponseEntity.ok(openAiEnvelope("{}")));
+        when(openAiResponsesClient.generateJson(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(new OpenAiGeneratedResponse("{}", new OpenAiUsage(1, 0, 1, 0, 2)));
 
         PreAnalysisAiResult result = service.generate(42L, playbook(), PreAnalysisMarket.ES, PreAnalysisTimeframe.M5, "", new byte[] {1, 2, 3}, "image/png");
 
@@ -91,12 +66,8 @@ class PreAnalysisAiGeneratorServiceTests {
 
     @Test
     void waitingForConfirmationSetupStatusIsIgnoredAndCanonicalStatusWins() throws Exception {
-        when(restTemplate.exchange(
-                eq("https://api.openai.com/v1/chat/completions"),
-                eq(HttpMethod.POST),
-                any(HttpEntity.class),
-                eq(String.class)
-        )).thenReturn(ResponseEntity.ok(openAiEnvelope(aiResultJsonWithSetupStatus("WAITING_FOR_CONFIRMATION"))));
+        when(openAiResponsesClient.generateJson(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(new OpenAiGeneratedResponse(aiResultJsonWithSetupStatus("WAITING_FOR_CONFIRMATION"), new OpenAiUsage(1, 0, 1, 0, 2)));
 
         PreAnalysisAiResult result = service.generate(42L, playbook(), PreAnalysisMarket.ES, PreAnalysisTimeframe.M5, "", new byte[] {1, 2, 3}, "image/png");
 
@@ -124,23 +95,6 @@ class PreAnalysisAiGeneratorServiceTests {
                 LocalDateTime.now(),
                 LocalDateTime.now()
         );
-    }
-
-    private String openAiEnvelope(String contentJson) {
-        return """
-                {
-                  "choices": [{"message": {"content": %s}}],
-                  "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
-                }
-                """.formatted(quote(contentJson));
-    }
-
-    private String quote(String value) {
-        try {
-            return new ObjectMapper().writeValueAsString(value);
-        } catch (Exception ex) {
-            throw new IllegalStateException(ex);
-        }
     }
 
     private String aiResultJsonWithInvalidSetupStatus() {

@@ -60,7 +60,7 @@ class FlywayPostgresBaselineIntegrationTest {
         }
 
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(30);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(31);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
@@ -117,6 +117,7 @@ class FlywayPostgresBaselineIntegrationTest {
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '028' and success = true")).isEqualTo("028");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '029' and success = true")).isEqualTo("029");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '030' and success = true")).isEqualTo("030");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '032' and success = true")).isEqualTo("032");
 
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
@@ -293,6 +294,16 @@ class FlywayPostgresBaselineIntegrationTest {
     private static void assertApiRequestMetricsSchema(Connection connection) throws SQLException {
         assertNullableVarcharColumn(connection, "api_request_metrics", "request_id", 80);
         assertNullableVarcharColumn(connection, "api_request_metrics", "error_code", 80);
+        for (String column : List.of("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens", "retry_attempt")) {
+            assertThat(scalar(connection, """
+                    select data_type
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name = 'ai_request_metrics'
+                      and column_name = '%s'
+                    """.formatted(column))).as("ai_request_metrics.%s", column).isEqualTo("integer");
+        }
+        assertNullableVarcharColumn(connection, "ai_request_metrics", "error_category", 40);
         assertThat(indexDefinition(connection, "idx_api_request_metrics_request_id"))
                 .contains("request_id");
     }
