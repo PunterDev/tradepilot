@@ -21,7 +21,7 @@ import com.tradepilot.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
@@ -46,7 +46,7 @@ class ObservabilityFailureProtectionTests {
     @Autowired TradingAccountRepository tradingAccountRepository;
     @Autowired TradeRepository tradeRepository;
 
-    @MockBean QueryPerformanceEventRecorder queryPerformanceEventRecorder;
+    @MockitoBean QueryPerformanceEventRecorder queryPerformanceEventRecorder;
 
     @Test
     void observabilityInsertFailureDoesNotBreakCalendarSummary() {

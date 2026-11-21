@@ -55,7 +55,7 @@ public class DatabentoHistoricalClient {
     public BigDecimal estimateCost(MarketInstrument instrument, Instant start, Instant end) {
         ensureConfigured();
         try {
-            String url = UriComponentsBuilder.fromHttpUrl(endpoint("metadata.get_cost"))
+            String url = UriComponentsBuilder.fromUriString(endpoint("metadata.get_cost"))
                     .queryParams(form(instrument, start, end))
                     .toUriString();
             log.debug("Databento cost estimate request. instrument={}, continuousSymbol={}, start={}, end={}, dataset={}, schema={}",

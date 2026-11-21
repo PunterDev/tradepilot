@@ -146,7 +146,7 @@ public class DatabentoHistoricalMarketDataProvider implements HistoricalMarketDa
                     "Databento cost check request. endpoint={}, contract={}, dataset={}, schema={}, symbols={}, stypeIn={}, startUtc={}, endUtc={}, correlationId={}",
                     COST_URL, request.actualContractSymbol(), dataset(), schema(), request.actualContractSymbol(), STYPE_IN, request.startUtc(), request.endUtc(), correlationId
             );
-            String url = UriComponentsBuilder.fromHttpUrl(COST_URL)
+            String url = UriComponentsBuilder.fromUriString(COST_URL)
                     .queryParams(costParams)
                     .toUriString();
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class);

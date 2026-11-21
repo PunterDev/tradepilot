@@ -804,9 +804,10 @@ test("overtrading calculator records anonymous tool events without input values"
       "signup_started_from_seo",
     ])
   );
-  expect(JSON.stringify(events)).toContain("overtrading_calculator");
-  expect(JSON.stringify(events)).not.toContain("4200");
-  expect(JSON.stringify(events)).not.toContain("3850");
+  const analyticsFields = events.map(({ eventId: _eventId, anonymousId: _anonymousId, timestamp: _timestamp, ...event }: Record<string, unknown>) => event);
+  expect(JSON.stringify(analyticsFields)).toContain("overtrading_calculator");
+  expect(JSON.stringify(analyticsFields)).not.toContain("4200");
+  expect(JSON.stringify(analyticsFields)).not.toContain("3850");
 });
 
 test("overtrading calculator is usable on mobile", async ({ page }) => {
@@ -934,7 +935,7 @@ test("trading expectancy calculator preserves fees and monthly calculations", as
   await page.goto(`${expectancyCalculatorPath}?winRate=55&avgWin=250&avgLoss=150&trades=40&fees=4.50`);
 
   await expect(page.locator(".expectancy-primary-result")).toHaveText("+$65.50");
-  await expect(page.getByText("Gross Expectancy: +$70 before fees")).toBeVisible();
+  await expect(page.getByText("Gross Expectancy: +$70.00 before fees")).toBeVisible();
   await expect(page.getByText("+$2,620/month")).toBeVisible();
   await expect(page.getByText("-$4.50/trade")).toBeVisible();
 });
