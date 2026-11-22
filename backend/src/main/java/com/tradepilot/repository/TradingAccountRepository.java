@@ -3,6 +3,8 @@ package com.tradepilot.repository;
 import com.tradepilot.entity.TradingAccount;
 import com.tradepilot.entity.User;
 import com.tradepilot.enums.PropFirmType;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,6 +19,10 @@ public interface TradingAccountRepository extends JpaRepository<TradingAccount, 
     long countByUser(User user);
 
     Optional<TradingAccount> findByIdAndUser(Long id, User user);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select account from TradingAccount account where account.id = :id and account.user = :user")
+    Optional<TradingAccount> findByIdAndUserForUpdate(@Param("id") Long id, @Param("user") User user);
 
     Optional<TradingAccount> findByIdAndUser_Id(Long id, Long userId);
 

@@ -21,25 +21,40 @@ public class ProtectionCommitmentEvaluator {
     public Evaluation evaluate(NextSessionProtectionCommitment commitment, List<Trade> trades, ZoneId zone) {
         List<Attempt> attempts = attempts(trades);
         List<CommitmentEvaluationResponse.RuleResult> rules = new ArrayList<>();
+        boolean incompleteAttempts = attempts.size() != trades.size()
+                || trades.stream().anyMatch(t -> t.getEntryTime() == null || t.getExitTime() == null
+                        || !t.getExitTime().isAfter(t.getEntryTime()));
+        boolean incompleteExposure = incompleteAttempts
+                || trades.stream().anyMatch(t -> t.getQuantity() == null || t.getQuantity() <= 0
+                        || t.getSymbol() == null || t.getSymbol().isBlank());
+        boolean incompletePnl = incompleteAttempts || trades.stream().anyMatch(t -> t.getPnlAmount() == null);
         if (commitment.getMaxAttempts() != null) {
-            rules.add(rule("MAX_ATTEMPTS", String.valueOf(commitment.getMaxAttempts()), String.valueOf(attempts.size()),
+            rules.add(incompleteAttempts ? notEvaluable("MAX_ATTEMPTS", String.valueOf(commitment.getMaxAttempts()),
+                    "An imported round trip has incomplete or invalid timestamps; attempts cannot be counted reliably.")
+                    : rule("MAX_ATTEMPTS", String.valueOf(commitment.getMaxAttempts()), String.valueOf(attempts.size()),
                     attempts.size() <= commitment.getMaxAttempts(),
                     "Completed round-trip imports are counted once per flat-to-position attempt; scale-ins and partial exits are already grouped during import."));
         }
         if (commitment.getMaxNormalizedExposure() != null) {
             BigDecimal observed = attempts.stream().map(Attempt::normalizedExposure).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-            rules.add(rule("MAX_NORMALIZED_EXPOSURE", commitment.getMaxNormalizedExposure().toPlainString(), observed.toPlainString(),
+            rules.add(incompleteExposure ? notEvaluable("MAX_NORMALIZED_EXPOSURE", commitment.getMaxNormalizedExposure().toPlainString(),
+                    "An imported trade has incomplete timestamps, quantity, or symbol; maximum exposure cannot be established.")
+                    : rule("MAX_NORMALIZED_EXPOSURE", commitment.getMaxNormalizedExposure().toPlainString(), observed.toPlainString(),
                     observed.compareTo(commitment.getMaxNormalizedExposure()) <= 0,
                     "Maximum normalized exposure across completed attempts."));
         }
         if (commitment.getMaxSessionLoss() != null) {
-            BigDecimal pnl = attempts.stream().map(Attempt::pnl).reduce(BigDecimal.ZERO, BigDecimal::add);
-            rules.add(rule("MAX_SESSION_LOSS", commitment.getMaxSessionLoss().toPlainString(), pnl.toPlainString(),
-                    pnl.compareTo(commitment.getMaxSessionLoss().negate()) >= 0, "Realized P&L across the eligible session."));
+            rules.add(sessionLossRule(commitment.getMaxSessionLoss(), trades, attempts));
         }
-        if (commitment.getPostLossPauseMinutes() != null) rules.add(pauseRule(commitment.getPostLossPauseMinutes(), attempts));
+        if (commitment.getPostLossPauseMinutes() != null) rules.add(incompletePnl
+                ? notEvaluable("POST_LOSS_PAUSE", commitment.getPostLossPauseMinutes() + " minutes",
+                        "An imported trade has missing realized P&L or invalid timestamps; post-loss pauses cannot be verified.")
+                : pauseRule(commitment.getPostLossPauseMinutes(), attempts));
         if (commitment.getAllowedWindowStart() != null && commitment.getAllowedWindowEnd() != null) {
-            rules.add(windowRule(commitment.getAllowedWindowStart(), commitment.getAllowedWindowEnd(), attempts, zone));
+            rules.add(incompleteAttempts ? notEvaluable("TRADING_WINDOW",
+                    formatWindow(commitment.getAllowedWindowStart(), commitment.getAllowedWindowEnd()),
+                    "An imported trade has incomplete or invalid timestamps; its entry window cannot be verified.")
+                    : windowRule(commitment.getAllowedWindowStart(), commitment.getAllowedWindowEnd(), attempts, zone));
         }
         if (Boolean.TRUE.equals(commitment.getRequireFreshSetupConfirmation())) {
             rules.add(notEvaluable("FRESH_SETUP_CONFIRMATION", "Enabled", "Completed-trade imports do not provide contemporaneous confirmation evidence."));
@@ -55,6 +70,61 @@ public class ProtectionCommitmentEvaluator {
                 .toList();
     }
 
+    private CommitmentEvaluationResponse.RuleResult sessionLossRule(BigDecimal configuredLoss, List<Trade> trades,
+            List<Attempt> attempts) {
+        // A zero-filled null P&L or an invalid completed-trade interval can falsely make
+        // an exceeded loss boundary appear FOLLOWED. Decline to evaluate until import data
+        // establishes an auditable realized P&L sequence for every round trip.
+        if (trades.isEmpty()) {
+            return notEvaluable("MAX_SESSION_LOSS", configuredLoss.toPlainString(),
+                    "No completed trades are available to establish realized session P&L.");
+        }
+        if (attempts.size() != trades.size() || trades.stream().anyMatch(t ->
+                t.getPnlAmount() == null
+                        || t.getEntryTime() == null || t.getExitTime() == null
+                        || !t.getExitTime().isAfter(t.getEntryTime()))) {
+            return notEvaluable("MAX_SESSION_LOSS", configuredLoss.toPlainString(),
+                    "An imported trade has missing realized P&L, incomplete timestamps, or an invalid entry/exit sequence.");
+        }
+
+        List<Attempt> closed = attempts.stream()
+                .sorted(Comparator.comparing(Attempt::closedAt).thenComparing(Attempt::tradeId, Comparator.nullsLast(Long::compareTo)))
+                .toList();
+        for (int index = 1; index < closed.size(); index++) {
+            Attempt prior = closed.get(index - 1);
+            Attempt current = closed.get(index);
+            if (current.openedAt().isBefore(prior.closedAt()) || current.closedAt().equals(prior.closedAt())) {
+                return notEvaluable("MAX_SESSION_LOSS", configuredLoss.toPlainString(),
+                        "Completed trade timestamps overlap or share a close timestamp, so a reliable realized-P&L sequence cannot be established.");
+            }
+        }
+
+        BigDecimal cumulative = BigDecimal.ZERO;
+        BigDecimal worst = BigDecimal.ZERO;
+        Attempt firstCrossing = null;
+        int laterTrades = 0;
+        BigDecimal boundary = configuredLoss.negate();
+        for (Attempt attempt : closed) {
+            cumulative = cumulative.add(attempt.pnl());
+            if (cumulative.compareTo(worst) < 0) worst = cumulative;
+            // Equality means the trader reached the configured stop boundary and is therefore a breach.
+            if (firstCrossing == null && cumulative.compareTo(boundary) <= 0) {
+                firstCrossing = attempt;
+            } else if (firstCrossing != null) {
+                laterTrades++;
+            }
+        }
+        if (firstCrossing == null) {
+            return rule("MAX_SESSION_LOSS", configuredLoss.toPlainString(), worst.toPlainString(), true,
+                    "Worst cumulative realized P&L was " + worst.toPlainString() + "; the " + configuredLoss.toPlainString()
+                            + " loss boundary was not reached.");
+        }
+        return rule("MAX_SESSION_LOSS", configuredLoss.toPlainString(), worst.toPlainString(), false,
+                "Cumulative realized P&L first reached the " + configuredLoss.toPlainString() + " loss boundary after trade "
+                        + firstCrossing.tradeId() + " closed at " + firstCrossing.closedAt() + ". "
+                        + laterTrades + " completed trade(s) followed that stop condition. Equality counts as reaching the boundary.");
+    }
+
     private CommitmentEvaluationResponse.RuleResult pauseRule(int configuredMinutes, List<Attempt> attempts) {
         Duration shortest = null;
         for (int i = 0; i + 1 < attempts.size(); i++) {
@@ -62,13 +132,16 @@ public class ProtectionCommitmentEvaluator {
             Attempt next = attempts.get(i + 1);
             if (losing.pnl().signum() >= 0) continue;
             Duration pause = Duration.between(losing.closedAt(), next.openedAt());
-            if (pause.isNegative()) return notEvaluable("POST_LOSS_PAUSE", configuredMinutes + " minutes", "Completed trade timestamps overlap; sequence cannot be evaluated.");
+            if (!next.openedAt().isAfter(losing.closedAt())) {
+                return notEvaluable("POST_LOSS_PAUSE", configuredMinutes + " minutes",
+                        "A later attempt overlaps or shares the loss close timestamp, so the post-loss sequence cannot be established.");
+            }
             if (shortest == null || pause.compareTo(shortest) < 0) shortest = pause;
         }
         if (shortest == null) return notEvaluable("POST_LOSS_PAUSE", configuredMinutes + " minutes", "No post-loss re-entry occurred; the configured pause was not tested.");
         long minutes = shortest.toMinutes();
         return rule("POST_LOSS_PAUSE", configuredMinutes + " minutes", minutes + " minutes", minutes >= configuredMinutes,
-                "Shortest elapsed time from a completed losing attempt to the next completed attempt.");
+                "Every realized losing attempt is checked against its next completed-attempt entry; the shortest observed pause is reported.");
     }
 
     private CommitmentEvaluationResponse.RuleResult windowRule(LocalTime start, LocalTime end, List<Attempt> attempts, ZoneId zone) {

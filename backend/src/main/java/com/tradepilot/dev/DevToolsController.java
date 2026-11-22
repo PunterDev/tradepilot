@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.format.annotation.DateTimeFormat;
+import java.time.LocalDate;
 import java.util.Map;
 
 @RestController
@@ -48,6 +50,13 @@ public class DevToolsController {
     public java.util.Map<String, Object> prepareAccountSurvivalE2eData() {
         assertEnabled();
         return demoDataService.prepareAccountSurvivalE2eData();
+    }
+
+    @PostMapping("/e2e/account-survival/advance-date")
+    public Map<String, Object> advanceAccountSurvivalE2eDate(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        assertEnabled();
+        return demoDataService.advanceAccountSurvivalE2eDate(date);
     }
 
     @DeleteMapping("/trades/{tradeId}/replay")

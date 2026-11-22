@@ -46,6 +46,45 @@ class AccountSurvivalOwnershipIntegrationTest {
     @Autowired PasswordEncoder passwordEncoder;
 
     @Test
+    void freeUsersCannotReadOrMutateAnyAccountSurvivalEndpoint() throws Exception {
+        User free = user("survival-free-entitlement@example.com");
+        free.setPlan(PlanType.FREE);
+        users.save(free);
+        TradingAccount account = account(free, "Free account");
+        String token = login(free.getEmail());
+        String root = base(account);
+        String date = "2026-10-01";
+        String payload = """
+                {"effectiveSessionDate":"2026-10-01","maxAttempts":2}
+                """;
+        for (String path : new String[] {
+                root, root + "/profile", root + "/commitment?date=" + date,
+                root + "/commitment/" + date + "/evaluation",
+                root + "/commitment/" + date + "/evaluations"
+        }) {
+            mockMvc.perform(get(path).header("Authorization", bearer(token)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.errorCode").value("SUBSCRIPTION_REQUIRED"))
+                    .andExpect(jsonPath("$.requiredPlan").value("PRO"))
+                    .andExpect(jsonPath("$.feature").value("SESSION_REVIEW"));
+        }
+        for (var request : new org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder[] {
+                put(root + "/profile").contentType(MediaType.APPLICATION_JSON).content("{}"),
+                put(root + "/commitment").contentType(MediaType.APPLICATION_JSON).content(payload),
+                post(root + "/commitment/" + date + "/accept"),
+                post(root + "/commitment/" + date + "/evaluate")
+        }) {
+            mockMvc.perform(request.header("Authorization", bearer(token)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.errorCode").value("SUBSCRIPTION_REQUIRED"))
+                    .andExpect(jsonPath("$.requiredPlan").value("PRO"));
+        }
+        org.assertj.core.api.Assertions.assertThat(commitments.findByAccount_IdAndUserAndEffectiveSessionDate(
+                account.getId(), free, LocalDate.parse(date))).isEmpty();
+        mockMvc.perform(get(root)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void ownerCanUseEverySurvivalResourceWhileAnotherUserGetsTheSamePrivacySafeNotFoundResponseAsUnknownAccount() throws Exception {
         User owner = user("survival-owner@example.com");
         User other = user("survival-other@example.com");
@@ -69,17 +108,35 @@ class AccountSurvivalOwnershipIntegrationTest {
                 """;
         mockMvc.perform(put(commitmentPath(account)).header("Authorization", bearer(ownerToken)).contentType(MediaType.APPLICATION_JSON).content(commitment))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DRAFT"));
+        mockMvc.perform(post(commitmentPath(account) + "/" + date + "/evaluate").header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("COMMITMENT_STATE_CONFLICT"));
         mockMvc.perform(post(commitmentPath(account) + "/" + date + "/accept").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACCEPTED"));
         mockMvc.perform(get(commitmentPath(account)).param("date", date.toString()).header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.maxAttempts").value(2));
+        // Once accepted, the commitment must remain immutable and cannot be re-drafted.
+        mockMvc.perform(put(commitmentPath(account)).header("Authorization", bearer(ownerToken))
+                .contentType(MediaType.APPLICATION_JSON).content(commitment))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("COMMITMENT_STATE_CONFLICT"));
+        mockMvc.perform(get(commitmentPath(account)).param("date", date.toString()).header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.acceptedAt").exists())
+                .andExpect(jsonPath("$.maxAttempts").value(2));
+        mockMvc.perform(post(commitmentPath(account) + "/" + date + "/accept").header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"));
         mockMvc.perform(post(commitmentPath(account) + "/" + date + "/evaluate").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
         mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluation").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
+        mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluations").header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.evaluatedSessions").value(0));
 
         for (String path : new String[] { profilePath(account), base(account) + "?date=" + date, commitmentPath(account) + "?date=" + date,
-                commitmentPath(account) + "/" + date + "/evaluation" }) {
+                commitmentPath(account) + "/" + date + "/evaluation", commitmentPath(account) + "/" + date + "/evaluations" }) {
             String body = mockMvc.perform(get(path).header("Authorization", bearer(otherToken))).andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
             org.assertj.core.api.Assertions.assertThat(body).doesNotContain("50000", "48000", "Owner survival account", "maxAttempts", "America/New_York");
         }
@@ -108,6 +165,8 @@ class AccountSurvivalOwnershipIntegrationTest {
         mockMvc.perform(post(commitmentPath(account) + "/not-a-date/evaluate").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
         mockMvc.perform(get(commitmentPath(account) + "/2026-13-40/evaluation").header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
+        mockMvc.perform(get(commitmentPath(account) + "/2026-13-40/evaluations").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
         mockMvc.perform(get(base(account)).param("date", "not-a-date")).andExpect(status().isUnauthorized());
     }
@@ -141,8 +200,12 @@ class AccountSurvivalOwnershipIntegrationTest {
                 .andExpect(jsonPath("$.turningPoint.detected").value(false));
 
         String body = mockMvc.perform(get(base(source)).param("date", date.toString()).header("Authorization", bearer(otherToken)))
-                .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
-        org.assertj.core.api.Assertions.assertThat(body).doesNotContain("Owner source account", "Owner later account", "240", "540", "10:12");
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.turningPoint").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(body).doesNotContain(
+                "Owner source account", "Owner later account", "crossAccountEvidence",
+                "stopBeforeActionPnl", "lossesAvoided", "winnersForgone");
     }
 
     @Test
@@ -161,7 +224,7 @@ class AccountSurvivalOwnershipIntegrationTest {
     }
 
     private String login(String email) throws Exception { String body = mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"%s\",\"password\":\"password123\"}".formatted(email))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(); return objectMapper.readTree(body).get("token").asText(); }
-    private User user(String email) { return users.save(User.builder().name("Survival test user").email(email).passwordHash(passwordEncoder.encode("password123")).emailVerified(true).role(UserRole.USER).plan(PlanType.FREE).subscriptionStatus(SubscriptionStatus.ACTIVE).build()); }
+    private User user(String email) { return users.save(User.builder().name("Survival test user").email(email).passwordHash(passwordEncoder.encode("password123")).emailVerified(true).role(UserRole.USER).plan(PlanType.PRO).subscriptionStatus(SubscriptionStatus.ACTIVE).build()); }
     private TradingAccount account(User user, String name) { return accounts.save(TradingAccount.builder().user(user).name(name).propFirm(PropFirmType.TOPSTEP).accountType(TradingAccountType.PERSONAL).startingBalance(new BigDecimal("50000")).status(TradingAccountStatus.ACTIVE).build()); }
     private Trade trade(User user, TradingAccount account, LocalDate date, String symbol, String side, String entry, String exit, String pnl, int quantity) {
         return Trade.builder().user(user).account(account).symbol(symbol).market("FUTURES").tradeDate(date).entryTime(time(date, entry)).exitTime(time(date, exit))
