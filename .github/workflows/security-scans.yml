@@ -2,20 +2,67 @@ name: security-scans
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
   push:
     branches:
       - main
       - master
-      - "codex/**"
   workflow_dispatch:
+
+# A new commit to the same PR/ref supersedes an older scan. Retain scans for
+# every PR and protected branch, but do not spend minutes finishing obsolete runs.
+concurrency:
+  group: security-scans-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  security-policy:
+    name: security-policy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # A draft consolidated PR proves that the pending December package is
+      # exact and inactive without spending NVD update/analysis minutes. Once
+      # owner approval is recorded, the activation change must make the PR
+      # ready for review; the normal strict gate and full scan then run.
+      - name: Validate exception policy state
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.pull_request.draft }}" == "true" ]]; then
+            python3 scripts/security/validate-owasp-exception-candidates.py \
+              --suppression docs/security/candidates/dependency-check-expanded-sixteen-dec15-candidate.xml \
+              --approval-record docs/security/candidates/owasp-expanded-sixteen-dec15-approval.template.json \
+              --scope expanded-sixteen-dec15 \
+              --mode proposal
+          else
+            python3 scripts/security/validate-owasp-exception-candidates.py \
+              --suppression docs/security/candidates/dependency-check-final-eight-candidate.xml \
+              --approval-record docs/security/candidates/owasp-final-eight-approval.json \
+              --mode activation \
+              --verify-github-approvals
+          fi
+
   secret-scan:
     name: secret-scan
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -30,6 +77,13 @@ jobs:
   dependency-scan:
     name: dependency-scan
     runs-on: ubuntu-latest
+    needs: security-policy
+    if: >-
+      needs.security-policy.result == 'success' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -41,16 +95,104 @@ jobs:
           java-version: "17"
           cache: maven
 
+      - name: Require NVD API key
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "${NVD_API_KEY:-}" ]]; then
+            echo "::error::Repository Actions secret NVD_API_KEY is required for Dependency-Check."
+            exit 1
+          fi
+
+      - name: Restore Dependency-Check data
+        id: dependency-check-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/dependency-check-data
+          # A complete update gets its own immutable cache entry. Restore the latest
+          # compatible snapshot so each scan can perform the normal incremental update.
+          key: dependency-check-v12.2.2-reference-url-schema-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            dependency-check-v12.2.2-reference-url-schema-${{ runner.os }}-
+
+      - name: Refresh Dependency-Check vulnerability data
+        working-directory: backend
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          DEPENDENCY_CHECK_DATA: ${{ runner.temp }}/dependency-check-data
+        run: |
+          set -Eeuo pipefail
+          update_log="$(mktemp)"
+          trap 'rm -f "$update_log"' EXIT
+
+          mvn -B org.owasp:dependency-check-maven:12.2.2:update-only \
+            -DdataDirectory="$DEPENDENCY_CHECK_DATA" \
+            -DfailOnError=true \
+            -DnvdApiKeyEnvironmentVariable=NVD_API_KEY \
+            -DnvdApiDelay=4000 \
+            -DnvdMaxRetryCount=5 \
+            -DconnectionTimeout=30000 \
+            -DconnectionReadTimeout=90000 2>&1 | tee "$update_log"
+
+          # Dependency-Check 12.1.0 logged and continued after individual NVD
+          # CVE import failures. Never cache a data set with an ingestion error.
+          if grep -E 'Failed to process CVE-|NvdApiException|DatabaseException: Error updating' "$update_log"; then
+            echo '::error::Dependency-Check did not complete NVD vulnerability ingestion.'
+            exit 1
+          fi
+
+      # Keep completed NVD data even when the following CVSS gate fails. A failed
+      # update never reaches this step, so incomplete vulnerability data is not cached.
+      - name: Save refreshed Dependency-Check data
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/dependency-check-data
+          key: dependency-check-v12.2.2-reference-url-schema-${{ runner.os }}-${{ github.run_id }}
+
+      - name: Backend dependency check
+        working-directory: backend
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          DEPENDENCY_CHECK_DATA: ${{ runner.temp }}/dependency-check-data
+        run: >-
+          mvn -B org.owasp:dependency-check-maven:12.2.2:check
+          -DfailBuildOnCVSS=8
+          -DdataDirectory="$DEPENDENCY_CHECK_DATA"
+          -DfailOnError=true
+          -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
+          -DnvdApiDelay=4000
+          -DnvdMaxRetryCount=5
+          -DconnectionTimeout=30000
+          -DconnectionReadTimeout=90000
+          -DsuppressionFiles="../docs/security/candidates/dependency-check-final-eight-candidate.xml"
+          -DfailBuildOnUnusedSuppressionRule=true
+
+      - name: Upload Dependency-Check report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: backend/target/dependency-check-report.*
+          if-no-files-found: warn
+
+  frontend-audit:
+    name: frontend-audit
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Backend dependency check
-        working-directory: backend
-        run: mvn -B org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=8
 
       - name: Frontend dependency audit
         working-directory: frontend
@@ -59,6 +201,7 @@ jobs:
   sast:
     name: sast
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     container:
       image: semgrep/semgrep:latest
     steps:
