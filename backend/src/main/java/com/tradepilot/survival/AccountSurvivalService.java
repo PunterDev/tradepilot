@@ -3,6 +3,7 @@ package com.tradepilot.survival;
 import com.tradepilot.entity.*;
 import com.tradepilot.exception.ResourceNotFoundException;
 import com.tradepilot.repository.TradeRepository;
+import com.tradepilot.repository.TradingAccountRepository;
 import com.tradepilot.service.TradingAccountService;
 import com.tradepilot.survival.dto.*;
 import com.tradepilot.survival.entity.*;
@@ -11,6 +12,7 @@ import java.math.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.*;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +25,7 @@ public class AccountSurvivalService {
     public static final String CALCULATION_VERSION = "account-survival-v1";
     private static final Duration RAPID_REENTRY_WINDOW = Duration.ofMinutes(10);
     private final TradingAccountService accountService;
+    private final TradingAccountRepository tradingAccountRepository;
     private final TradeRepository tradeRepository;
     private final AccountRiskProfileRepository profileRepository;
     private final NextSessionProtectionCommitmentRepository commitmentRepository;
@@ -31,9 +34,11 @@ public class AccountSurvivalService {
     private final ProtectionCommitmentEvaluator commitmentEvaluator;
     private final CrossAccountContinuationDetector crossAccountContinuationDetector;
 
-    public AccountSurvivalService(TradingAccountService accountService, TradeRepository tradeRepository,
+    public AccountSurvivalService(TradingAccountService accountService, TradingAccountRepository tradingAccountRepository,
+            TradeRepository tradeRepository,
             AccountRiskProfileRepository profileRepository, NextSessionProtectionCommitmentRepository commitmentRepository, NextSessionProtectionEvaluationRepository evaluationRepository, NextSessionProtectionRuleResultRepository ruleResultRepository, ProtectionCommitmentEvaluator commitmentEvaluator, CrossAccountContinuationDetector crossAccountContinuationDetector) {
-        this.accountService = accountService; this.tradeRepository = tradeRepository;
+        this.accountService = accountService; this.tradingAccountRepository = tradingAccountRepository;
+        this.tradeRepository = tradeRepository;
         this.profileRepository = profileRepository; this.commitmentRepository = commitmentRepository; this.evaluationRepository=evaluationRepository; this.ruleResultRepository=ruleResultRepository; this.commitmentEvaluator=commitmentEvaluator; this.crossAccountContinuationDetector=crossAccountContinuationDetector;
     }
 
@@ -103,9 +108,16 @@ public class AccountSurvivalService {
     public ProtectionCommitmentResponse saveCommitment(User user, Long accountId, ProtectionCommitmentRequest request) {
         if (request.effectiveSessionDate() == null) throw new IllegalArgumentException("Effective session date is required");
         validateCommitment(request);
-        TradingAccount account = accountService.getAccountForImport(user, accountId);
         AccountSurvivalAssessmentResponse assessment = assessment(user, accountId, request.effectiveSessionDate());
-        NextSessionProtectionCommitment commitment = commitmentRepository.findByAccount_IdAndUserAndEffectiveSessionDate(accountId, user, request.effectiveSessionDate()).orElseGet(NextSessionProtectionCommitment::new);
+        TradingAccount account = lockOwnedAccount(user, accountId);
+        NextSessionProtectionCommitment commitment = commitmentRepository
+                .findForUpdate(accountId, user, request.effectiveSessionDate())
+                .orElseGet(NextSessionProtectionCommitment::new);
+        if (commitment.getId() != null
+                && (commitment.getAcceptedAt() != null || commitment.getStatus() != ProtectionCommitmentStatus.DRAFT)) {
+            throw new ProtectionCommitmentLifecycleException(
+                    "Accepted protection commitments are locked. Create a new commitment for a future session.");
+        }
         commitment.setUser(user); commitment.setAccount(account); commitment.setEffectiveSessionDate(request.effectiveSessionDate());
         commitment.setMaxNormalizedExposure(request.maxNormalizedExposure()); commitment.setMaxAttempts(request.maxAttempts());
         commitment.setMaxSessionLoss(request.maxSessionLoss()); commitment.setPostLossPauseMinutes(request.postLossPauseMinutes());
@@ -119,9 +131,20 @@ public class AccountSurvivalService {
 
     @Transactional
     public ProtectionCommitmentResponse acceptCommitment(User user, Long accountId, LocalDate date) {
-        accountService.getAccountForImport(user, accountId);
-        NextSessionProtectionCommitment commitment = commitmentRepository.findByAccount_IdAndUserAndEffectiveSessionDate(accountId, user, date).orElseThrow(() -> new ResourceNotFoundException("Protection commitment not found"));
-        commitment.setStatus(ProtectionCommitmentStatus.ACCEPTED); commitment.setAcceptedAt(LocalDateTime.now());
+        lockOwnedAccount(user, accountId);
+        NextSessionProtectionCommitment commitment = commitmentRepository.findForUpdate(accountId, user, date)
+                .orElseThrow(() -> new ResourceNotFoundException("Protection commitment not found"));
+        if (commitment.getAcceptedAt() != null) {
+            if (commitment.getStatus() == ProtectionCommitmentStatus.DRAFT) {
+                throw new ProtectionCommitmentLifecycleException("Protection commitment lifecycle state is inconsistent.");
+            }
+            return commitmentResponse(commitment);
+        }
+        if (commitment.getStatus() != ProtectionCommitmentStatus.DRAFT) {
+            throw new ProtectionCommitmentLifecycleException("Only draft protection commitments can be accepted.");
+        }
+        commitment.setStatus(ProtectionCommitmentStatus.ACCEPTED);
+        commitment.setAcceptedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
         return commitmentResponse(commitmentRepository.save(commitment));
     }
     @Transactional
@@ -129,7 +152,9 @@ public class AccountSurvivalService {
         accountService.getAccountForImport(user, accountId);
         NextSessionProtectionCommitment c = commitmentRepository.findForEvaluation(accountId, user, date)
                 .orElseThrow(() -> new ResourceNotFoundException("Protection commitment not found"));
-        if (c.getStatus() == ProtectionCommitmentStatus.DRAFT) throw new IllegalArgumentException("Accept the commitment before evaluating it");
+        if (c.getStatus() == ProtectionCommitmentStatus.DRAFT || c.getAcceptedAt() == null) {
+            throw new ProtectionCommitmentLifecycleException("Accept the commitment before evaluating it.");
+        }
         List<Trade> all = tradeRepository.findByUserAndAccount_IdOrderByTradeDateAscEntryTimeAscIdAsc(user, accountId);
         LocalDate eligible = all.stream().map(Trade::getTradeDate).filter(d -> d.isAfter(c.getEffectiveSessionDate())).findFirst().orElse(null);
         if (eligible == null) return new CommitmentEvaluationResponse(false, null, ProtectionCommitmentStatus.ACCEPTED, CALCULATION_VERSION, List.of(), "No later eligible imported session exists yet.");
@@ -255,4 +280,8 @@ public class AccountSurvivalService {
     private void validateProfile(AccountRiskProfileRequest r){for(BigDecimal v:java.util.stream.Stream.of(r.currentBalance(),r.failureThreshold(),r.dailyLossLimit(),r.plannedRiskPerTrade(),r.payoutTarget()).filter(Objects::nonNull).toList())if(v.signum()<=0)throw new IllegalArgumentException("Risk-profile monetary values must be greater than zero");if(r.personalMaxContracts()!=null&&r.personalMaxContracts()<=0||r.firmMaxContracts()!=null&&r.firmMaxContracts()<=0)throw new IllegalArgumentException("Maximum contracts must be greater than zero");if(r.primaryWindowStart()!=null&&r.primaryWindowEnd()!=null&&!r.primaryWindowStart().isBefore(r.primaryWindowEnd()))throw new IllegalArgumentException("Primary trading window end must be after start");}
     private void validateCommitment(ProtectionCommitmentRequest r){if(r.maxNormalizedExposure()!=null&&r.maxNormalizedExposure().signum()<=0||r.maxSessionLoss()!=null&&r.maxSessionLoss().signum()<=0||r.maxAttempts()!=null&&r.maxAttempts()<=0||r.postLossPauseMinutes()!=null&&r.postLossPauseMinutes()<0)throw new IllegalArgumentException("Commitment limits must be positive");}
     private String blankToNull(String v){return v==null||v.isBlank()?null:v.trim();}
+    private TradingAccount lockOwnedAccount(User user, Long accountId) {
+        return tradingAccountRepository.findByIdAndUserForUpdate(accountId, user)
+                .orElseThrow(() -> new ResourceNotFoundException("Trading account not found"));
+    }
 }

@@ -69,10 +69,45 @@ class AccountSurvivalOwnershipIntegrationTest {
                 """;
         mockMvc.perform(put(commitmentPath(account)).header("Authorization", bearer(ownerToken)).contentType(MediaType.APPLICATION_JSON).content(commitment))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DRAFT"));
-        mockMvc.perform(post(commitmentPath(account) + "/" + date + "/accept").header("Authorization", bearer(ownerToken)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACCEPTED"));
+        String editedCommitment = """
+                {"effectiveSessionDate":"2026-10-01","maxAttempts":3,"maxNormalizedExposure":10,"maxSessionLoss":175,"postLossPauseMinutes":30,"allowedWindowStart":"10:00:00","allowedWindowEnd":"13:00:00","requireFreshSetupConfirmation":false}
+                """;
+        mockMvc.perform(put(commitmentPath(account)).header("Authorization", bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON).content(editedCommitment))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DRAFT"))
+                .andExpect(jsonPath("$.maxAttempts").value(3));
+        mockMvc.perform(post(commitmentPath(account) + "/" + date + "/evaluate").header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("COMMITMENT_STATE_CONFLICT"));
+        String acceptedBody = mockMvc.perform(post(commitmentPath(account) + "/" + date + "/accept")
+                        .header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACCEPTED"))
+                .andReturn().getResponse().getContentAsString();
+        String acceptedAt = objectMapper.readTree(acceptedBody).get("acceptedAt").asText();
+        long acceptedId = objectMapper.readTree(acceptedBody).get("id").asLong();
+        mockMvc.perform(put(commitmentPath(account)).header("Authorization", bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON).content(commitment))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("COMMITMENT_STATE_CONFLICT"))
+                .andExpect(jsonPath("$.userMessage").value(org.hamcrest.Matchers.containsString("locked")));
         mockMvc.perform(get(commitmentPath(account)).param("date", date.toString()).header("Authorization", bearer(ownerToken)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.maxAttempts").value(2));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(acceptedId))
+                .andExpect(jsonPath("$.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.acceptedAt").value(acceptedAt))
+                .andExpect(jsonPath("$.maxAttempts").value(3))
+                .andExpect(jsonPath("$.maxNormalizedExposure").value(10))
+                .andExpect(jsonPath("$.maxSessionLoss").value(175))
+                .andExpect(jsonPath("$.postLossPauseMinutes").value(30))
+                .andExpect(jsonPath("$.allowedWindowStart").value("10:00:00"))
+                .andExpect(jsonPath("$.allowedWindowEnd").value("13:00:00"))
+                .andExpect(jsonPath("$.requireFreshSetupConfirmation").value(false));
+        mockMvc.perform(post(commitmentPath(account) + "/" + date + "/accept").header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(acceptedId))
+                .andExpect(jsonPath("$.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.acceptedAt").value(acceptedAt));
         mockMvc.perform(post(commitmentPath(account) + "/" + date + "/evaluate").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
         mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluation").header("Authorization", bearer(ownerToken)))
@@ -110,6 +145,41 @@ class AccountSurvivalOwnershipIntegrationTest {
         mockMvc.perform(get(commitmentPath(account) + "/2026-13-40/evaluation").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
         mockMvc.perform(get(base(account)).param("date", "not-a-date")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void savingAnotherAccountOrSessionCannotReplaceAnAcceptedCommitment() throws Exception {
+        User owner = user("survival-lifecycle-owner@example.com");
+        TradingAccount acceptedAccount = account(owner, "Accepted commitment account");
+        TradingAccount otherAccount = account(owner, "Other commitment account");
+        LocalDate acceptedDate = LocalDate.of(2026, 11, 3);
+        String token = login(owner.getEmail());
+        String acceptedRequest = commitmentPayload(acceptedDate, 2);
+
+        mockMvc.perform(put(commitmentPath(acceptedAccount)).header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON).content(acceptedRequest))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(commitmentPath(acceptedAccount) + "/" + acceptedDate + "/accept")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put(commitmentPath(acceptedAccount)).header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON).content(commitmentPayload(acceptedDate.plusDays(1), 4)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DRAFT"));
+        mockMvc.perform(put(commitmentPath(otherAccount)).header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON).content(commitmentPayload(acceptedDate, 5)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DRAFT"));
+
+        mockMvc.perform(get(commitmentPath(acceptedAccount)).param("date", acceptedDate.toString())
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accountId").value(acceptedAccount.getId()))
+                .andExpect(jsonPath("$.effectiveSessionDate").value(acceptedDate.toString()))
+                .andExpect(jsonPath("$.maxAttempts").value(2))
+                .andExpect(jsonPath("$.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.acceptedAt").exists());
     }
 
     @Test
@@ -172,6 +242,11 @@ class AccountSurvivalOwnershipIntegrationTest {
     private String base(TradingAccount account) { return "/api/accounts/" + account.getId() + "/survival"; }
     private String profilePath(TradingAccount account) { return base(account) + "/profile"; }
     private String commitmentPath(TradingAccount account) { return base(account) + "/commitment"; }
+    private String commitmentPayload(LocalDate date, int maxAttempts) {
+        return """
+                {"effectiveSessionDate":"%s","maxAttempts":%d,"maxNormalizedExposure":20,"maxSessionLoss":200,"postLossPauseMinutes":20,"allowedWindowStart":"09:30:00","allowedWindowEnd":"12:00:00","requireFreshSetupConfirmation":true}
+                """.formatted(date, maxAttempts);
+    }
     private String profilePath(long accountId) { return "/api/accounts/" + accountId + "/survival/profile"; }
     private String bearer(String token) { return "Bearer " + token; }
 }
