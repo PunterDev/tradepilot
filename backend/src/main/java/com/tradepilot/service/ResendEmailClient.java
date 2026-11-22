@@ -42,7 +42,7 @@ public class ResendEmailClient {
         if (StringUtils.hasText(replyTo)) {
             builder.replyTo(replyTo);
         }
-        CreateEmailResponse response = new Resend(resendApiKey).emails().send(builder.build());
+        CreateEmailResponse response = createClient(resendApiKey).emails().send(builder.build());
         String emailId = response == null ? null : response.getId();
         log.debug("Resend email accepted. recipient={}, emailId={}", LogSanitizer.maskEmail(to), emailId);
         return emailId;
@@ -50,5 +50,9 @@ public class ResendEmailClient {
 
     @java.lang.SuppressWarnings("all")
     public ResendEmailClient() {
+    }
+
+    protected Resend createClient(String apiKey) {
+        return new Resend(apiKey);
     }
 }
