@@ -7,7 +7,14 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "app.openai")
 public class OpenAiProperties {
     private String apiKey;
-    private String model = "gpt-4.1-mini";
+    private String model = "gpt-6-luna";
+    private String reasoningEffort = "low";
+    private int maxOutputTokens = 4096;
+    private boolean legacyChatCompletionsEnabled;
+    private double legacyTemperature = 0.2;
+    private java.math.BigDecimal inputCostPerMillionTokens = new java.math.BigDecimal("0.10");
+    private java.math.BigDecimal cachedInputCostPerMillionTokens = new java.math.BigDecimal("0.01");
+    private java.math.BigDecimal outputCostPerMillionTokens = new java.math.BigDecimal("0.50");
 
     @java.lang.SuppressWarnings("all")
     public OpenAiProperties() {
@@ -23,6 +30,14 @@ public class OpenAiProperties {
         return this.model;
     }
 
+    public String getReasoningEffort() { return reasoningEffort; }
+    public int getMaxOutputTokens() { return maxOutputTokens; }
+    public boolean isLegacyChatCompletionsEnabled() { return legacyChatCompletionsEnabled; }
+    public double getLegacyTemperature() { return legacyTemperature; }
+    public java.math.BigDecimal getInputCostPerMillionTokens() { return inputCostPerMillionTokens; }
+    public java.math.BigDecimal getCachedInputCostPerMillionTokens() { return cachedInputCostPerMillionTokens; }
+    public java.math.BigDecimal getOutputCostPerMillionTokens() { return outputCostPerMillionTokens; }
+
     @java.lang.SuppressWarnings("all")
     public void setApiKey(final String apiKey) {
         this.apiKey = apiKey;
@@ -32,6 +47,13 @@ public class OpenAiProperties {
     public void setModel(final String model) {
         this.model = model;
     }
+    public void setReasoningEffort(String reasoningEffort) { this.reasoningEffort = reasoningEffort; }
+    public void setMaxOutputTokens(int maxOutputTokens) { this.maxOutputTokens = maxOutputTokens; }
+    public void setLegacyChatCompletionsEnabled(boolean legacyChatCompletionsEnabled) { this.legacyChatCompletionsEnabled = legacyChatCompletionsEnabled; }
+    public void setLegacyTemperature(double legacyTemperature) { this.legacyTemperature = legacyTemperature; }
+    public void setInputCostPerMillionTokens(java.math.BigDecimal inputCostPerMillionTokens) { this.inputCostPerMillionTokens = inputCostPerMillionTokens; }
+    public void setCachedInputCostPerMillionTokens(java.math.BigDecimal cachedInputCostPerMillionTokens) { this.cachedInputCostPerMillionTokens = cachedInputCostPerMillionTokens; }
+    public void setOutputCostPerMillionTokens(java.math.BigDecimal outputCostPerMillionTokens) { this.outputCostPerMillionTokens = outputCostPerMillionTokens; }
 
     @java.lang.Override
     @java.lang.SuppressWarnings("all")

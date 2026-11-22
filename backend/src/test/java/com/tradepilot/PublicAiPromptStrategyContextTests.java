@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PublicAiPromptStrategyContextTests {
     private final AiTradeReviewPromptBuilder reviewPromptBuilder = new AiTradeReviewPromptBuilder();
     private final AiTradeAnalysisPromptBuilder analysisPromptBuilder = new AiTradeAnalysisPromptBuilder();
-    private final AiChartReviewService chartReviewService = new AiChartReviewService(null, null, null, null);
+    private final AiChartReviewService chartReviewService = new AiChartReviewService(null, null, null, null, null, null);
 
     @Test
     void ictContextAllowsIctConcepts() {

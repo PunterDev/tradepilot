@@ -1,20 +1,13 @@
 package com.tradepilot.performancetimeline.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradepilot.config.OpenAiProperties;
+import com.tradepilot.ai.openai.OpenAiResponsesClient;
 import com.tradepilot.performancetimeline.dto.PerformanceTimelineMetrics;
 import com.tradepilot.performancetimeline.dto.PerformanceTimelineNarrativeResponse;
 import com.tradepilot.performancetimeline.entity.TimelineDataStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,36 +16,21 @@ import java.util.Map;
 @Service
 public class PerformanceTimelineNarrativeService {
     private static final Logger log = LoggerFactory.getLogger(PerformanceTimelineNarrativeService.class);
-    private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
-    private final OpenAiProperties openAiProperties;
+    private final OpenAiResponsesClient openAiResponsesClient;
 
-    public PerformanceTimelineNarrativeService(RestTemplate restTemplate, ObjectMapper objectMapper, OpenAiProperties openAiProperties) {
-        this.restTemplate = restTemplate;
+    public PerformanceTimelineNarrativeService(ObjectMapper objectMapper, OpenAiResponsesClient openAiResponsesClient) {
         this.objectMapper = objectMapper;
-        this.openAiProperties = openAiProperties;
+        this.openAiResponsesClient = openAiResponsesClient;
     }
 
     public PerformanceTimelineNarrativeResponse generateNarrative(Long userId, TimelineDataStatus status, PerformanceTimelineMetrics metrics, Integer scoreChange, boolean allowAi) {
         PerformanceTimelineNarrativeResponse fallback = deterministicNarrative(status, metrics, scoreChange);
-        if (!allowAi || status != TimelineDataStatus.READY || openAiProperties.getApiKey() == null || openAiProperties.getApiKey().isBlank()) {
+        if (!allowAi || status != TimelineDataStatus.READY || !openAiResponsesClient.isConfigured()) {
             return fallback;
         }
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(openAiProperties.getApiKey());
-            Map<String, Object> body = Map.of(
-                    "model", openAiProperties.getModel(),
-                    "temperature", 0.25,
-                    "messages", List.of(
-                            Map.of("role", "system", "content", systemPrompt()),
-                            Map.of("role", "user", "content", userPrompt(metrics, scoreChange))
-                    )
-            );
-            ResponseEntity<String> response = restTemplate.exchange("https://api.openai.com/v1/chat/completions", HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
-            JsonNode root = objectMapper.readTree(response.getBody());
-            String content = cleanJson(root.path("choices").get(0).path("message").path("content").asText());
+            String content = cleanJson(openAiResponsesClient.generateJson(userId, "PERFORMANCE_TIMELINE", systemPrompt(), userPrompt(metrics, scoreChange)).content());
             PerformanceTimelineNarrativeResponse ai = objectMapper.readValue(content, PerformanceTimelineNarrativeResponse.class);
             ai.setAiGenerated(true);
             return mergeMissing(ai, fallback);

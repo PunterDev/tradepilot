@@ -1,6 +1,7 @@
 package com.tradepilot.observability;
 
 import com.tradepilot.billing.AiCreditPurchaseRepository;
+import com.tradepilot.ai.openai.OpenAiUsage;
 import com.tradepilot.observability.dto.*;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
@@ -81,6 +82,23 @@ public class ObservabilityService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordAiCall(Long userId, String feature, String model, int promptTokens, int completionTokens, int totalTokens, long durationMs, boolean success) {
         aiRequestMetricRepository.save(AiRequestMetric.builder().userId(userId).feature(limit(feature, 64)).model(limit(model, 80)).promptTokens(promptTokens).completionTokens(completionTokens).totalTokens(totalTokens).estimatedCost(estimateCost(totalTokens)).durationMs(durationMs).success(success).createdAt(LocalDateTime.now()).build());
+    }
+
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordAiCall(Long userId, String feature, String model, OpenAiUsage usage, BigDecimal estimatedCost, long durationMs, int retryAttempt, boolean success, String errorCategory) {
+        AiRequestMetric metric = AiRequestMetric.builder()
+                .userId(userId).feature(limit(feature, 64)).model(limit(model, 80))
+                .promptTokens(usage.inputTokens()).completionTokens(usage.outputTokens()).totalTokens(usage.totalTokens())
+                .estimatedCost(estimatedCost == null ? BigDecimal.ZERO : estimatedCost)
+                .durationMs(durationMs).success(success).createdAt(LocalDateTime.now()).build();
+        metric.setInputTokens(usage.inputTokens());
+        metric.setCachedInputTokens(usage.cachedInputTokens());
+        metric.setOutputTokens(usage.outputTokens());
+        metric.setReasoningTokens(usage.reasoningTokens());
+        metric.setRetryAttempt(retryAttempt);
+        metric.setErrorCategory(limit(errorCategory, 40));
+        aiRequestMetricRepository.save(metric);
     }
 
     @Async
