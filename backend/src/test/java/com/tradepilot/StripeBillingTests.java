@@ -45,9 +45,9 @@ import com.tradepilot.service.AdminUserService;
 import com.tradepilot.service.TradingAccountService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -102,7 +102,7 @@ class StripeBillingTests {
     @Autowired FeatureUsageRepository featureUsageRepository;
     @Autowired FeatureFunnelService featureFunnelService;
     @Autowired UsageLimitService usageLimitService;
-    @MockBean StripeApiClient stripeApiClient;
+    @MockitoBean StripeApiClient stripeApiClient;
 
     @Test
     void createCheckoutRequiresAuth() throws Exception {

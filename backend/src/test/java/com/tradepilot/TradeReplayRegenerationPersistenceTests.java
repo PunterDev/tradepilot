@@ -27,9 +27,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -69,8 +69,8 @@ class TradeReplayRegenerationPersistenceTests {
     @Autowired JwtService jwtService;
     @Autowired JdbcTemplate jdbcTemplate;
 
-    @MockBean HistoricalMarketDataProviderRegistry providerRegistry;
-    @MockBean FuturesContractResolver contractResolver;
+    @MockitoBean HistoricalMarketDataProviderRegistry providerRegistry;
+    @MockitoBean FuturesContractResolver contractResolver;
 
     @BeforeEach
     void defaultContractResolution() {
