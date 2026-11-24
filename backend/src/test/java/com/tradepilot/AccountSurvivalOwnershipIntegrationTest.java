@@ -112,9 +112,40 @@ class AccountSurvivalOwnershipIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
         mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluation").header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
+        mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluations")
+                        .header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accountId").value(account.getId()))
+                .andExpect(jsonPath("$.commitmentId").value(acceptedId))
+                .andExpect(jsonPath("$.effectiveSessionDate").value(date.toString()))
+                .andExpect(jsonPath("$.limit").value(20))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.evaluations").isEmpty());
+        mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluations").param("limit", "51")
+                        .header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+        for (String invalidLimit : new String[] { "0", "-1" }) {
+            mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluations").param("limit", invalidLimit)
+                            .header("Authorization", bearer(ownerToken)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+        }
+        mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluations").param("limit", "50")
+                        .header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.limit").value(50));
+        mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluations").param("limit", "not-a-number")
+                        .header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
+        mockMvc.perform(get(commitmentPath(account) + "/not-a-date/evaluations")
+                        .header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
 
         for (String path : new String[] { profilePath(account), base(account) + "?date=" + date, commitmentPath(account) + "?date=" + date,
-                commitmentPath(account) + "/" + date + "/evaluation" }) {
+                commitmentPath(account) + "/" + date + "/evaluation", commitmentPath(account) + "/" + date + "/evaluations" }) {
             String body = mockMvc.perform(get(path).header("Authorization", bearer(otherToken))).andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
             org.assertj.core.api.Assertions.assertThat(body).doesNotContain("50000", "48000", "Owner survival account", "maxAttempts", "America/New_York");
         }
@@ -122,9 +153,11 @@ class AccountSurvivalOwnershipIntegrationTest {
         mockMvc.perform(put(commitmentPath(account)).header("Authorization", bearer(otherToken)).contentType(MediaType.APPLICATION_JSON).content(commitment)).andExpect(status().isNotFound());
         mockMvc.perform(post(commitmentPath(account) + "/" + date + "/accept").header("Authorization", bearer(otherToken))).andExpect(status().isNotFound());
         mockMvc.perform(post(commitmentPath(account) + "/" + date + "/evaluate").header("Authorization", bearer(otherToken))).andExpect(status().isNotFound());
+        mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluations").header("Authorization", bearer(otherToken))).andExpect(status().isNotFound());
         mockMvc.perform(get(profilePath(account)).header("Authorization", bearer(otherToken))).andExpect(status().isNotFound());
         mockMvc.perform(get(profilePath(999999L)).header("Authorization", bearer(otherToken))).andExpect(status().isNotFound());
         mockMvc.perform(get(profilePath(account))).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(commitmentPath(account) + "/" + date + "/evaluations")).andExpect(status().isUnauthorized());
         String unknownBody = mockMvc.perform(get("/api/accounts/999999/survival").param("date", date.toString()).header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
         org.assertj.core.api.Assertions.assertThat(unknownBody).doesNotContain("Owner survival account", "50000", "48000", "maxAttempts");

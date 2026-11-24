@@ -19,6 +19,7 @@ import com.tradepilot.repository.TradeRepository;
 import com.tradepilot.repository.TradingAccountRepository;
 import com.tradepilot.repository.UserRepository;
 import com.tradepilot.survival.dto.CommitmentEvaluationResponse;
+import com.tradepilot.survival.dto.CommitmentEvaluationHistoryResponse;
 import com.tradepilot.survival.dto.ProtectionCommitmentRequest;
 import com.tradepilot.survival.dto.ProtectionCommitmentResponse;
 import com.tradepilot.survival.entity.NextSessionProtectionCommitment;
@@ -125,13 +126,22 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
         assertThat(singleEvaluationId(fixture.commitmentId())).isEqualTo(evaluationId);
 
         String fingerprint = jdbc.queryForObject("select source_fingerprint from next_session_protection_evaluations where id = ?", String.class, evaluationId);
-        assertThatThrownBy(() -> jdbc.update("""
+        int historicalDuplicate = jdbc.update("""
                 insert into next_session_protection_evaluations(
                     user_id, account_id, commitment_id, evaluated_session_date, overall_status,
                     source_fingerprint, evaluation_version, evidence_coverage, is_current
                 ) values (?, ?, ?, ?, 'COMPLETED', ?, 'account-survival-v1', ?, false)
-                """, fixture.userId(), fixture.accountId(), fixture.commitmentId(), fixture.eligibleDate(), fingerprint, expectedRules))
+                """, fixture.userId(), fixture.accountId(), fixture.commitmentId(), fixture.eligibleDate(), fingerprint, expectedRules);
+        assertThat(historicalDuplicate).isEqualTo(1);
+        assertThatThrownBy(() -> jdbc.update("""
+                insert into next_session_protection_evaluations(
+                    user_id, account_id, commitment_id, evaluated_session_date, overall_status,
+                    source_fingerprint, evaluation_version, evidence_coverage, is_current
+                ) values (?, ?, ?, ?, 'COMPLETED', 'different-current-fingerprint', 'account-survival-v1', ?, true)
+                """, fixture.userId(), fixture.accountId(), fixture.commitmentId(), fixture.eligibleDate(), expectedRules))
                 .isInstanceOf(DataIntegrityViolationException.class);
+        jdbc.update("delete from next_session_protection_evaluations where commitment_id = ? and is_current = false",
+                fixture.commitmentId());
     }
 
     @Test
@@ -164,6 +174,237 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
         evaluate(fixture);
         assertThat(jdbc.queryForObject("select count(*) from next_session_protection_evaluations where commitment_id = ?", Long.class, fixture.commitmentId()))
                 .isEqualTo(2);
+    }
+
+    @Test
+    void evidenceReversionAppendsThirdEventAndRepeatedEquivalentRequestsRemainIdempotent() throws Exception {
+        Fixture fixture = committedFixture("evidence-reversion");
+        CommitmentEvaluationResponse original = evaluate(fixture);
+        long firstId = singleEvaluationId(fixture.commitmentId());
+        LocalDateTime firstCreatedAt = jdbc.queryForObject(
+                "select created_at from next_session_protection_evaluations where id = ?",
+                LocalDateTime.class, firstId);
+
+        Long addedTradeId = transactions.execute(status -> trades.save(trade(
+                users.getReferenceById(fixture.userId()), accounts.getReferenceById(fixture.accountId()),
+                fixture.eligibleDate(), "13:00", "13:15", "-75.25", 1)).getId());
+        evaluate(fixture);
+        long secondId = jdbc.queryForObject(
+                "select id from next_session_protection_evaluations where commitment_id = ? and is_current",
+                Long.class, fixture.commitmentId());
+
+        transactions.executeWithoutResult(status -> trades.deleteById(addedTradeId));
+        List<CommitmentEvaluationResponse> reverted = evaluateConcurrently(fixture, false);
+        assertThat(reverted).allSatisfy(response -> assertThat(response.rules()).isEqualTo(original.rules()));
+
+        List<Long> eventIds = jdbc.queryForList(
+                "select id from next_session_protection_evaluations where commitment_id = ? order by id",
+                Long.class, fixture.commitmentId());
+        assertThat(eventIds).hasSize(3);
+        long thirdId = eventIds.get(2);
+        assertThat(firstId).isLessThan(secondId);
+        assertThat(secondId).isLessThan(thirdId);
+        assertThat(jdbc.queryForObject(
+                "select source_fingerprint from next_session_protection_evaluations where id = ?",
+                String.class, thirdId)).isEqualTo(jdbc.queryForObject(
+                "select source_fingerprint from next_session_protection_evaluations where id = ?",
+                String.class, firstId));
+        LocalDateTime thirdCreatedAt = jdbc.queryForObject(
+                "select created_at from next_session_protection_evaluations where id = ?",
+                LocalDateTime.class, thirdId);
+        assertThat(firstCreatedAt).isNotNull();
+        assertThat(thirdCreatedAt).isAfter(firstCreatedAt);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from next_session_protection_evaluations where commitment_id = ? and is_current",
+                Long.class, fixture.commitmentId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from next_session_protection_rule_results where evaluation_id = ?",
+                Long.class, firstId)).isEqualTo(original.rules().size());
+        assertThat(jdbc.queryForObject("""
+                select count(*) from next_session_protection_evaluations e
+                where e.commitment_id = ?
+                  and not exists (select 1 from next_session_protection_rule_results r where r.evaluation_id = e.id)
+                """, Long.class, fixture.commitmentId())).isZero();
+
+        evaluate(fixture);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from next_session_protection_evaluations where commitment_id = ?",
+                Long.class, fixture.commitmentId())).isEqualTo(3);
+    }
+
+    @Test
+    void calculationVersionParticipatesInFingerprintAndPreservesPriorResults() {
+        Fixture fixture = committedFixture("calculation-version");
+        CommitmentEvaluationResponse versionOne = evaluate(fixture);
+        long versionOneId = singleEvaluationId(fixture.commitmentId());
+
+        CommitmentEvaluationResponse versionTwo = transactions.execute(status ->
+                service.evaluateCommitmentForCalculationVersion(
+                        users.findById(fixture.userId()).orElseThrow(), fixture.accountId(),
+                        fixture.commitmentDate(), "account-survival-v2-test"));
+        long versionTwoId = jdbc.queryForObject(
+                "select id from next_session_protection_evaluations where commitment_id = ? and is_current",
+                Long.class, fixture.commitmentId());
+
+        assertThat(versionTwoId).isNotEqualTo(versionOneId);
+        assertThat(versionTwo.evaluationVersion()).isEqualTo("account-survival-v2-test");
+        assertThat(versionTwo.rules()).isEqualTo(versionOne.rules());
+        assertThat(jdbc.queryForObject(
+                "select evaluation_version from next_session_protection_evaluations where id = ?",
+                String.class, versionOneId)).isEqualTo(AccountSurvivalService.CALCULATION_VERSION);
+        assertThat(jdbc.queryForObject(
+                "select source_fingerprint from next_session_protection_evaluations where id = ?",
+                String.class, versionTwoId)).isNotEqualTo(jdbc.queryForObject(
+                "select source_fingerprint from next_session_protection_evaluations where id = ?",
+                String.class, versionOneId));
+
+        transactions.execute(status -> service.evaluateCommitmentForCalculationVersion(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(),
+                fixture.commitmentDate(), "account-survival-v2-test"));
+        assertThat(jdbc.queryForObject(
+                "select count(*) from next_session_protection_evaluations where commitment_id = ?",
+                Long.class, fixture.commitmentId())).isEqualTo(2);
+    }
+
+    @Test
+    void correctingMissingPnlToGenuineZeroAppendsEvaluation() {
+        Fixture fixture = committedFixture("missing-to-zero");
+        Long tradeId = jdbc.queryForObject(
+                "select min(id) from trades where account_id = ? and trade_date = ?",
+                Long.class, fixture.accountId(), fixture.eligibleDate());
+        jdbc.update("update trades set pnl_amount = null where id = ?", tradeId);
+        evaluate(fixture);
+        long missingPnlEvaluation = singleEvaluationId(fixture.commitmentId());
+        assertThat(jdbc.queryForObject("""
+                select result from next_session_protection_rule_results
+                where evaluation_id = ? and rule_type = 'MAX_SESSION_LOSS'
+                """, String.class, missingPnlEvaluation)).isEqualTo("NOT_EVALUABLE");
+
+        jdbc.update("update trades set pnl_amount = 0.00 where id = ?", tradeId);
+        evaluate(fixture);
+        List<Long> ids = jdbc.queryForList(
+                "select id from next_session_protection_evaluations where commitment_id = ? order by id",
+                Long.class, fixture.commitmentId());
+        assertThat(ids).hasSize(2);
+        assertThat(jdbc.queryForObject(
+                "select source_fingerprint from next_session_protection_evaluations where id = ?",
+                String.class, ids.get(1))).isNotEqualTo(jdbc.queryForObject(
+                "select source_fingerprint from next_session_protection_evaluations where id = ?",
+                String.class, ids.get(0)));
+        assertThat(jdbc.queryForObject("""
+                select result from next_session_protection_rule_results
+                where evaluation_id = ? and rule_type = 'MAX_SESSION_LOSS'
+                """, String.class, ids.get(0))).isEqualTo("NOT_EVALUABLE");
+        assertThat(jdbc.queryForObject("""
+                select result from next_session_protection_rule_results
+                where evaluation_id = ? and rule_type = 'MAX_SESSION_LOSS'
+                """, String.class, ids.get(1))).isEqualTo("FOLLOWED");
+    }
+
+    @Test
+    void historyUsesDatabaseEventIdsWhenTimestampsAreEqualOrMisordered() {
+        Fixture fixture = committedFixture("history-id-order");
+        evaluate(fixture);
+        Long addedTradeId = transactions.execute(status -> trades.save(trade(
+                users.getReferenceById(fixture.userId()), accounts.getReferenceById(fixture.accountId()),
+                fixture.eligibleDate(), "13:00", "13:15", "-75.25", 1)).getId());
+        evaluate(fixture);
+        transactions.executeWithoutResult(status -> trades.deleteById(addedTradeId));
+        evaluate(fixture);
+        List<Long> ascending = jdbc.queryForList(
+                "select id from next_session_protection_evaluations where commitment_id = ? order by id",
+                Long.class, fixture.commitmentId());
+        jdbc.update("update next_session_protection_evaluations set created_at = timestamp '2099-01-01 00:00:00' where id = ?",
+                ascending.get(0));
+        jdbc.update("update next_session_protection_evaluations set created_at = timestamp '2000-01-01 00:00:00' where id in (?, ?)",
+                ascending.get(1), ascending.get(2));
+
+        CommitmentEvaluationHistoryResponse history = transactions.execute(status -> service.evaluationHistory(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate(), 10));
+        assertThat(history.evaluations()).extracting(CommitmentEvaluationHistoryResponse.Entry::evaluationId)
+                .containsExactly(ascending.get(2), ascending.get(1), ascending.get(0));
+    }
+
+    @Test
+    void historyPreservesEveryVersionWithRulesAndKeepsLatestSessionCompatible() {
+        Fixture fixture = committedFixture("durable-history");
+        LocalDate secondSession = fixture.eligibleDate().plusDays(1);
+        transactions.executeWithoutResult(status -> trades.save(trade(
+                users.getReferenceById(fixture.userId()), accounts.getReferenceById(fixture.accountId()), secondSession,
+                "09:30", "09:45", "20.00", 1)));
+
+        CommitmentEvaluationResponse initialLatest = evaluate(fixture);
+        assertThat(initialLatest.evaluatedSessionDate()).isEqualTo(secondSession);
+        CommitmentEvaluationHistoryResponse bounded = transactions.execute(status -> service.evaluationHistory(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate(), 1));
+        assertThat(bounded.evaluations()).hasSize(1);
+        assertThat(bounded.hasMore()).isTrue();
+        assertThat(bounded.evaluations().get(0).evaluatedSessionDate()).isEqualTo(secondSession);
+        assertThat(bounded.evaluations().get(0).evaluatedAt()).isNotNull();
+        assertThat(bounded.evaluations().get(0).rules()).isNotEmpty();
+
+        CommitmentEvaluationHistoryResponse beforeCorrection = transactions.execute(status -> service.evaluationHistory(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate(), 10));
+        CommitmentEvaluationHistoryResponse.Entry originalFirstSession = beforeCorrection.evaluations().stream()
+                .filter(entry -> entry.evaluatedSessionDate().equals(fixture.eligibleDate()))
+                .findFirst().orElseThrow();
+
+        transactions.executeWithoutResult(status -> trades.save(trade(
+                users.getReferenceById(fixture.userId()), accounts.getReferenceById(fixture.accountId()), fixture.eligibleDate(),
+                "13:00", "13:15", "-75.25", 1)));
+        evaluate(fixture);
+
+        CommitmentEvaluationHistoryResponse afterCorrection = transactions.execute(status -> service.evaluationHistory(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate(), 10));
+        assertThat(afterCorrection.accountId()).isEqualTo(fixture.accountId());
+        assertThat(afterCorrection.commitmentId()).isEqualTo(fixture.commitmentId());
+        assertThat(afterCorrection.evaluations()).hasSize(3);
+        assertThat(afterCorrection.evaluations().stream().filter(CommitmentEvaluationHistoryResponse.Entry::current)).hasSize(2);
+        assertThat(afterCorrection.evaluations().stream()
+                .filter(entry -> entry.evaluatedSessionDate().equals(fixture.eligibleDate()))).hasSize(2);
+        CommitmentEvaluationHistoryResponse.Entry preserved = afterCorrection.evaluations().stream()
+                .filter(entry -> entry.evaluationId().equals(originalFirstSession.evaluationId()))
+                .findFirst().orElseThrow();
+        assertThat(preserved.current()).isFalse();
+        assertThat(preserved.rules()).isEqualTo(originalFirstSession.rules());
+
+        CommitmentEvaluationResponse current = transactions.execute(status -> service.currentEvaluation(
+                users.findById(fixture.userId()).orElseThrow(), fixture.accountId(), fixture.commitmentDate()));
+        assertThat(current.evaluatedSessionDate()).isEqualTo(secondSession);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from next_session_protection_evaluations where commitment_id = ? and is_current",
+                Long.class, fixture.commitmentId())).isEqualTo(2);
+    }
+
+    @Test
+    void failedOuterEvaluationTransactionPreservesPreviousCurrentHistory() {
+        Fixture fixture = committedFixture("history-rollback");
+        CommitmentEvaluationResponse original = evaluate(fixture);
+        long originalId = singleEvaluationId(fixture.commitmentId());
+        transactions.executeWithoutResult(status -> trades.save(trade(
+                users.getReferenceById(fixture.userId()), accounts.getReferenceById(fixture.accountId()),
+                fixture.eligibleDate(), "13:00", "13:15", "-75.25", 1)));
+
+        assertThatThrownBy(() -> transactions.executeWithoutResult(status -> {
+            service.evaluateCommitment(users.findById(fixture.userId()).orElseThrow(),
+                    fixture.accountId(), fixture.commitmentDate());
+            throw new IllegalStateException("force rollback after evaluation persistence");
+        })).isInstanceOf(IllegalStateException.class);
+
+        assertThat(jdbc.queryForObject(
+                "select count(*) from next_session_protection_evaluations where commitment_id = ?",
+                Long.class, fixture.commitmentId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "select id from next_session_protection_evaluations where commitment_id = ? and is_current",
+                Long.class, fixture.commitmentId())).isEqualTo(originalId);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from next_session_protection_evaluations e
+                where e.commitment_id = ?
+                  and not exists (select 1 from next_session_protection_rule_results r where r.evaluation_id = e.id)
+                """, Long.class, fixture.commitmentId())).isZero();
+        assertThat(jdbc.queryForObject(
+                "select count(*) from next_session_protection_rule_results where evaluation_id = ?",
+                Long.class, originalId)).isEqualTo(original.rules().size());
     }
 
     @Test
