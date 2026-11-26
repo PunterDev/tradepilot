@@ -18,6 +18,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -60,7 +61,7 @@ class FlywayPostgresBaselineIntegrationTest {
         }
 
         MigrateResult firstMigration = flyway.migrate();
-        assertThat(firstMigration.migrationsExecuted).isEqualTo(30);
+        assertThat(firstMigration.migrationsExecuted).isEqualTo(31);
 
         try (Connection connection = connect(postgres)) {
             assertThat(scalar(connection, "select version()")).contains("PostgreSQL 16");
@@ -117,7 +118,9 @@ class FlywayPostgresBaselineIntegrationTest {
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '028' and success = true")).isEqualTo("028");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '029' and success = true")).isEqualTo("029");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '030' and success = true")).isEqualTo("030");
+            assertThat(scalar(connection, "select version from flyway_schema_history where version = '031' and success = true")).isEqualTo("031");
 
+            assertPostgresTimestampPrecision(connection);
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
             assertApiRequestMetricsSchema(connection);
@@ -144,6 +147,202 @@ class FlywayPostgresBaselineIntegrationTest {
         try (Connection connection = connect(postgres)) {
             assertThat(count(connection, "select count(*) from flyway_schema_history where version = '001' and success = true"))
                     .isEqualTo(1);
+        }
+    }
+
+    private static void assertPostgresTimestampPrecision(Connection connection) throws SQLException {
+        LocalDateTime exactMicrosecond = LocalDateTime.of(2026, 2, 3, 10, 15, 30, 123_456_000);
+        LocalDateTime nanosecondValue = LocalDateTime.of(2026, 2, 3, 10, 15, 30, 123_456_789);
+        LocalDateTime expectedRoundedValue = LocalDateTime.of(2026, 2, 3, 10, 15, 30, 123_457_000);
+
+        assertThat(roundTripTimestamp(connection, exactMicrosecond)).isEqualTo(exactMicrosecond);
+        LocalDateTime persistedNanosecondValue = roundTripTimestamp(connection, nanosecondValue);
+        assertThat(persistedNanosecondValue).isEqualTo(expectedRoundedValue);
+    }
+
+    private static LocalDateTime roundTripTimestamp(Connection connection, LocalDateTime value) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("select cast(? as timestamp)")) {
+            statement.setObject(1, value);
+            try (ResultSet result = statement.executeQuery()) {
+                assertThat(result.next()).isTrue();
+                return result.getObject(1, LocalDateTime.class);
+            }
+        }
+    }
+
+    @Test
+    void existingV030DatabaseUpgradesToV031WithoutChangingDurableEvaluationData() throws Exception {
+        boolean requireDocker = Boolean.getBoolean(REQUIRE_DOCKER_PROPERTY);
+        try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(POSTGRES_IMAGE)) {
+            try {
+                postgres.start();
+            } catch (RuntimeException ex) {
+                if (requireDocker) {
+                    throw new AssertionError("Docker/Testcontainers is required for the PostgreSQL Flyway upgrade gate.", ex);
+                }
+                Assumptions.assumeTrue(false, "Docker/Testcontainers unavailable; skipping optional V030 to V031 verification.");
+            }
+
+            Flyway throughV030 = Flyway.configure()
+                    .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                    .locations("filesystem:src/main/resources/db/migration")
+                    .target("030")
+                    .configuration(java.util.Map.of("flyway.postgresql.transactional.lock", "false"))
+                    .load();
+            assertThat(throughV030.migrate().migrationsExecuted).isEqualTo(30);
+
+            long commitmentId;
+            long evaluationId;
+            try (Connection connection = connect(postgres)) {
+                long userId = insertUser(connection, "v031-upgrade@example.com");
+                long accountId = insertReturningId(connection, """
+                        insert into trading_accounts(user_id, name, prop_firm, status)
+                        values (%d, 'V031 upgrade account', 'TOPSTEP', 'ACTIVE') returning id
+                        """.formatted(userId));
+                commitmentId = insertReturningId(connection, """
+                        insert into next_session_protection_commitments(
+                            user_id, account_id, effective_session_date, source, status, accepted_at)
+                        values (%d, %d, date '2026-04-06', 'SYSTEM_RECOMMENDED', 'ACCEPTED', timestamp '2026-04-06 16:05:00')
+                        returning id
+                        """.formatted(userId, accountId));
+                evaluationId = insertReturningId(connection, """
+                        insert into next_session_protection_evaluations(
+                            user_id, account_id, commitment_id, evaluated_session_date, overall_status,
+                            source_fingerprint, evaluation_version, evidence_coverage, is_current)
+                        values (%d, %d, %d, date '2026-04-07', 'COMPLETED',
+                            'v030-existing-fingerprint', 'account-survival-v1', 1, true)
+                        returning id
+                        """.formatted(userId, accountId, commitmentId));
+                execute(connection, """
+                        insert into next_session_protection_rule_results(
+                            evaluation_id, rule_type, result, evidence, evidence_count, calculation_version)
+                        values (%d, 'MAX_ATTEMPTS', 'FOLLOWED', 'Preserved evidence.', 2, 'account-survival-v1')
+                        """.formatted(evaluationId));
+            }
+
+            Flyway latest = Flyway.configure()
+                    .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                    .locations("filesystem:src/main/resources/db/migration")
+                    .configuration(java.util.Map.of("flyway.postgresql.transactional.lock", "false"))
+                    .load();
+            assertThat(latest.migrate().migrationsExecuted).isEqualTo(1);
+
+            try (Connection connection = connect(postgres)) {
+                assertThat(count(connection, "select count(*) from next_session_protection_commitments where id = " + commitmentId)).isEqualTo(1);
+                assertThat(count(connection, "select count(*) from next_session_protection_evaluations where id = " + evaluationId)).isEqualTo(1);
+                assertThat(scalar(connection, "select evidence from next_session_protection_rule_results where evaluation_id = " + evaluationId))
+                        .isEqualTo("Preserved evidence.");
+                assertThat(indexDefinition(connection, "uk_protection_evaluation_current_session"))
+                        .contains("UNIQUE").contains("commitment_id").contains("evaluated_session_date").contains("WHERE is_current");
+                execute(connection, """
+                        insert into next_session_protection_evaluations(
+                            user_id, account_id, commitment_id, evaluated_session_date, overall_status,
+                            source_fingerprint, evaluation_version, evidence_coverage, is_current)
+                        select user_id, account_id, commitment_id, evaluated_session_date, overall_status,
+                            source_fingerprint, evaluation_version, evidence_coverage, false
+                        from next_session_protection_evaluations where id = %d
+                        """.formatted(evaluationId));
+                assertThat(count(connection, "select count(*) from next_session_protection_evaluations where commitment_id = "
+                        + commitmentId + " and source_fingerprint = 'v030-existing-fingerprint'" )).isEqualTo(2);
+                assertThatThrownBy(() -> execute(connection, """
+                        insert into next_session_protection_evaluations(
+                            user_id, account_id, commitment_id, evaluated_session_date, overall_status,
+                            source_fingerprint, evaluation_version, evidence_coverage, is_current)
+                        select user_id, account_id, commitment_id, evaluated_session_date, overall_status,
+                            'duplicate-current-fingerprint', evaluation_version, evidence_coverage, true
+                        from next_session_protection_evaluations where id = %d
+                        """.formatted(evaluationId))).isInstanceOf(SQLException.class);
+                assertThatThrownBy(() -> execute(connection, """
+                        insert into next_session_protection_evaluations(
+                            user_id, account_id, commitment_id, evaluated_session_date, overall_status,
+                            source_fingerprint, evaluation_version, evidence_coverage, is_current)
+                        select user_id, account_id, 999999999, evaluated_session_date, overall_status,
+                            'bad-foreign-key', evaluation_version, evidence_coverage, false
+                        from next_session_protection_evaluations where id = %d
+                        """.formatted(evaluationId))).isInstanceOf(SQLException.class);
+            }
+        }
+    }
+
+    @Test
+    void v031RejectsAmbiguousDuplicateCurrentHistoryAndRollsBackEverySchemaChange() throws Exception {
+        boolean requireDocker = Boolean.getBoolean(REQUIRE_DOCKER_PROPERTY);
+        try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(POSTGRES_IMAGE)) {
+            try {
+                postgres.start();
+            } catch (RuntimeException ex) {
+                if (requireDocker) {
+                    throw new AssertionError("Docker/Testcontainers is required for the PostgreSQL Flyway failure gate.", ex);
+                }
+                Assumptions.assumeTrue(false, "Docker/Testcontainers unavailable; skipping duplicate-current rollback verification.");
+            }
+
+            Flyway throughV030 = Flyway.configure()
+                    .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                    .locations("filesystem:src/main/resources/db/migration")
+                    .target("030")
+                    .configuration(java.util.Map.of("flyway.postgresql.transactional.lock", "false"))
+                    .load();
+            assertThat(throughV030.migrate().migrationsExecuted).isEqualTo(30);
+
+            long commitmentId;
+            long firstEvaluationId;
+            try (Connection connection = connect(postgres)) {
+                long userId = insertUser(connection, "v031-duplicate-current@example.com");
+                long accountId = insertReturningId(connection, """
+                        insert into trading_accounts(user_id, name, prop_firm, status)
+                        values (%d, 'V031 duplicate-current account', 'TOPSTEP', 'ACTIVE') returning id
+                        """.formatted(userId));
+                commitmentId = insertReturningId(connection, """
+                        insert into next_session_protection_commitments(
+                            user_id, account_id, effective_session_date, source, status, accepted_at)
+                        values (%d, %d, date '2026-04-06', 'SYSTEM_RECOMMENDED', 'ACCEPTED', timestamp '2026-04-06 16:05:00')
+                        returning id
+                        """.formatted(userId, accountId));
+                firstEvaluationId = insertReturningId(connection, """
+                        insert into next_session_protection_evaluations(
+                            user_id, account_id, commitment_id, evaluated_session_date, overall_status,
+                            source_fingerprint, evaluation_version, evidence_coverage, is_current)
+                        values (%d, %d, %d, date '2026-04-07', 'COMPLETED',
+                            'duplicate-current-a', 'account-survival-v1', 1, true)
+                        returning id
+                        """.formatted(userId, accountId, commitmentId));
+                insertReturningId(connection, """
+                        insert into next_session_protection_evaluations(
+                            user_id, account_id, commitment_id, evaluated_session_date, overall_status,
+                            source_fingerprint, evaluation_version, evidence_coverage, is_current)
+                        values (%d, %d, %d, date '2026-04-07', 'BROKEN',
+                            'duplicate-current-b', 'account-survival-v1', 1, true)
+                        returning id
+                        """.formatted(userId, accountId, commitmentId));
+                execute(connection, """
+                        insert into next_session_protection_rule_results(
+                            evaluation_id, rule_type, result, evidence, evidence_count, calculation_version)
+                        values (%d, 'MAX_ATTEMPTS', 'FOLLOWED', 'Ambiguous history must survive.', 2, 'account-survival-v1')
+                        """.formatted(firstEvaluationId));
+            }
+
+            Flyway latest = Flyway.configure()
+                    .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                    .locations("filesystem:src/main/resources/db/migration")
+                    .configuration(java.util.Map.of("flyway.postgresql.transactional.lock", "false"))
+                    .load();
+            assertThatThrownBy(latest::migrate)
+                    .isInstanceOf(RuntimeException.class)
+                    .hasStackTraceContaining("uk_protection_evaluation_current_session");
+
+            try (Connection connection = connect(postgres)) {
+                assertThat(count(connection, "select count(*) from flyway_schema_history where version = '031' and success = true"))
+                        .isZero();
+                assertThat(count(connection, "select count(*) from information_schema.table_constraints where table_name = 'next_session_protection_evaluations' and constraint_name = 'uk_protection_evaluation_fingerprint'"))
+                        .isEqualTo(1);
+                assertThat(count(connection, "select count(*) from pg_indexes where schemaname = 'public' and indexname in ('uk_protection_evaluation_current_session', 'idx_protection_evaluations_commitment_history', 'idx_protection_evaluations_account_history')"))
+                        .isZero();
+                assertThat(count(connection, "select count(*) from next_session_protection_evaluations where commitment_id = " + commitmentId))
+                        .isEqualTo(2);
+                assertThat(scalar(connection, "select evidence from next_session_protection_rule_results where evaluation_id = " + firstEvaluationId))
+                        .isEqualTo("Ambiguous history must survive.");
+            }
         }
     }
 
@@ -181,9 +380,15 @@ class FlywayPostgresBaselineIntegrationTest {
 
     private static void assertAccountSurvivalSchema(Connection connection) throws SQLException {
         assertThat(count(connection, "select count(*) from information_schema.table_constraints where table_name = 'next_session_protection_evaluations' and constraint_name = 'uk_protection_evaluation_fingerprint'"))
-                .isEqualTo(1);
+                .isZero();
         assertThat(count(connection, "select count(*) from information_schema.table_constraints where table_name = 'next_session_protection_rule_results' and constraint_name = 'uk_protection_rule_result'"))
                 .isEqualTo(1);
+        assertThat(indexDefinition(connection, "uk_protection_evaluation_current_session"))
+                .contains("UNIQUE").contains("commitment_id").contains("evaluated_session_date").contains("WHERE is_current");
+        assertThat(indexDefinition(connection, "idx_protection_evaluations_commitment_history"))
+                .contains("commitment_id").contains("id DESC").doesNotContain("created_at");
+        assertThat(indexDefinition(connection, "idx_protection_evaluations_account_history"))
+                .contains("user_id").contains("account_id").contains("id DESC").doesNotContain("created_at");
         assertVarcharColumn(connection, "next_session_protection_evaluations", "source_fingerprint", 128, "NO");
         assertThat(scalar(connection, "select data_type from information_schema.columns where table_name = 'next_session_protection_rule_results' and column_name = 'evidence'"))
                 .isEqualTo("text");
@@ -608,6 +813,13 @@ class FlywayPostgresBaselineIntegrationTest {
 
     private static long insertUser(Connection connection, String email) throws SQLException {
         return insertUserWithPurchasedCredits(connection, email, 0);
+    }
+
+    private static long insertReturningId(Connection connection, String sql) throws SQLException {
+        try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(sql)) {
+            assertThat(resultSet.next()).isTrue();
+            return resultSet.getLong(1);
+        }
     }
 
     private static long insertUserWithPurchasedCredits(Connection connection, String email, int purchasedCredits) throws SQLException {

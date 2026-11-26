@@ -5,6 +5,8 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/postgres-flyway-baseline.yml"
+      - "scripts/ci/validate_surefire_report.py"
+      - "scripts/ci/tests/test_validate_surefire_report.py"
   push:
     branches:
       - master
@@ -12,6 +14,8 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/postgres-flyway-baseline.yml"
+      - "scripts/ci/validate_surefire_report.py"
+      - "scripts/ci/tests/test_validate_surefire_report.py"
   workflow_dispatch:
 
 jobs:
@@ -71,30 +75,16 @@ jobs:
       - name: Run PostgreSQL Flyway baseline integration test
         run: mvn -Ppostgres-integration test -Dtest=FlywayPostgresBaselineIntegrationTest
 
-      - name: Require PostgreSQL baseline test executed without skips
+      - name: Require all PostgreSQL Flyway tests executed without skips
         run: |
-          python3 - <<'PY'
-          import sys
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-
-          report = Path("target/surefire-reports/TEST-com.tradepilot.FlywayPostgresBaselineIntegrationTest.xml")
-          if not report.exists():
-              sys.exit(f"Missing Surefire report: {report}")
-
-          root = ET.parse(report).getroot()
-          actual = {
-              "tests": int(root.attrib.get("tests", "-1")),
-              "failures": int(root.attrib.get("failures", "-1")),
-              "errors": int(root.attrib.get("errors", "-1")),
-              "skipped": int(root.attrib.get("skipped", "-1")),
-          }
-          expected = {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}
-          if actual != expected:
-              sys.exit(f"PostgreSQL baseline test did not complete cleanly: expected {expected}, got {actual}")
-
-          print("PostgreSQL baseline CI gate verified: 1 run, 0 failures, 0 errors, 0 skipped")
-          PY
+          python3 -m unittest discover -s ../scripts/ci/tests -p 'test_validate_surefire_report.py'
+          python3 ../scripts/ci/validate_surefire_report.py \
+            --report target/surefire-reports/TEST-com.tradepilot.FlywayPostgresBaselineIntegrationTest.xml \
+            --expected-suite com.tradepilot.FlywayPostgresBaselineIntegrationTest \
+            --expected-class com.tradepilot.FlywayPostgresBaselineIntegrationTest \
+            --required-test emptyPostgresDatabaseMigratesAndValidatesProductionBaseline \
+            --required-test existingV030DatabaseUpgradesToV031WithoutChangingDurableEvaluationData \
+            --required-test v031RejectsAmbiguousDuplicateCurrentHistoryAndRollsBackEverySchemaChange
 
       - name: Upload Surefire reports
         if: always()

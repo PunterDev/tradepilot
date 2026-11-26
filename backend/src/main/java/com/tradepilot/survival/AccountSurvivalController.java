@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController @RequestMapping("/api/accounts/{accountId}/survival")
 public class AccountSurvivalController {
  private final AccountSurvivalService service; public AccountSurvivalController(AccountSurvivalService service){this.service=service;}
+ @GetMapping("/access") public AccountSurvivalAccessResponse access(@AuthenticationPrincipal User user,@PathVariable Long accountId){return service.access(user,accountId);}
  @GetMapping("/profile") public AccountRiskProfileResponse profile(@AuthenticationPrincipal User user,@PathVariable Long accountId){return service.profile(user,accountId);}
  @PutMapping("/profile") public AccountRiskProfileResponse profile(@AuthenticationPrincipal User user,@PathVariable Long accountId,@RequestBody AccountRiskProfileRequest request){return service.saveProfile(user,accountId,request);}
  @GetMapping public AccountSurvivalAssessmentResponse assessment(@AuthenticationPrincipal User user,@PathVariable Long accountId,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date){return service.assessment(user,accountId,date);}
@@ -18,4 +19,5 @@ public class AccountSurvivalController {
  @PostMapping("/commitment/{date}/accept") public ProtectionCommitmentResponse accept(@AuthenticationPrincipal User user,@PathVariable Long accountId,@PathVariable@DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date){return service.acceptCommitment(user,accountId,date);}
  @PostMapping("/commitment/{date}/evaluate") public CommitmentEvaluationResponse evaluate(@AuthenticationPrincipal User user,@PathVariable Long accountId,@PathVariable@DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date){return service.evaluateCommitment(user,accountId,date);}
  @GetMapping("/commitment/{date}/evaluation") public CommitmentEvaluationResponse evaluation(@AuthenticationPrincipal User user,@PathVariable Long accountId,@PathVariable@DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date){return service.currentEvaluation(user,accountId,date);}
+ @GetMapping("/commitment/{date}/evaluations") public CommitmentEvaluationHistoryResponse evaluations(@AuthenticationPrincipal User user,@PathVariable Long accountId,@PathVariable@DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date,@RequestParam(required=false) Integer limit){return service.evaluationHistory(user,accountId,date,limit);}
 }

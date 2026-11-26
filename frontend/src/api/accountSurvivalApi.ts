@@ -8,7 +8,9 @@ export type SurvivalAssessment = { accountId: number; sessionDate?: string | nul
 export type ProtectionCommitment = { id: number; accountId: number; effectiveSessionDate: string; maxNormalizedExposure?: number | string | null; maxAttempts?: number | null; maxSessionLoss?: number | string | null; postLossPauseMinutes?: number | null; allowedWindowStart?: string | null; allowedWindowEnd?: string | null; requireFreshSetupConfirmation?: boolean | null; source: string; status: string; acceptedAt?: string | null };
 export type CommitmentRuleResult = { rule: string; status: "FOLLOWED" | "BROKEN" | "NOT_EVALUABLE"; configuredValue?: string | null; observedValue?: string | null; message: string };
 export type CommitmentEvaluation = { available: boolean; evaluatedSessionDate?: string | null; overallStatus: string; evaluationVersion?: string | null; rules: CommitmentRuleResult[]; limitation?: string | null };
+export type AccountSurvivalAccess = { rolloutMode: "DISABLED" | "BETA" | "GENERAL_AVAILABILITY"; rolloutAvailable: boolean; premiumAccess: boolean; readOnly: boolean; upgradeRequired: boolean; message: string };
 
+export const getAccountSurvivalAccess = (accountId: number) => api.get<AccountSurvivalAccess>(`/accounts/${accountId}/survival/access`).then(r => r.data);
 export const getRiskProfile = (accountId: number) => api.get<RiskProfile | null>(`/accounts/${accountId}/survival/profile`).then(r => r.data);
 export const saveRiskProfile = (accountId: number, payload: Partial<RiskProfile>) => api.put<RiskProfile>(`/accounts/${accountId}/survival/profile`, payload).then(r => r.data);
 export const getSurvivalAssessment = (accountId: number, date?: string) => api.get<SurvivalAssessment>(`/accounts/${accountId}/survival`, { params: date ? { date } : undefined }).then(r => r.data);

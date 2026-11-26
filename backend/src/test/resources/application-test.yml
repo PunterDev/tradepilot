@@ -15,6 +15,7 @@ tradepilot:
   features:
     v2-enabled: true
     v3-enabled: true
+    account-survival-rollout-mode: general-availability
   market-data:
     provider: disabled
 app:

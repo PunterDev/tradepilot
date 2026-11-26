@@ -3,6 +3,8 @@ package com.tradepilot.importing;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradepilot.datatrust.DataTrustService;
 import com.tradepilot.dto.trade.TradeImportFormat;
+import com.tradepilot.dto.trade.TradeImportRequest;
+import com.tradepilot.dto.trade.TradeResponse;
 import com.tradepilot.entity.User;
 import com.tradepilot.featureusage.FeatureUsageRepository;
 import com.tradepilot.featureusage.FeatureUsageService;
@@ -15,6 +17,8 @@ import com.tradepilot.tradereplay.service.TradeReplayService;
 import com.tradepilot.survival.AccountSurvivalService;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,12 +62,49 @@ class TradeCsvImportServiceTelemetryTests {
         assertThat(parserFailure).anyMatch(event -> event.contains("CSV_IMPORT_FAILED") && event.contains("\"parserSource\":\"TOPSTEP\"") && event.contains("\"failureCategory\":\"PARSER_ERROR\"") && !event.contains("raw parser message"));
     }
 
+    @Test
+    void afterCommitEvaluationCarriesStableUserIdInsteadOfCapturedUserEntity() {
+        TopstepCsvParser topstep = mock(TopstepCsvParser.class);
+        TradovateCsvParser tradovate = mock(TradovateCsvParser.class);
+        TradeService tradeService = mock(TradeService.class);
+        AccountSurvivalService survivalService = mock(AccountSurvivalService.class);
+        when(topstep.supports(any())).thenReturn(true);
+        when(tradovate.supports(any())).thenReturn(false);
+        TradeImportRequest request = new TradeImportRequest(7L, "upload.csv", "key", "MES", "FUTURES",
+                java.time.LocalDate.of(2026, 11, 25), java.time.LocalDateTime.of(2026, 11, 25, 9, 30),
+                java.time.LocalDateTime.of(2026, 11, 25, 9, 35), "LONG", null, null,
+                java.math.BigDecimal.ONE, java.math.BigDecimal.TEN, 1, java.math.BigDecimal.TEN,
+                java.math.BigDecimal.ONE, null, "MESZ6", "MESZ6", "IMPORTED");
+        when(topstep.parse(anyString(), anyLong(), anyString())).thenReturn(new ParsedImport(
+                TradeImportFormat.TOPSTEP, List.of(), 1, 1, 0, 0, 0, List.of(), List.of(request), List.of()));
+        TradeResponse response = new TradeResponse(); response.setId(44L);
+        when(tradeService.importBrokerTrades(any(), any())).thenReturn(List.of(response));
+        TradeCsvImportService service = service(topstep, tradovate, trackedEvents(), tradeService, survivalService);
+        User importingUser = user();
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.save(importingUser, 7L, file());
+            List<TransactionSynchronization> synchronizations = TransactionSynchronizationManager.getSynchronizations();
+            synchronizations.forEach(TransactionSynchronization::afterCommit);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(survivalService).evaluateEligibleAfterImport(9L, 7L);
+    }
+
     private static TradeCsvImportService service(TopstepCsvParser topstep, TradovateCsvParser tradovate, List<String> events) {
+        return service(topstep, tradovate, events, mock(TradeService.class), mock(AccountSurvivalService.class));
+    }
+
+    private static TradeCsvImportService service(TopstepCsvParser topstep, TradovateCsvParser tradovate, List<String> events,
+            TradeService tradeService, AccountSurvivalService accountSurvivalService) {
         FeatureUsageService usage = mock(FeatureUsageService.class);
         doAnswer(invocation -> { events.add(invocation.getArgument(2).toString() + ":" + invocation.getArgument(8)); return null; }).when(usage).track(any(), any(), any(), any(), any(), any(), any(), any(), any());
         FeatureUsageRepository eventRepository = mock(FeatureUsageRepository.class);
         when(eventRepository.existsByUserIdAndAction(anyLong(), any())).thenReturn(false);
-        return new TradeCsvImportService(topstep, tradovate, mock(TradingAccountService.class), mock(TradeRepository.class), mock(TradeService.class), mock(TradeReplayService.class), usage, eventRepository, mock(SeoAnalyticsService.class), mock(ImportBatchRepository.class), mock(DataTrustService.class), new ObjectMapper(), mock(AccountSurvivalService.class));
+        return new TradeCsvImportService(topstep, tradovate, mock(TradingAccountService.class), mock(TradeRepository.class), tradeService, mock(TradeReplayService.class), usage, eventRepository, mock(SeoAnalyticsService.class), mock(ImportBatchRepository.class), mock(DataTrustService.class), new ObjectMapper(), accountSurvivalService);
     }
 
     private static ParsedImport parsed(TradeImportFormat format) { return new ParsedImport(format, List.of(), 3, 3, 0, 0, 0, List.of(), List.of(), List.of()); }
