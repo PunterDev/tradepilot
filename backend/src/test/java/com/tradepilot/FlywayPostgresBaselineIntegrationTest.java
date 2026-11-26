@@ -18,6 +18,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -119,6 +120,7 @@ class FlywayPostgresBaselineIntegrationTest {
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '030' and success = true")).isEqualTo("030");
             assertThat(scalar(connection, "select version from flyway_schema_history where version = '031' and success = true")).isEqualTo("031");
 
+            assertPostgresTimestampPrecision(connection);
             assertRequiredTables(connection);
             assertAiUsageEventsSchema(connection);
             assertApiRequestMetricsSchema(connection);
@@ -145,6 +147,26 @@ class FlywayPostgresBaselineIntegrationTest {
         try (Connection connection = connect(postgres)) {
             assertThat(count(connection, "select count(*) from flyway_schema_history where version = '001' and success = true"))
                     .isEqualTo(1);
+        }
+    }
+
+    private static void assertPostgresTimestampPrecision(Connection connection) throws SQLException {
+        LocalDateTime exactMicrosecond = LocalDateTime.of(2026, 2, 3, 10, 15, 30, 123_456_000);
+        LocalDateTime nanosecondValue = LocalDateTime.of(2026, 2, 3, 10, 15, 30, 123_456_789);
+        LocalDateTime expectedRoundedValue = LocalDateTime.of(2026, 2, 3, 10, 15, 30, 123_457_000);
+
+        assertThat(roundTripTimestamp(connection, exactMicrosecond)).isEqualTo(exactMicrosecond);
+        LocalDateTime persistedNanosecondValue = roundTripTimestamp(connection, nanosecondValue);
+        assertThat(persistedNanosecondValue).isEqualTo(expectedRoundedValue);
+    }
+
+    private static LocalDateTime roundTripTimestamp(Connection connection, LocalDateTime value) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("select cast(? as timestamp)")) {
+            statement.setObject(1, value);
+            try (ResultSet result = statement.executeQuery()) {
+                assertThat(result.next()).isTrue();
+                return result.getObject(1, LocalDateTime.class);
+            }
         }
     }
 

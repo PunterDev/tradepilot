@@ -18,6 +18,8 @@ import com.tradepilot.seoanalytics.SeoAnalyticsService;
 import com.tradepilot.seoanalytics.UserAcquisitionAttributionRepository;
 import com.tradepilot.seoanalytics.dto.SeoAttributionRequest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,6 +36,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.TimeZone;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -116,7 +119,8 @@ class SeoAnalyticsTests {
         User admin = createUser("seo-admin-" + unique + "@tradepilot.local", UserRole.ADMIN, PlanType.PRO);
         User normal = createUser("seo-user-" + unique + "@tradepilot.local", UserRole.USER, PlanType.FREE);
         String anonymousId = "anon-seo-" + unique;
-        LocalDateTime eventStart = LocalDateTime.now().minusMinutes(5);
+        LocalDateTime signupAt = LocalDateTime.of(2026, 1, 1, 23, 40, 0, 123_456_000);
+        LocalDateTime eventStart = signupAt.minusMinutes(5);
 
         mockMvc.perform(get("/api/v1/admin/analytics/seo"))
                 .andExpect(status().isUnauthorized());
@@ -139,9 +143,14 @@ class SeoAnalyticsTests {
         postEvent(UUID.randomUUID().toString(), "revenge_calculator_cta_click", anonymousId, "/tools/revenge-trading-calculator", "revenge_trading");
         postEvent(UUID.randomUUID().toString(), "signup_started_from_seo", anonymousId, "/tools/revenge-trading-calculator", "revenge_trading");
 
-        assertThat(eventRepository.findAll().stream().filter(event -> anonymousId.equals(event.getAnonymousId())).count()).isEqualTo(5);
-        LocalDate startDate = LocalDate.now().minusDays(1);
-        LocalDate endDate = LocalDate.now();
+        var seededEvents = eventRepository.findAll().stream()
+                .filter(event -> anonymousId.equals(event.getAnonymousId()))
+                .toList();
+        assertThat(seededEvents).hasSize(5);
+        seededEvents.forEach(event -> event.setOccurredAt(eventStart));
+        eventRepository.saveAllAndFlush(seededEvents);
+        LocalDate startDate = signupAt.toLocalDate();
+        LocalDate endDate = signupAt.plusMinutes(40).toLocalDate();
         eventRepository.findAll().stream()
                 .filter(event -> anonymousId.equals(event.getAnonymousId()))
                 .forEach(event -> assertThat(event.getOccurredAt()).isBetween(startDate.atStartOfDay(), endDate.plusDays(1).atStartOfDay()));
@@ -175,7 +184,9 @@ class SeoAnalyticsTests {
                 .isEqualTo(5);
 
         seoAnalyticsService.recordSignup(normal, attribution(anonymousId, "/tools/revenge-trading-calculator", "google", "organic", "revenge"));
-        LocalDateTime signupAt = LocalDateTime.now();
+        var persistedAttribution = attributionRepository.findByUserId(normal.getId()).orElseThrow();
+        persistedAttribution.setSignupCompletedAt(signupAt);
+        attributionRepository.saveAndFlush(persistedAttribution);
         saveFeature(normal, FeatureUsageAction.FIRST_IMPORT_COMPLETED, signupAt.plusMinutes(8));
         seoAnalyticsService.markFirstImportCompleted(normal, signupAt.plusMinutes(8));
         saveFeature(normal, FeatureUsageAction.FIRST_INSIGHT_GENERATED, signupAt.plusMinutes(20));
@@ -201,7 +212,7 @@ class SeoAnalyticsTests {
         assertThat(response).contains("revenge_trading").contains("google");
         assertThat(json.get("latency").get("medianSignupToFirstInsightMinutes").asDouble()).isGreaterThanOrEqualTo(20);
         assertThat(response).doesNotContain("pnlAmount").doesNotContain("setupType");
-        assertThat(eventStart).isBefore(LocalDateTime.now());
+        assertThat(seededEvents).allSatisfy(event -> assertThat(event.getOccurredAt()).isEqualTo(eventStart));
     }
 
     @Test
@@ -280,13 +291,13 @@ class SeoAnalyticsTests {
         assertThat(attribution.getFirstInsightGeneratedAt()).isNull();
         assertThat(attribution.getProConvertedAt()).isNull();
 
-        LocalDateTime firstImport = LocalDateTime.now().plusMinutes(10);
+        LocalDateTime firstImport = LocalDateTime.of(2026, 2, 3, 10, 15, 30, 123_456_000);
         LocalDateTime laterImport = firstImport.plusHours(1);
         seoAnalyticsService.markFirstImportCompleted(user, firstImport);
         seoAnalyticsService.markFirstImportCompleted(user, laterImport);
         assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getFirstImportCompletedAt()).isEqualTo(firstImport);
 
-        LocalDateTime firstInsight = LocalDateTime.now().plusMinutes(20);
+        LocalDateTime firstInsight = LocalDateTime.of(2026, 2, 3, 10, 25, 30, 654_321_000);
         seoAnalyticsService.markFirstInsightGenerated(user, firstInsight);
         seoAnalyticsService.markFirstInsightGenerated(user, firstInsight.plusHours(2));
         assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getFirstInsightGeneratedAt()).isEqualTo(firstInsight);
@@ -299,6 +310,44 @@ class SeoAnalyticsTests {
         seoAnalyticsService.markProConverted(user, firstInsight.plusMinutes(15));
         seoAnalyticsService.markProConverted(user, firstInsight.plusHours(3));
         assertThat(attributionRepository.findByUserId(user.getId()).orElseThrow().getProConvertedAt()).isEqualTo(firstInsight.plusMinutes(15));
+    }
+
+    @Test
+    @ResourceLock(Resources.TIME_ZONE)
+    void analyticsDateRangeUsesServerLocalDatesAndUtcDatabaseBoundaries() throws Exception {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("America/Chicago"));
+            String unique = UUID.randomUUID().toString();
+            User admin = createUser("seo-timezone-admin-" + unique + "@tradepilot.local", UserRole.ADMIN, PlanType.PRO);
+            String utcMidnightPath = "/seo-utc-midnight-" + unique;
+            String localMidnightPath = "/seo-local-midnight-" + unique;
+
+            // 00:00 UTC on January 2 is 18:00 on January 1 in Chicago.
+            insertSeoEvent(utcMidnightPath, LocalDateTime.of(2026, 1, 2, 0, 0));
+            // 06:00 UTC is exactly local midnight starting January 2 in Chicago.
+            insertSeoEvent(localMidnightPath, LocalDateTime.of(2026, 1, 2, 6, 0));
+
+            JsonNode januaryFirst = dashboardJson(admin, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1));
+            assertThat(landingPageViews(januaryFirst, utcMidnightPath)).isEqualTo(1);
+            assertThat(landingPageViews(januaryFirst, localMidnightPath)).isZero();
+
+            JsonNode januarySecond = dashboardJson(admin, LocalDate.of(2026, 1, 2), LocalDate.of(2026, 1, 2));
+            assertThat(landingPageViews(januarySecond, localMidnightPath)).isEqualTo(1);
+
+            for (String zoneName : List.of("UTC", "America/Chicago", "Asia/Tokyo")) {
+                TimeZone.setDefault(TimeZone.getTimeZone(zoneName));
+                ZoneId zone = ZoneId.of(zoneName);
+                LocalDate reportDate = LocalDate.of(2026, 3, 15);
+                String landingPage = "/seo-zone-" + zoneName.replace('/', '-') + "-" + unique;
+                LocalDateTime databaseUtc = reportDate.atTime(12, 0).atZone(zone)
+                        .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+                insertSeoEvent(landingPage, databaseUtc);
+                assertThat(landingPageViews(dashboardJson(admin, reportDate, reportDate), landingPage)).isEqualTo(1);
+            }
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test
@@ -383,6 +432,28 @@ class SeoAnalyticsTests {
             }
         }
         throw new AssertionError("Expected funnel step was not returned: " + key);
+    }
+
+    private long landingPageViews(JsonNode dashboard, String landingPage) {
+        for (JsonNode row : dashboard.get("landingPages")) {
+            if (landingPage.equals(row.get("landingPage").asText())) {
+                return row.get("views").asLong();
+            }
+        }
+        return 0;
+    }
+
+    private void insertSeoEvent(String landingPage, LocalDateTime databaseUtc) {
+        jdbcTemplate.update("""
+                        insert into seo_acquisition_events
+                            (event_id, event_name, landing_page, occurred_at, created_at)
+                        values (:eventId, 'seo_landing_page_view', :landingPage, :occurredAt, :createdAt)
+                        """,
+                new MapSqlParameterSource()
+                        .addValue("eventId", UUID.randomUUID().toString())
+                        .addValue("landingPage", landingPage)
+                        .addValue("occurredAt", Timestamp.valueOf(databaseUtc))
+                        .addValue("createdAt", Timestamp.valueOf(databaseUtc)));
     }
 
     private JsonNode dashboardJson(User admin, LocalDate startDate, LocalDate endDate) throws Exception {
