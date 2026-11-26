@@ -146,3 +146,27 @@ To add another feature to the global V2 group:
 5. Add tests for disabled and enabled behavior.
 
 To split V2 into individual flags later, keep the existing feature-key abstraction and map each key to its own environment-backed property.
+
+## Account Survival controlled rollout
+
+Account Survival uses the independent backend-only variable `ACCOUNT_SURVIVAL_ROLLOUT_MODE`. Its default is `disabled`; no frontend value can enable access.
+
+| Value | Premium mutation policy |
+| --- | --- |
+| `disabled` | No user can create or accept a commitment or create an evaluation. |
+| `beta` | Only Pro users with an enabled `ACCOUNT_SURVIVAL_BETA` entitlement can perform premium mutations. |
+| `general-availability` | Pro users can perform premium mutations. |
+
+Values are case-insensitive and may use hyphens or underscores. Blank, missing, or unknown values fail closed as `disabled`. Beta inclusion does not override the Pro plan, account ownership, authentication, or commitment lifecycle checks. Administrator role and AI credit balance do not grant access.
+
+Overview, risk-profile, and owner-only commitment/evaluation reads remain available when premium actions are unavailable. A downgrade, expiration, beta removal, or rollout disablement leaves an accepted active commitment and every historical evaluation unchanged and readable by its owner. It does not complete, fail, cancel, or reevaluate the commitment. Automatic post-import evaluation pauses until both rollout and Pro access are restored; a later authorized evaluation resumes from the preserved commitment and append-only history.
+
+Post-import evaluation begins only after the trade-import transaction commits. The callback carries user and account identifiers, opens a new transaction, reloads the current user, and rechecks ownership, rollout eligibility, and subscription entitlement before evaluating. A subscription change committed before that callback begins therefore governs the callback; it does not revoke an evaluation that was already authorized and running in an earlier transaction.
+
+Denied premium requests return the existing stable conventions:
+
+- `404 FEATURE_DISABLED` when rollout is unavailable.
+- `403 SUBSCRIPTION_REQUIRED` when rollout is available but Pro is required.
+- privacy-safe `404` when the authenticated user does not own the account; ownership is checked first.
+
+Deterministic Account Survival evaluation does not call an LLM or consume monthly or purchased AI credits. Changing the rollout mode requires a backend restart or redeploy in normal environments. Production activation is an operational decision outside code deployment.

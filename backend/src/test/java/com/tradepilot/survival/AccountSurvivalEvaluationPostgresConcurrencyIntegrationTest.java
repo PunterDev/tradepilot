@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.tradepilot.TradePilotApplication;
 import com.tradepilot.billing.PlanType;
 import com.tradepilot.billing.SubscriptionStatus;
+import com.tradepilot.billing.FeatureAccessException;
 import com.tradepilot.entity.Trade;
 import com.tradepilot.entity.TradingAccount;
 import com.tradepilot.entity.User;
@@ -57,6 +58,57 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
     private static NextSessionProtectionCommitmentRepository commitments;
     private static TransactionTemplate transactions;
     private static JdbcTemplate jdbc;
+
+    @Test
+    void entitlementDenialCannotRetireCurrentEvaluationOrCreatePartialHistory() {
+        Fixture fixture = committedFixture("entitlement-denial");
+        evaluate(fixture);
+        User originallyLoadedProUser = transactions.execute(status -> users.findById(fixture.userId()).orElseThrow());
+        assertThat(originallyLoadedProUser.getPlan()).isEqualTo(PlanType.PRO);
+        long currentId = singleEvaluationId(fixture.commitmentId());
+        Long evaluationCount = jdbc.queryForObject(
+                "select count(*) from next_session_protection_evaluations where commitment_id = ?", Long.class,
+                fixture.commitmentId());
+        Long ruleCount = jdbc.queryForObject(
+                "select count(*) from next_session_protection_rule_results where evaluation_id = ?", Long.class,
+                currentId);
+        transactions.executeWithoutResult(status -> {
+            User user = users.findById(fixture.userId()).orElseThrow();
+            user.setPlan(PlanType.FREE);
+            user.setSubscriptionStatus(SubscriptionStatus.CANCELED);
+            users.save(user);
+        });
+
+        assertThatThrownBy(() -> evaluate(fixture)).isInstanceOf(FeatureAccessException.class);
+        // The callback begins with the identifier captured while this detached object was still Pro.
+        service.evaluateEligibleAfterImport(originallyLoadedProUser.getId(), fixture.accountId());
+
+        assertThat(jdbc.queryForObject(
+                "select count(*) from next_session_protection_evaluations where commitment_id = ?", Long.class,
+                fixture.commitmentId())).isEqualTo(evaluationCount);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from next_session_protection_rule_results where evaluation_id = ?", Long.class,
+                currentId)).isEqualTo(ruleCount);
+        assertThat(jdbc.queryForObject(
+                "select is_current from next_session_protection_evaluations where id = ?", Boolean.class, currentId))
+                .isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from trades where user_id = ? and account_id = ?", Long.class,
+                fixture.userId(), fixture.accountId())).isEqualTo(2L);
+
+        transactions.executeWithoutResult(status -> {
+            User user = users.findById(fixture.userId()).orElseThrow();
+            user.setPlan(PlanType.PRO); user.setSubscriptionStatus(SubscriptionStatus.ACTIVE); users.save(user);
+            trades.save(trade(user, accounts.findById(fixture.accountId()).orElseThrow(), fixture.eligibleDate(),
+                    "13:00", "13:10", "-10.00", 1));
+        });
+        service.evaluateEligibleAfterImport(fixture.userId(), fixture.accountId());
+        assertThat(jdbc.queryForObject(
+                "select count(*) from next_session_protection_evaluations where commitment_id = ?", Long.class,
+                fixture.commitmentId())).isEqualTo(evaluationCount + 1);
+        assertThat(jdbc.queryForObject(
+                "select is_current from next_session_protection_evaluations where id = ?", Boolean.class, currentId))
+                .isFalse();
+    }
 
     @BeforeAll
     static void startPostgresApplication() {
@@ -554,8 +606,7 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
                 ready.countDown();
                 await(start);
                 if (includePostImport) {
-                    User user = users.findById(fixture.userId()).orElseThrow();
-                    service.evaluateEligibleAfterImport(user, fixture.accountId());
+                    service.evaluateEligibleAfterImport(fixture.userId(), fixture.accountId());
                     return evaluate(fixture);
                 }
                 return evaluate(fixture);
@@ -659,8 +710,8 @@ class AccountSurvivalEvaluationPostgresConcurrencyIntegrationTest {
                     .passwordHash("hash")
                     .emailVerified(true)
                     .role(UserRole.USER)
-                    .plan(PlanType.FREE)
-                    .subscriptionStatus(SubscriptionStatus.NONE)
+                    .plan(PlanType.PRO)
+                    .subscriptionStatus(SubscriptionStatus.ACTIVE)
                     .build());
             TradingAccount account = accounts.save(TradingAccount.builder()
                     .user(user)

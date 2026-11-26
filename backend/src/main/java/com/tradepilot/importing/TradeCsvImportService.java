@@ -98,8 +98,9 @@ public class TradeCsvImportService {
             Long importId = saved.isEmpty() ? null : importBatchRepository.findTopByUserAndAccount_IdOrderByImportedAtDesc(user, accountId).map(batch -> dataTrustService.createForImport(user, batch, completedParsed.format().name()).importId()).orElse(null);
             tradeReplayService.initializeAfterCommit(tradeService.getImportedTradesForReplayInitialization(user, saved.stream().map(TradeResponse::getId).toList()));
             if (!saved.isEmpty()) {
+                Long importingUserId = user.getId();
                 org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
-                    @Override public void afterCommit() { accountSurvivalService.evaluateEligibleAfterImport(user, accountId); }
+                    @Override public void afterCommit() { accountSurvivalService.evaluateEligibleAfterImport(importingUserId, accountId); }
                 });
             }
             featureUsageService.track(user, FeatureKey.ACTIVATION, FeatureUsageAction.CSV_IMPORT_COMPLETED, FeatureUsageEventType.USER_ACTION, accountId, "CSV_IMPORT", safeFileName(file), "csv_import", ImportTelemetry.completed(objectMapper, parsed, saved.size(), preview.duplicateTrades()));

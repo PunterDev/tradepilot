@@ -51,7 +51,7 @@ const completedEvaluation = {
   ],
 };
 
-type FixtureOptions = { evaluationError?: boolean };
+type FixtureOptions = { evaluationError?: boolean; access?: { rolloutMode: string; rolloutAvailable: boolean; premiumAccess: boolean; readOnly: boolean; upgradeRequired: boolean; message: string } };
 
 async function installFixture(page: Page, options: FixtureOptions = {}) {
   const savedProfiles: Record<number, Record<string, unknown>> = { 1: { ...profile } };
@@ -77,6 +77,7 @@ async function installFixture(page: Page, options: FixtureOptions = {}) {
     const survivalMatch = path.match(/^\/accounts\/(\d+)\/survival(?:\/(.*))?$/);
     if (survivalMatch) {
       const accountId = Number(survivalMatch[1]); const suffix = survivalMatch[2] ?? "";
+      if (suffix === "access") return fulfill(route, options.access ?? { rolloutMode: "GENERAL_AVAILABILITY", rolloutAvailable: true, premiumAccess: true, readOnly: false, upgradeRequired: false, message: "Account Survival premium actions are available." });
       if (suffix === "profile") {
         if (method === "PUT") savedProfiles[accountId] = { ...savedProfiles[accountId], ...route.request().postDataJSON() };
         return fulfill(route, savedProfiles[accountId] ?? null);
@@ -187,6 +188,48 @@ test("Account Survival keeps profile and commitment visible when evaluation retr
   await expect(page.getByRole("alert")).toHaveText("Unable to load the commitment evaluation.");
   await expect(page.getByText("Remaining buffer")).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit commitment" })).toBeVisible();
+});
+
+test("Account Survival downgrade keeps preserved evidence visible and premium actions read-only", async ({ page }) => {
+  await installFixture(page, { access: { rolloutMode: "GENERAL_AVAILABILITY", rolloutAvailable: true, premiumAccess: false, readOnly: true, upgradeRequired: true, message: "Upgrade to Pro to create commitments and evaluations. Existing records remain read-only." } });
+  await openSessionReview(page);
+  await expect(page.getByText("Read-only access")).toBeVisible();
+  await expect(page.getByText("Max exposure")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit commitment" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Accept commitment" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Evaluate commitment" })).toHaveCount(0);
+  await expectNoHorizontalOverflow(page);
+});
+
+test("delayed account A evaluation cannot refresh or overwrite account B", async ({ page }) => {
+  await installFixture(page);
+  let releaseEvaluation!: () => void;
+  const evaluationReleased = new Promise<void>(resolve => { releaseEvaluation = resolve; });
+  let accountAReads = 0;
+  await page.route("**/api/**", async route => {
+    const url = new URL(route.request().url());
+    if (/\/accounts\/1\/survival/.test(url.pathname) && route.request().method() === "GET") accountAReads += 1;
+    await route.fallback();
+  });
+  await page.route("**/accounts/1/survival/commitment/2026-10-01/evaluate", async route => {
+    await evaluationReleased;
+    await fulfill(route, completedEvaluation);
+  });
+  await openSessionReview(page);
+  await page.getByRole("button", { name: "Edit commitment" }).click();
+  await page.getByRole("button", { name: "Save commitment" }).click();
+  await page.getByRole("button", { name: "Accept commitment" }).click();
+  await page.getByRole("button", { name: "Evaluate commitment" }).click();
+  await page.getByLabel("Account").selectOption("2");
+  await expect(page.getByLabel("Account")).toHaveValue("2");
+  await expect(page.getByRole("button", { name: "Edit commitment" })).toBeVisible();
+  const readsAfterAccountBLoaded = accountAReads;
+
+  releaseEvaluation();
+  await expect.poll(() => accountAReads).toBe(readsAfterAccountBLoaded);
+  await expect(page.getByLabel("Account")).toHaveValue("2");
+  await expect(page.getByRole("button", { name: "Edit commitment" })).toBeVisible();
+  await expect(page.getByText("Max Session Loss — Broken")).toHaveCount(0);
 });
 
 for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }]) {

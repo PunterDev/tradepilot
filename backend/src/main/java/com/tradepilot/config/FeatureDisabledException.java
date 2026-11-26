@@ -19,6 +19,7 @@ public class FeatureDisabledException extends RuntimeException {
             case PLAYBOOK -> "AI Trading Playbook";
             case TRADING_DNA -> "Trading DNA";
             case PERFORMANCE_TIMELINE -> "AI Performance Timeline";
+            case ACCOUNT_SURVIVAL -> "Account Survival";
             default -> feature.name();
         };
     }

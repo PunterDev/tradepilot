@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController @RequestMapping("/api/accounts/{accountId}/survival")
 public class AccountSurvivalController {
  private final AccountSurvivalService service; public AccountSurvivalController(AccountSurvivalService service){this.service=service;}
+ @GetMapping("/access") public AccountSurvivalAccessResponse access(@AuthenticationPrincipal User user,@PathVariable Long accountId){return service.access(user,accountId);}
  @GetMapping("/profile") public AccountRiskProfileResponse profile(@AuthenticationPrincipal User user,@PathVariable Long accountId){return service.profile(user,accountId);}
  @PutMapping("/profile") public AccountRiskProfileResponse profile(@AuthenticationPrincipal User user,@PathVariable Long accountId,@RequestBody AccountRiskProfileRequest request){return service.saveProfile(user,accountId,request);}
  @GetMapping public AccountSurvivalAssessmentResponse assessment(@AuthenticationPrincipal User user,@PathVariable Long accountId,@RequestParam(required=false)@DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date){return service.assessment(user,accountId,date);}

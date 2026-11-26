@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 public class FeatureProperties {
     private boolean v2Enabled = false;
     private boolean v3Enabled = false;
+    private String accountSurvivalRolloutMode = "disabled";
 
     public boolean isV2Enabled() {
         return v2Enabled;
@@ -23,5 +24,13 @@ public class FeatureProperties {
 
     public void setV3Enabled(boolean v3Enabled) {
         this.v3Enabled = v3Enabled;
+    }
+
+    public String getAccountSurvivalRolloutMode() {
+        return accountSurvivalRolloutMode;
+    }
+
+    public void setAccountSurvivalRolloutMode(String accountSurvivalRolloutMode) {
+        this.accountSurvivalRolloutMode = accountSurvivalRolloutMode;
     }
 }

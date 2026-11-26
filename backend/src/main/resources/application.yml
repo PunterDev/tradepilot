@@ -54,6 +54,7 @@ tradepilot:
   features:
     v2-enabled: ${V2_FEATURES_ENABLED:false}
     v3-enabled: ${V3_FEATURES_ENABLED:false}
+    account-survival-rollout-mode: ${ACCOUNT_SURVIVAL_ROLLOUT_MODE:disabled}
   market-data:
     provider: ${MARKET_DATA_PROVIDER:disabled}
 

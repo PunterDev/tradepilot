@@ -49,6 +49,7 @@ public class FeatureAccessService {
             case TRADING_MEMORY -> "AI Trading Memory";
             case TRADE_REPLAY -> "AI Trade Replay";
             case ADVANCED_ANALYTICS -> "Advanced Analytics";
+            case ACCOUNT_SURVIVAL -> "Account Survival";
         };
     }
 }

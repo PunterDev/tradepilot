@@ -264,7 +264,7 @@ class AccountSurvivalOwnershipIntegrationTest {
     }
 
     private String login(String email) throws Exception { String body = mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"%s\",\"password\":\"password123\"}".formatted(email))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(); return objectMapper.readTree(body).get("token").asText(); }
-    private User user(String email) { return users.save(User.builder().name("Survival test user").email(email).passwordHash(passwordEncoder.encode("password123")).emailVerified(true).role(UserRole.USER).plan(PlanType.FREE).subscriptionStatus(SubscriptionStatus.ACTIVE).build()); }
+    private User user(String email) { return users.save(User.builder().name("Survival test user").email(email).passwordHash(passwordEncoder.encode("password123")).emailVerified(true).role(UserRole.USER).plan(PlanType.PRO).subscriptionStatus(SubscriptionStatus.ACTIVE).build()); }
     private TradingAccount account(User user, String name) { return accounts.save(TradingAccount.builder().user(user).name(name).propFirm(PropFirmType.TOPSTEP).accountType(TradingAccountType.PERSONAL).startingBalance(new BigDecimal("50000")).status(TradingAccountStatus.ACTIVE).build()); }
     private Trade trade(User user, TradingAccount account, LocalDate date, String symbol, String side, String entry, String exit, String pnl, int quantity) {
         return Trade.builder().user(user).account(account).symbol(symbol).market("FUTURES").tradeDate(date).entryTime(time(date, entry)).exitTime(time(date, exit))
